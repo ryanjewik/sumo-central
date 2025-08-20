@@ -1,0 +1,128 @@
+[
+  {
+    "id": "202507-5",
+    "bashoId": "202507",
+    "rikishiId": 5,
+    "rankValue": 506,
+    "rank": "Maegashira 6 East"
+  },
+  {
+    "id": "202505-5",
+    "bashoId": "202505",
+    "rikishiId": 5,
+    "rankValue": 504,
+    "rank": "Maegashira 4 East"
+  },
+  {
+    "id": "202503-5",
+    "bashoId": "202503",
+    "rikishiId": 5,
+    "rankValue": 506,
+    "rank": "Maegashira 6 West"
+  },
+  {
+    "id": "202501-5",
+    "bashoId": "202501",
+    "rikishiId": 5,
+    "rankValue": 511,
+    "rank": "Maegashira 11 West"
+  },
+  {
+    "id": "202411-5",
+    "bashoId": "202411",
+    "rikishiId": 5,
+    "rankValue": 516,
+    "rank": "Maegashira 16 West"
+  },
+  {
+    "id": "202409-5",
+    "bashoId": "202409",
+    "rikishiId": 5,
+    "rankValue": 611,
+    "rank": "Juryo 11 West"
+  },
+  {
+    "id": "202407-5",
+    "bashoId": "202407",
+    "rikishiId": 5,
+    "rankValue": 602,
+    "rank": "Juryo 2 East"
+  },
+  {
+    "id": "202405-5",
+    "bashoId": "202405",
+    "rikishiId": 5,
+    "rankValue": 506,
+    "rank": "Maegashira 6 East"
+  },
+  {
+    "id": "202403-5",
+    "bashoId": "202403",
+    "rikishiId": 5,
+    "rankValue": 517,
+    "rank": "Maegashira 17 East"
+  },
+  {
+    "id": "202401-5",
+    "bashoId": "202401",
+    "rikishiId": 5,
+    "rankValue": 610,
+    "rank": "Juryo 10 East"
+  },
+  {
+    "id": "202311-5",
+    "bashoId": "202311",
+    "rikishiId": 5,
+    "rankValue": 701,
+    "rank": "Makushita 1 West"
+  },
+  {
+    "id": "202309-5",
+    "bashoId": "202309",
+    "rikishiId": 5,
+    "rankValue": 706,
+    "rank": "Makushita 6 East"
+  },
+  {
+    "id": "202307-5",
+    "bashoId": "202307",
+    "rikishiId": 5,
+    "rankValue": 717,
+    "rank": "Makushita 17 East"
+  },
+  {
+    "id": "202305-5",
+    "bashoId": "202305",
+    "rikishiId": 5,
+    "rankValue": 741,
+    "rank": "Makushita 41 East"
+  },
+  {
+    "id": "202303-5",
+    "bashoId": "202303",
+    "rikishiId": 5,
+    "rankValue": 819,
+    "rank": "Sandanme 19 West"
+  },
+  {
+    "id": "202301-5",
+    "bashoId": "202301",
+    "rikishiId": 5,
+    "rankValue": 911,
+    "rank": "Jonidan 11 East"
+  },
+  {
+    "id": "202211-5",
+    "bashoId": "202211",
+    "rikishiId": 5,
+    "rankValue": 1015,
+    "rank": "Jonokuchi 15 West"
+  },
+  {
+    "id": "202209-5",
+    "bashoId": "202209",
+    "rikishiId": 5,
+    "rankValue": 2000,
+    "rank": "Mae-zumo"
+  }
+]
