@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "title": "SumoMatchResult",
+  "properties": {
+    "match_id": { "type": "string" },
+    "basho_id": { "type": "string" },
+    "rikishi_winner_id": { "type": "string" },
+    "rikishi_loser_id": { "type": "string" },
+    "kimarite": { "type": "string", "enum": ["yorikiri", "oshidashi", "uwatenage", "..."] },
+    "match_date": { "type": "string", "format": "date-time" }
+  },
+  "required": ["match_id", "rikishi_winner_id", "rikishi_loser_id", "kimarite", "match_date"]
+}
