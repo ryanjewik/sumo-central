@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BashoTorikumiResponse",
+  "type": "object",
+  "properties": {
+    "bashoId": { "type": "string" },
+    "division": { "type": "string" },
+    "day": { "type": "integer" },
+    "matches": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "required": ["bashoId", "division", "day", "matches", "updatedAt"]
+}

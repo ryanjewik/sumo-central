@@ -1,0 +1,14 @@
+{
+    "type": "object",
+    "title": "Rikishis",
+    "properties": {
+        "name": {
+            "type": "string"
+        },
+        "age": {
+            "type": "integer"
+        }
+    }
+    
+
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RikishiStatsResponse",
+  "type": "object",
+  "properties": {
+    "rikishiId": { "type": "integer" },
+    "career": {
+      "type": "object",
+      "properties": {
+        "totalBasho": { "type": "integer" },
+        "totalWins": { "type": "integer" },
+        "totalLosses": { "type": "integer" },
+        "totalDraws": { "type": "integer" },
+        "totalAbsences": { "type": "integer" }
+      },
+      "required": ["totalBasho", "totalWins", "totalLosses", "totalDraws", "totalAbsences"]
+    },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "required": ["rikishiId", "career", "updatedAt"]
+}

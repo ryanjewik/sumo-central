@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RikishiResponse",
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "sumodbId": { "type": "integer" },
+    "nskId": { "type": "integer" },
+    "shikonaEn": { "type": "string" },
+    "shikonaJp": { "type": "string" },
+    "currentRank": { "type": "string" },
+    "heya": { "type": "string" },
+    "birthDate": { "type": "string", "format": "date-time" },
+    "shusshin": { "type": "string" },
+    "height": { "type": "number" },
+    "weight": { "type": "number" },
+    "debut": { "type": "string" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "id", "sumodbId", "nskId", "shikonaEn", "shikonaJp", "currentRank", "heya", "birthDate", "shusshin", "height", "weight", "debut", "updatedAt"
+  ]
+}

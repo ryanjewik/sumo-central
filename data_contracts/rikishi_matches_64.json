@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RikishiMatches64Response",
+  "type": "object",
+  "properties": {
+    "rikishiId": { "type": "integer" },
+    "matches": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "required": ["rikishiId", "matches", "updatedAt"]
+}

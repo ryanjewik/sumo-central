@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RanksResponse",
+  "type": "object",
+  "properties": {
+    "rikishiId": { "type": "integer" },
+    "bashoId": { "type": "string" },
+    "rank": { "type": "string" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "required": ["rikishiId", "bashoId", "rank", "updatedAt"]
+}
