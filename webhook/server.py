@@ -1,196 +1,301 @@
-# server.py — Sumo API webhook server: subscribe, test, verify, decode, save
-import os, hmac, hashlib, json, time, base64
+import base64
+import datetime as dt
+import hashlib
+import hmac
+import json
+import logging
+import os
+import threading
 from pathlib import Path
+from typing import Any, Dict, Optional
 from urllib.parse import urlparse
-from flask import Flask, request, jsonify, abort
-from dotenv import load_dotenv
+
+from flask import Flask, request, make_response
 import requests
+from dotenv import load_dotenv
 
-# ---- Config -----------------------------------------------------------------
+# ---------- Config / env ----------
 load_dotenv()
-SUMO_BASE   = os.getenv("SUMO_BASE", "https://sumo-api.com")
-DEST_URL    = os.getenv("DEST_URL")               # e.g. https://<ngrok>/sumo-webhook-rj1
-SUMO_SECRET = os.getenv("SUMO_SECRET")            # e.g. ryanhideo
-NAME_PREFIX = os.getenv("NAME_PREFIX", "sumoWebhook_rj")
-PORT        = int(os.getenv("PORT", "5000"))
-TEST_ON_SUB = os.getenv("TEST_ON_SUBSCRIBE", "1") in ("1", "true", "True")
 
-if not DEST_URL or not SUMO_SECRET:
-    raise SystemExit("Please set DEST_URL and SUMO_SECRET in your .env")
+SUMO_BASE = os.getenv("SUMO_BASE", "https://sumo-api.com").rstrip("/")
+DEST_URL = os.getenv("DEST_URL")  # e.g. https://<ngrok>.ngrok-free.app/sumo-webhook-rj1
+SUMO_SECRET = os.getenv("SUMO_SECRET")
+SUMO_NAME = os.getenv("SUMO_NAME", f"sumoWebhook_{int(dt.datetime.utcnow().timestamp())}")
 
-WEBHOOK_TYPES = ["newMatches", "newBasho", "matchResults", "endBasho"]
+# S3 config (optional)
+S3_BUCKET = os.getenv("S3_BUCKET")           # e.g. ryans-sumo-bucket
+S3_REGION = os.getenv("AWS_REGION")           # e.g. us-west-2
+S3_PREFIX = os.getenv("S3_PREFIX", "sumo/")  # folder/prefix in bucket; can be ''
 
-# Folders/files
-DATA_DIR   = Path("data"); DATA_DIR.mkdir(exist_ok=True)
-EVENT_DIR  = Path("events"); EVENT_DIR.mkdir(exist_ok=True)
-SUBS_FILE  = DATA_DIR / "subs.json"
+DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# ---- App --------------------------------------------------------------------
+# What we’ll subscribe/test:
+EVENT_TYPES = ["newMatches", "newBasho", "matchResults", "endBasho"]
+
+# ---------- Logging ----------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+log = logging.getLogger("server")
+
+# ---------- Flask ----------
 app = Flask(__name__)
 
-def _hmac_sha256_hex(key: bytes, msg: bytes) -> str:
-    return hmac.new(key, msg, hashlib.sha256).hexdigest()
+# ---------- Helpers ----------
 
-def _signature_candidates(dest_url: str, body: bytes):
-    """Observed working recipes. We’ll try a small matrix and accept the one that matches."""
-    u = urlparse(dest_url)
-    host_path = (u.netloc + u.path).encode("utf-8")
-    return {
-        "host+path + body": host_path + body,
-        "body only":        body,
-        "full https + body": dest_url.encode("utf-8") + body,
-        "path only + body": u.path.encode("utf-8") + body,
-    }
+def now_utc_iso() -> str:
+    return dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 
-def verify_signature(req) -> bool:
-    """Check X-Webhook-Signature using SUMO_SECRET with observed provider patterns."""
-    provided = (req.headers.get("X-Webhook-Signature") or "").strip().lower()
-    if not provided:
-        return False
-    body = req.get_data()  # raw bytes, exactly as sent
-    key  = SUMO_SECRET.encode("utf-8")
+def _hmac_hex(secret: str, message: bytes) -> str:
+    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
-    for label, msg in _signature_candidates(DEST_URL, body).items():
-        calc = _hmac_sha256_hex(key, msg).lower()
-        if hmac.compare_digest(calc[:len(provided)], provided):
-            app.logger.info(f"[SIG] OK via: {label}")
-            return True
+def _full_url_for_signature() -> str:
+    """
+    Per Sumo docs, signature = HMAC_SHA256(secret, url + body), where url is the exact
+    DESTINATION URL subscribed (including scheme/host/path). We'll use DEST_URL as-is.
+    https://www.sumo-api.com/webhooks  (Webhooks Guide)  -> HMAC example. 
+    """
+    if not DEST_URL:
+        raise RuntimeError("DEST_URL not set")
+    return DEST_URL
 
-    app.logger.warning("[SIG] mismatch. provided=%s candidates=%s",
-        provided, {k: v[:16] for k, v in {lab: _hmac_sha256_hex(key, m) for lab, m in _signature_candidates(DEST_URL, body).items()}.items()}
+def _safe_json(obj: Any) -> str:
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), indent=2)
+
+def _boto3_client(): #boto automatically finds credentials in the environment file
+    # Lazy import so the app can run without boto3 if S3 isn’t used
+    import boto3  # type: ignore
+    return boto3.client(
+        "s3",
+        region_name=S3_REGION,
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        aws_session_token=os.getenv("AWS_SESSION_TOKEN") or None,
     )
-    return False
 
-def _decode_payload_field(payload_value):
-    """Decode base64 JSON payload used by Sumo test deliveries."""
-    if isinstance(payload_value, str):
-        try:
-            raw = base64.b64decode(payload_value)
-            return json.loads(raw.decode("utf-8"))
-        except Exception:
-            return payload_value
-    return payload_value
+def _s3_enabled() -> bool:
+    return bool(S3_BUCKET and S3_REGION and os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
 
-def _save_event(kind: str, envelope: dict):
-    """Write event json to events/<kind>-<ts>.json with decoded payload."""
-    ts = int(time.time())
-    out = {
-        "received_at": ts,
-        "type": envelope.get("type"),
-        "headers": dict(request.headers),
-        "raw": envelope,  # keep original keys
+def _s3_put_json(doc: Dict[str, Any], key: str) -> None:
+    if not _s3_enabled():
+        return
+    try:
+        body = _safe_json(doc).encode("utf-8")
+        _boto3_client().put_object(
+            Bucket=S3_BUCKET,
+            Key=key,
+            Body=body,
+            ContentType="application/json",
+        )
+        log.info("S3 PUT s3://%s/%s", S3_BUCKET, key)
+    except ModuleNotFoundError:
+        # boto3 not installed: skip
+        log.warning("boto3 not installed; skipping S3 upload.")
+    except Exception as e:
+        log.exception("S3 upload failed: %s", e)
+
+def _write_local(doc: Dict[str, Any], filepath: Path) -> None:
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    filepath.write_text(_safe_json(doc), encoding="utf-8")
+    log.info("Wrote %s", filepath)
+
+def _save_record(event_type: str, record: Dict[str, Any]) -> None:
+    # Local path
+    stamp = record.get("received_at", now_utc_iso())
+    fname = f"{stamp}_{event_type}.json"
+    local_path = DATA_DIR / event_type / fname
+    _write_local(record, local_path)
+
+    # S3 key
+    if S3_PREFIX and not S3_PREFIX.endswith("/"):
+        prefix = S3_PREFIX + "/"
+    else:
+        prefix = S3_PREFIX or ""
+    s3_key = f"{prefix}{event_type}/{fname}"
+    _s3_put_json(record, s3_key)
+
+def _decode_payload_field(payload_b64: str) -> Optional[Any]:
+    try:
+        raw = base64.b64decode(payload_b64, validate=True)
+        return json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None
+
+def _verify_and_build_record(body_bytes: bytes, headers: Dict[str, str]) -> Dict[str, Any]:
+    """
+    - Verifies signature (if SUMO_SECRET set)
+    - Returns normalized record for saving
+    Structure:
+      {
+        "received_at": "<UTC iso stamp>",
+        "verified": True/False,
+        "type": "<event_type or 'unknown'>",
+        "headers": {...},
+        "raw": { "type": ..., "payload": "<base64 string>" },
+        "payload_decoded": { ... } or None
+      }
+    """
+    received_at = now_utc_iso()
+
+    # Parse body JSON safely
+    raw_json = {}
+    try:
+        raw_json = json.loads(body_bytes.decode("utf-8"))
+    except Exception:
+        raw_json = {}
+
+    event_type = raw_json.get("type") or "unknown"
+    payload_b64 = raw_json.get("payload")
+
+    # Signature verification (per docs: HMAC(secret, url + body)) :contentReference[oaicite:1]{index=1}
+    provided_sig = headers.get("X-Webhook-Signature") or headers.get("x-webhook-signature") or ""
+    expected_url = _full_url_for_signature()
+    url_plus_body = (expected_url.encode("utf-8") + body_bytes) if SUMO_SECRET else b""
+    calc_sig = _hmac_hex(SUMO_SECRET, url_plus_body) if SUMO_SECRET else ""
+
+    verified = bool(SUMO_SECRET and provided_sig and provided_sig.lower() == calc_sig.lower())
+
+    # decode payload (if present)
+    decoded = _decode_payload_field(payload_b64) if isinstance(payload_b64, str) else None
+
+    record = {
+        "received_at": received_at,
+        "verified": verified,
+        "type": event_type,
+        "headers": headers,
+        "raw": raw_json if raw_json else {"raw": body_bytes.decode("utf-8", errors="replace")},
+        "payload_decoded": decoded,
     }
+    return record
 
-    # Decode base64 payload if present
-    if isinstance(envelope, dict) and "payload" in envelope:
-        out["payload_decoded"] = _decode_payload_field(envelope["payload"])
+# ---------- Sumo API client helpers ----------
 
-    fname = EVENT_DIR / f"{kind}-{ts}.json"
-    with fname.open("w", encoding="utf-8") as f:
-        json.dump(out, f, indent=2, ensure_ascii=False)
-    return str(fname)
-
-# ------------------- Webhook endpoint ----------------------------------------
-@app.post("/sumo-webhook-rj1")
-def webhook_rj1():
-    # Verify signature first
-    if not verify_signature(request):
-        abort(401)
-
-    body_json = request.get_json(silent=True)
-    if not isinstance(body_json, dict):
-        abort(400)
-
-    event_type = body_json.get("type") or "unknown"
-    path = _save_event(event_type, body_json)
-    return ("", 204)  # success; no printing
-
-# ------------------- Subscribe / Test / Cleanup ------------------------------
-def _load_subs():
-    if SUBS_FILE.exists():
-        try:
-            return json.loads(SUBS_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            return []
-    return []
-
-def _save_subs(names):
-    SUBS_FILE.write_text(json.dumps(names, indent=2), encoding="utf-8")
-
-def _subscribe_one(name: str):
+def _subscribe(subs: Dict[str, bool]) -> int:
+    url = f"{SUMO_BASE}/api/webhook/subscribe"
     payload = {
-        "name": name,
+        "name": SUMO_NAME,
         "destination": DEST_URL,
         "secret": SUMO_SECRET,
-        "subscriptions": {
-            "newMatches": True,
-            "newBasho": True,
-            "matchResults": True,
-            "endBasho": True,
-        },
+        "subscriptions": subs,
     }
-    r = requests.post(f"{SUMO_BASE}/api/webhook/subscribe", json=payload, timeout=20)
-    return r.status_code, r.text
+    r = requests.post(url, json=payload, timeout=20)
+    log.info("SUBSCRIBE status=%s", r.status_code)
+    return r.status_code
 
-def _test_one(kind: str):
-    # Provider supports ?type=<kind>
+def _delete_subscription(name: str, secret: str) -> int:
+    url = f"{SUMO_BASE}/api/webhook/subscribe"
+    payload = {"name": name, "secret": secret}
+    r = requests.delete(url, json=payload, timeout=20)
+    log.info("DELETE[%s] status=%s", name, r.status_code)
+    return r.status_code
+
+def _test_webhook(hook_type: str) -> int:
+    """
+    POST /api/webhook/test?type=<hook_type> with the same body you used to subscribe.
+    The docs note the `type` must match a true flag in subscriptions. :contentReference[oaicite:2]{index=2}
+    """
+    url = f"{SUMO_BASE}/api/webhook/test"
+    params = {"type": hook_type}
     payload = {
-        "name": "__test__",
+        "name": SUMO_NAME,
         "destination": DEST_URL,
         "secret": SUMO_SECRET,
-        "subscriptions": {kind: True},
+        "subscriptions": {hook_type: True},
     }
-    r = requests.post(f"{SUMO_BASE}/api/webhook/test", params={"type": kind}, json=payload, timeout=20)
-    return r.status_code, r.text
+    r = requests.post(url, params=params, json=payload, timeout=20)
+    log.info("TEST[%s] status=%s", hook_type, r.status_code)
+    return r.status_code
 
-@app.post("/subscribe")
-def subscribe():
-    name = f"{NAME_PREFIX}_{int(time.time())}"
-    status, text = _subscribe_one(name)
+def _cleanup_existing(prefix: str) -> None:
+    """
+    Best-effort cleanup: try to delete a few patterned names you may have used during testing.
+    If you always reuse SUMO_NAME, you can simply delete that one.
+    """
+    try:
+        _delete_subscription(SUMO_NAME, SUMO_SECRET or "")
+    except Exception as e:
+        log.warning("Cleanup error (delete current name): %s", e)
 
-    results = {"name": name, "subscribe_status": status}
-    created = _load_subs()
-    if status == 200:
-        created.append(name)
-        _save_subs(created)
-
-    if TEST_ON_SUB and status == 200:
-        tests = {}
-        for kind in WEBHOOK_TYPES:
-            s, _ = _test_one(kind)
-            tests[kind] = s
-        results["tests"] = tests
-
-    return jsonify(results), 200
-
-@app.post("/cleanup")
-def cleanup():
-    names = _load_subs()
-    deleted = []
-    for n in names:
+    # If you want to nuke older variants you created earlier, add them here:
+    variants = []
+    for n in variants:
         try:
-            r = requests.post(f"{SUMO_BASE}/api/webhook/delete", json={"name": n}, timeout=15)
-            if r.status_code == 200:
-                deleted.append(n)
-        except Exception:
-            pass
-    # Clear local registry for the ones we deleted
-    remaining = [n for n in names if n not in deleted]
-    _save_subs(remaining)
-    return jsonify({"deleted": deleted, "remaining": remaining}), 200
+            _delete_subscription(n, SUMO_SECRET or "")
+        except Exception as e:
+            log.warning("Cleanup error (%s): %s", n, e)
 
-# ------------------- Helpers --------------------------------------------------
-@app.get("/health")
+def _do_startup_flow():
+    if not DEST_URL or not SUMO_SECRET:
+        log.error("DEST_URL and SUMO_SECRET must be set in .env")
+        return
+
+    log.info("Expected destination to verify: %s", DEST_URL)
+
+    # 1) cleanup (best effort)
+    _cleanup_existing(SUMO_NAME)
+
+    # 2) subscribe
+    subs = {t: True for t in EVENT_TYPES}
+    _subscribe(subs)
+
+    # 3) test each hook
+    for t in EVENT_TYPES:
+        _test_webhook(t)
+
+# ---------- Routes ----------
+
+@app.route("/cleanup", methods=["POST"])
+def cleanup_route():
+    _cleanup_existing(SUMO_NAME)
+    return {"ok": True}, 200
+
+@app.route("/subscribe", methods=["POST"])
+def subscribe_route():
+    subs = {t: True for t in EVENT_TYPES}
+    code = _subscribe(subs)
+    # trigger tests right after
+    test_results = {t: _test_webhook(t) for t in EVENT_TYPES}
+    return {"subscribe_status": code, "tests": test_results, "destination": DEST_URL}, 200
+
+def _normalized_headers() -> Dict[str, str]:
+    return {k: v for k, v in request.headers.items()}
+
+def _webhook_common_handler() -> str:
+    # Read raw body exactly as sent; do not parse first
+    body_bytes = request.get_data(cache=False, as_text=False)
+    headers = _normalized_headers()
+
+    record = _verify_and_build_record(body_bytes, headers)
+    event_type = record.get("type", "unknown") or "unknown"
+
+    # Save locally & to S3
+    try:
+        _save_record(event_type, record)
+    except Exception as e:
+        log.exception("Persist error: %s", e)
+
+    # Per docs, acknowledge with 204 No Content. :contentReference[oaicite:3]{index=3}
+    return "", 204
+
+# Use the exact path from DEST_URL as your Flask route
+if not DEST_URL:
+    log.error("DEST_URL must be set before defining webhook route.")
+    path = "/sumo-webhook"
+else:
+    path = urlparse(DEST_URL).path or "/sumo-webhook"
+
+@app.route(path, methods=["POST"])
+def webhook_handler():
+    return _webhook_common_handler()
+
+@app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"ok": True, "dest_url": DEST_URL}), 200
+    return {"ok": True, "path": path}, 200
 
-@app.get("/last-files")
-def last_files():
-    # quick helper: list most recent saved events
-    files = sorted((p.name for p in EVENT_DIR.glob("*.json")), reverse=True)[:20]
-    return jsonify({"recent": files}), 200
-
-# -----------------------------------------------------------------------------
+# ---------- Main ----------
 if __name__ == "__main__":
-    app.logger.info("Expected destination to verify: %s", DEST_URL)
-    app.run(host="0.0.0.0", port=PORT, debug=False)
+    # Kick off cleanup + subscribe + test in a background thread so Flask can start immediately.
+    threading.Thread(target=_do_startup_flow, daemon=True).start()
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
