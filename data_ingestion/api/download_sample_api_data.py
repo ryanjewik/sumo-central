@@ -2,7 +2,7 @@ import os
 import requests
 import json
 
-SAMPLE_DIR = "sample api data"
+SAMPLE_DIR = "sample_api_data"
 os.makedirs(SAMPLE_DIR, exist_ok=True)
 
 urls = [
