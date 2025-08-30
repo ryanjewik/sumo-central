@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import json
 import logging
-import os
+import os, sys
 import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -13,6 +13,10 @@ from urllib.parse import urlparse
 from flask import Flask, request, make_response
 import requests
 from dotenv import load_dotenv
+
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))  # so "common" is importable
+from common.kafka_utils import publish_event
+
 
 # ---------- Config / env ----------
 load_dotenv()
@@ -275,6 +279,13 @@ def _webhook_common_handler() -> str:
         _save_record(event_type, record)
     except Exception as e:
         log.exception("Persist error: %s", e)
+        
+    # Public to kafka
+    try:
+        publish_event(record, topic="sumo.webhooks", key=event_type)
+        log.info("Kafka publish ok: topic=sumo.webhooks key=%s", event_type)
+    except Exception as e:
+        log.exception("Kafka publish failed: %s", e)
 
     # Per docs, acknowledge with 204 No Content. :contentReference[oaicite:3]{index=3}
     return "", 204

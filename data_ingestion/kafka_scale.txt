@@ -1,0 +1,27 @@
+A sensible “grow from 1→3 brokers” path
+
+Add two brokers (set proper advertised.listeners).
+
+Increase RF for important topics (e.g., to 3).
+
+Run partition reassignment to spread partitions across all 3 brokers (with throttle).
+
+Increase partitions on hot topics if you need more consumer parallelism/throughput.
+
+Run leader rebalancing so leadership is evenly distributed.
+
+Tune retention & monitor disk/network during the copy.
+
+Quick command sketch (conceptual)
+# 1) Create a reassignment JSON for topics (brokers: [1,2,3])
+kafka-reassign-partitions --generate --topics-to-move-json-file topics.json --broker-list "1,2,3"
+
+# 2) Execute reassignment
+kafka-reassign-partitions --execute --reassignment-json-file proposed.json --throttle 104857600
+
+# 3) Bump replication factor (Kafka 3.x supports kafka-alter-topic RF change)
+kafka-alter-topic --topic my_topic --partitions 12   # if you need more partitions
+# Then use reassignment to place replicas and set RF=3, or use the dedicated RF change APIs.
+
+# 4) Preferred leader election
+kafka-preferred-replica-election

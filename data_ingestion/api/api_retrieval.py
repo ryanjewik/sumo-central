@@ -8,6 +8,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
+import sys
+
+
+
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))  # so "common" is importable
+from common.kafka_utils import publish_event
 
 load_dotenv()
 S3_BUCKET = os.getenv("S3_BUCKET")
@@ -63,6 +69,22 @@ def _save_to_s3(data, prefix, name):
         prefix = prefix + "/"
     s3_key = f"{prefix}{fname}"
     _s3_put_json(data, s3_key)
+    
+    
+    #publish to kafka
+    publish_event(
+            {
+                "source": "api",
+                "received_at": stamp,
+                "name": name,       # identifier for the call (e.g., rikishi_123_stats)
+                "s3_key": s3_key,   # where it landed (if S3 enabled)
+                "data": data,       # full response (can trim if you want)
+            },
+            topic="sumo.api",
+            key=name,
+        )
+    except Exception as e:
+        logging.exception("Kafka publish failed: %s", e)
 
 # -------- HTTP client with retries ----------
 base_url = "https://sumo-api.com/api"
