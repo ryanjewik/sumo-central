@@ -554,10 +554,12 @@ def process_rikishi_matches_json(directory):
 
 
 def process_rikishi_json_and_stats(rikishis_json_path, rikishi_stats_dir, cursor):
-    with open(rikishis_json_path, 'r', encoding='utf-8') as f:
-        rikishi_data = json.load(f)
     import glob
-    for record in rikishi_data['records']:
+    # Loop through all rikishi JSON files in the directory
+    rikishi_files = [os.path.join(rikishis_json_path, f) for f in os.listdir(rikishis_json_path) if f.endswith('.json')]
+    for rikishi_file in rikishi_files:
+        with open(rikishi_file, 'r', encoding='utf-8') as f:
+            record = json.load(f)
         rikishi_id = record['id']
         shikona_en = record.get('shikonaEn', '')
         shikona_jp = record.get('shikonaJp', '')
@@ -614,11 +616,9 @@ def insert_rikishi(cursor, rikishi_id, shikona, birthdate, current_rank, heya, s
 def populate_sumo_database(cursor):
     base_dir = 'c:/Users/Ryan Jewik/Desktop/sumo_app/data_ingestion/bucket_download/downloaded_s3/sumo-api-calls/'
     # Populate rikishi table first (sequential, as other tables depend on it)
-    process_rikishi_json_and_stats(
-        os.path.join(base_dir, 'rikishis', '20250828T234412Z_rikishis.json'),
-        os.path.join(base_dir, 'rikishi_stats'),
-        cursor
-    )
+    rikishi_dir = os.path.join(base_dir, 'rikishis')
+    rikishi_stats_dir = os.path.join(base_dir, 'rikishi_stats')
+    process_rikishi_json_and_stats(rikishi_dir, rikishi_stats_dir, cursor)
     conn.commit()
     # Parallelize the rest
     process_basho_json(os.path.join(base_dir, 'basho'))

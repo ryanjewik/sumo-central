@@ -72,7 +72,8 @@ def _save_to_s3(data, prefix, name):
     
     
     #publish to kafka
-    publish_event(
+    try:
+        publish_event(
             {
                 "source": "api",
                 "received_at": stamp,
@@ -82,7 +83,7 @@ def _save_to_s3(data, prefix, name):
             },
             topic="sumo.api",
             key=name,
-        )
+        )   
     except Exception as e:
         logging.exception("Kafka publish failed: %s", e)
 
@@ -134,15 +135,29 @@ def get_json(path):
         return {}
 
 # ---------- Fetch rikishis ----------
-rikishis_doc = get_json("/rikishis")
-_save_to_s3(rikishis_doc, S3_PREFIX + "rikishis", "rikishis")
 
-rikishi_id_stack = [x.get("id") for x in (rikishis_doc.get("records") or []) if x.get("id")]
-logging.info("Fetched %d rikishi IDs", len(rikishi_id_stack))
+# Always stack IDs 1 to 9097, regardless of API response
+rikishi_id_stack = list(range(1, 9098))
 
-# Thread-safe set for basho_ids to follow-up later
-basho_ids = set()
-basho_ids_lock = threading.Lock()
+def upload_rikishi_files():
+    for x in rikishi_id_stack:
+        rikishi_file = f"rikishi_{x}.json"
+        _s3_put_json(rikishi_file, S3_PREFIX + "rikishis", f"rikishi_{x}")
+
+upload_rikishi_files()
+
+# Generate all basho IDs from 196001 to 202507 (months 1,3,5,7,9,11), always 6 digits
+def generate_basho_ids(start_year=1960, end_year=2025, end_month=7):
+    months = [1, 3, 5, 7, 9, 11]
+    basho_ids = []
+    for year in range(start_year, end_year + 1):
+        for month in months:
+            if year == end_year and month > end_month:
+                break
+            basho_ids.append(int(f"{year}{month:02d}"))
+    return basho_ids
+
+basho_ids = generate_basho_ids()
 
 def process_rikishi(rid):
     if not rid:
@@ -155,13 +170,6 @@ def process_rikishi(rid):
     matches = get_json(f"/rikishi/{rid}/matches")
     _save_to_s3(matches, S3_PREFIX + "rikishi_matches", f"rikishi_{rid}")
 
-    # Collect unique bashoIds from matches
-    local_basho_ids = set()
-    for record in (matches.get("records") or []):
-        bid = record.get("bashoId")
-        if bid:
-            local_basho_ids.add(bid)
-
     # /measurements?rikishiId=:id
     measurements = get_json(f"/measurements?rikishiId={rid}")
     _save_to_s3(measurements, S3_PREFIX + "rikishi_measurements", f"rikishi_{rid}_measurements")
@@ -173,11 +181,6 @@ def process_rikishi(rid):
     # /shikonas?rikishiId=:id
     shikonas = get_json(f"/shikonas?rikishiId={rid}")
     _save_to_s3(shikonas, S3_PREFIX + "rikishi_shikonas", f"rikishi_{rid}_shikonas")
-
-    # Merge local set into global set
-    if local_basho_ids:
-        with basho_ids_lock:
-            basho_ids.update(local_basho_ids)
 
 # Parallelize rikishi processing (resilient to individual failures)
 if rikishi_id_stack:
