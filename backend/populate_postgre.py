@@ -1,6 +1,8 @@
 import psycopg2
+from dotenv import load_dotenv
 load_dotenv()
-import os, sys
+import os, sys, json
+from pathlib import Path
 
 #user database connection with retry mechanism
 def connect_to_database(max_retries=30, delay=2):
@@ -55,8 +57,21 @@ if conn: #create tables------------------------------------------------------
             id INTEGER PRIMARY KEY,
             shikona VARCHAR(100) NOT NULL,
             birthdate DATE,
-            rank VARCHAR(50),
-            country VARCHAR(100)
+            current_rank VARCHAR(50),
+            current_rank_value INT,
+            heya VARCHAR(100),
+            shusshin VARCHAR(100),
+            current_height INT,
+            current_weight INT,
+            debut DATE,
+            last_match DATE,
+            basho_count INT,
+            absent_count INT,
+            wins INT,
+            losses INT,
+            matches INT,
+            yusho_count INT,
+            sansho_count INT
         );
         '''
         cursor.execute(create_rikishi_table_query)
@@ -66,7 +81,7 @@ if conn: #create tables------------------------------------------------------
         # Create basho table (mock)
         create_basho_table_query = '''
         CREATE TABLE IF NOT EXISTS basho (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             name VARCHAR(100) NOT NULL,
             location VARCHAR(100),
             start_date DATE,
@@ -76,38 +91,8 @@ if conn: #create tables------------------------------------------------------
         cursor.execute(create_basho_table_query)
         conn.commit()
         print("✅ Basho table ensured in database.")
-
-        # Create matches table (mock)
-        create_matches_table_query = '''
-        CREATE TABLE IF NOT EXISTS matches (
-            id SERIAL PRIMARY KEY,
-            basho_id INT REFERENCES basho(id),
-            east_rikishi_id INT REFERENCES rikishi(id),
-            west_rikishi_id INT REFERENCES rikishi(id),
-            winner VARCHAR(10),
-            kimarite VARCHAR(50),
-            match_date DATE
-        );
-        '''
-        cursor.execute(create_matches_table_query)
-        conn.commit()
-        print("✅ Matches table ensured in database.")
-
-        # Create match_predictions table (mock)
-        create_match_predictions_table_query = '''
-        CREATE TABLE IF NOT EXISTS match_predictions (
-            id SERIAL PRIMARY KEY,
-            user_id UUID REFERENCES users(id),
-            match_id INT REFERENCES matches(id),
-            predicted_winner VARCHAR(10),
-            prediction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_correct BOOLEAN
-        );
-        '''
-        cursor.execute(create_match_predictions_table_query)
-        conn.commit()
-        print("✅ Match predictions table ensured in database.")
-
+        
+        
         # Now create users table (UUID for id)
         create_users_table_query = '''
         CREATE TABLE IF NOT EXISTS users (
@@ -129,12 +114,121 @@ if conn: #create tables------------------------------------------------------
         cursor.execute(create_users_table_query)
         conn.commit()
         print("✅ User table ensured in database.")
+
+        # Create matches table (mock)
+        create_matches_table_query = '''
+        CREATE TABLE IF NOT EXISTS matches (
+            id SERIAL PRIMARY KEY,
+            basho_id INT REFERENCES basho(id),
+            east_rikishi_id INT REFERENCES rikishi(id),
+            west_rikishi_id INT REFERENCES rikishi(id),
+            winner VARCHAR(10),
+            kimarite VARCHAR(50),
+            match_date DATE
+        );
+        '''
+        cursor.execute(create_matches_table_query)
+        conn.commit()
+        print("✅ Matches table ensured in database.")
+
+
+        # Create match_predictions table (mock)
+        create_match_predictions_table_query = '''
+        CREATE TABLE IF NOT EXISTS match_predictions (
+            id SERIAL PRIMARY KEY,
+            user_id UUID REFERENCES users(id),
+            match_id INT REFERENCES matches(id),
+            predicted_winner VARCHAR(10),
+            prediction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_correct BOOLEAN
+        );
+        '''
+        cursor.execute(create_match_predictions_table_query)
+        conn.commit()
+        print("✅ Match predictions table ensured in database.")
+
+        # Create rikishi_rank_history table
+        create_rank_history_table_query = '''
+        CREATE TABLE IF NOT EXISTS rikishi_rank_history (
+            id SERIAL PRIMARY KEY,
+            rikishi_id INT REFERENCES rikishi(id),
+            rank_name VARCHAR(50) NOT NULL,
+            rank_value INT NOT NULL,
+            rank_date DATE NOT NULL,
+            basho_id INT REFERENCES basho(id)
+        );
+        '''
+        cursor.execute(create_rank_history_table_query)
+        conn.commit()
+        print("✅ Rikishi rank history table ensured in database.")
+
+        # Create rikishi_measurements_history table
+        create_measurements_history_table_query = '''
+        CREATE TABLE IF NOT EXISTS rikishi_measurements_history (
+            id SERIAL PRIMARY KEY,
+            rikishi_id INT REFERENCES rikishi(id),
+            height_cm INT,
+            weight_kg INT,
+            measurement_date DATE,
+            basho_id INT REFERENCES basho(id)
+        );
+        '''
+        cursor.execute(create_measurements_history_table_query)
+        conn.commit()
+        print("✅ Rikishi measurements history table ensured in database.")
         
-        #populate tables--------------------------------------------------
-        
-        
+                # Create rikishi_shikona_changes table
+        create_shikona_changes_table_query = '''
+        CREATE TABLE IF NOT EXISTS rikishi_shikona_changes (
+            id SERIAL PRIMARY KEY,
+            rikishi_id INT REFERENCES rikishi(id),
+            shikona VARCHAR(100) NOT NULL,
+            change_date DATE,
+            basho_id INT REFERENCES basho(id)
+        );
+        '''
+        cursor.execute(create_shikona_changes_table_query)
+        conn.commit()
+        print("✅ Rikishi shikona changes table ensured in database.")
     except Exception as e:
         print("❌ Error creating tables:", e)
-    finally:
-        cursor.close()
-        conn.close()
+
+
+
+#populate tables--------------------------------------------------
+json_path = "../data_ingestion/bucket_download/downloaded_s3/sumo-api-calls/rikishi_shikonas/20250828T234414Z_rikishi_5_shikonas.json"
+
+with open(json_path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+for x in data['records']:
+    print(x)
+#shikonas populate
+def shikonas_populate(data):
+    for item in data['records']:
+        # Extract relevant fields for shikona
+        rikishi_id = item.get('rikishi_id')
+        shikona = item.get('shikona')
+        change_date = item.get('change_date')
+        basho_id = item.get('basho_id')
+
+        # Insert into the database
+        insert_shikona_change(rikishi_id, shikona, change_date, basho_id)
+
+#helper function to navigate json files
+def process_json_files(directory):
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.json'):
+                file_path = os.path.join(root, file)
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+def populate_sumo_database():
+    process_json_files('c:/Users/Ryan Jewik/Desktop/sumo_app/data_ingestion/bucket_download/downloaded_s3/sumo-api-calls/rikishi/shinkonas')
+
+# Example usage:
+#populate_sumo_database()
+
+
+cursor.close()
+conn.close()

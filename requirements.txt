@@ -5,3 +5,4 @@ boto3
 confluent-kafka
 kafka-python
 psycopg2
+pathlib
