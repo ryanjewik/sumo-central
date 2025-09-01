@@ -68,13 +68,12 @@ if conn: # drop and create tables-----------------------------------------------
         create_rikishi_table_query = '''
         CREATE TABLE IF NOT EXISTS rikishi (
             id INTEGER PRIMARY KEY,
-            shikona VARCHAR(100) NOT NULL,
+            shikona VARCHAR(255) NOT NULL,
             birthdate DATE,
             retirement_date DATE,
-            current_rank VARCHAR(50),
-            current_rank_value INT,
-            heya VARCHAR(100),
-            shusshin VARCHAR(100),
+            current_rank VARCHAR(255),
+            heya VARCHAR(255),
+            shusshin VARCHAR(255),
             current_height INT,
             current_weight INT,
             debut DATE,
@@ -96,8 +95,8 @@ if conn: # drop and create tables-----------------------------------------------
         create_basho_table_query = '''
         CREATE TABLE IF NOT EXISTS basho (
             id INTEGER PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
-            location VARCHAR(100),
+            name VARCHAR(255),
+            location VARCHAR(255),
             start_date DATE,
             end_date DATE,
             makuuchi_yusho INT REFERENCES rikishi(id) ON DELETE SET NULL ON UPDATE CASCADE,
@@ -117,7 +116,7 @@ if conn: # drop and create tables-----------------------------------------------
             id SERIAL PRIMARY KEY,
             basho_id INT REFERENCES basho(id),
             rikishi_id INT REFERENCES rikishi(id),
-            prize_name VARCHAR(100)
+            prize_name VARCHAR(255)
         );
         '''
         cursor.execute(create_special_prizes_table_query)
@@ -128,7 +127,7 @@ if conn: # drop and create tables-----------------------------------------------
         create_users_table_query = '''
         CREATE TABLE IF NOT EXISTS users (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            username VARCHAR(50) UNIQUE NOT NULL,
+            username VARCHAR(100) UNIQUE NOT NULL,
             email VARCHAR(100) UNIQUE NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             password VARCHAR(100) NOT NULL,
@@ -153,15 +152,15 @@ if conn: # drop and create tables-----------------------------------------------
             basho_id INT REFERENCES basho(id),
             east_rikishi_id INT REFERENCES rikishi(id),
             west_rikishi_id INT REFERENCES rikishi(id),
-            east_rank VARCHAR(50),
-            west_rank VARCHAR(50),
-            eastShikona VARCHAR(100),
-            westShikona VARCHAR(100),
+            east_rank VARCHAR(255),
+            west_rank VARCHAR(255),
+            eastShikona VARCHAR(255),
+            westShikona VARCHAR(255),
             winner INT REFERENCES rikishi(id),
-            kimarite VARCHAR(50),
+            kimarite VARCHAR(255),
             day INT,
             match_number INT,
-            division VARCHAR(50)
+            division VARCHAR(255)
         );
         '''
         cursor.execute(create_matches_table_query)
@@ -174,7 +173,7 @@ if conn: # drop and create tables-----------------------------------------------
             id SERIAL PRIMARY KEY,
             user_id UUID REFERENCES users(id),
             match_id INT REFERENCES matches(id),
-            predicted_winner VARCHAR(10),
+            predicted_winner INT REFERENCES rikishi(id),
             prediction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             is_correct BOOLEAN
         );
@@ -188,7 +187,7 @@ if conn: # drop and create tables-----------------------------------------------
         CREATE TABLE IF NOT EXISTS rikishi_rank_history (
             id SERIAL PRIMARY KEY,
             rikishi_id INT REFERENCES rikishi(id),
-            rank_name VARCHAR(50) NOT NULL,
+            rank_name VARCHAR(255) NOT NULL,
             rank_value INT NOT NULL,
             rank_date DATE NOT NULL,
             basho_id INT REFERENCES basho(id)
@@ -218,7 +217,7 @@ if conn: # drop and create tables-----------------------------------------------
         CREATE TABLE IF NOT EXISTS rikishi_shikona_changes (
             id SERIAL PRIMARY KEY,
             rikishi_id INT REFERENCES rikishi(id),
-            shikona VARCHAR(100) NOT NULL,
+            shikona VARCHAR(255) NOT NULL,
             change_date DATE,
             basho_id INT REFERENCES basho(id)
         );
@@ -465,6 +464,7 @@ def process_rikishi_measurements_json(directory):
         return cursor.fetchone() is not None
 
     def process_file(json_path):
+        import psycopg2
         conn = connect_to_database()
         cursor = conn.cursor()
         with open(json_path, "r", encoding="utf-8") as f:
@@ -480,7 +480,26 @@ def process_rikishi_measurements_json(directory):
             year = id_str[:4]
             month = id_str[4:6]
             measurement_date = f"{year}-{month}-01"
-            insert_measurements_history(cursor, rikishi_id, height_cm, weight_kg, measurement_date, basho_id)
+            try:
+                insert_measurements_history(cursor, rikishi_id, height_cm, weight_kg, measurement_date, basho_id)
+            except psycopg2.errors.ForeignKeyViolation as e:
+                # Check if the error is due to missing basho_id
+                if 'basho_id' in str(e) and 'is not present in table "basho"' in str(e):
+                    conn.rollback()
+                    # Insert minimal basho row
+                    start_date = f"{basho_id[:4]}-{basho_id[4:6]}-01"
+                    cursor.execute(
+                        '''
+                        INSERT INTO basho (id, start_date) VALUES (%s, %s)
+                        ON CONFLICT (id) DO NOTHING;
+                        ''',
+                        (basho_id, start_date)
+                    )
+                    conn.commit()
+                    # Retry the original insert
+                    insert_measurements_history(cursor, rikishi_id, height_cm, weight_kg, measurement_date, basho_id)
+                else:
+                    raise
         conn.commit()
         cursor.close()
         conn.close()
@@ -599,17 +618,17 @@ def process_rikishi_json_and_stats(rikishis_json_path, rikishi_stats_dir, cursor
         else:
             basho_count = absent_count = wins = losses = matches = yusho_count = sansho_count = None
 
-        insert_rikishi(cursor, rikishi_id, shikona, birthdate, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count, retirement_date)
+        insert_rikishi(cursor, rikishi_id, shikona, birthdate, retirement_date, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count)
 
-def insert_rikishi(cursor, rikishi_id, shikona, birthdate, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count, retirement_date):
+def insert_rikishi(cursor, rikishi_id, shikona, birthdate, retirement_date, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count):
     cursor.execute(
         '''
         INSERT INTO rikishi (
-            id, shikona, birthdate, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count, retirement_date
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            id, shikona, birthdate, retirement_date, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (id) DO NOTHING;
         ''',
-        (rikishi_id, shikona, birthdate, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count, retirement_date)
+        (rikishi_id, shikona, birthdate, retirement_date, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count)
     )
 
 # Call all process functions for each relevant directory
