@@ -1,0 +1,15 @@
+{
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "rikishi": {
+        "type": "document",
+        "fields": {
+          "shikona": {
+            "type": "autocomplete"
+          }
+        }
+      }
+    }
+  }
+}

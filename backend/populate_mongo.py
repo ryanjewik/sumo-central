@@ -174,6 +174,64 @@ def create_rikishi_pages(rikishi_id, rikishi_docs):
             else:
                 single_match['rikishi-shikona'] = single_match['eastshikona']
             match_dict[str(single_match['id'])] = single_match
+            
+            
+    special_prizes_dict = {}
+    cursor.execute("""
+                SELECT sp.id, sp.basho_id, sp.prize_name, b.location, b.end_date
+                FROM special_prizes sp
+                LEFT JOIN basho b ON sp.basho_id = b.id
+                WHERE rikishi_id = %s;
+                """, (rikishi_id,))
+    rows = cursor.fetchall()
+    colnames = [desc[0] for desc in cursor.description]
+    conn.commit()
+    if rows:
+        for row in rows:
+            single_entry = dict(zip(colnames, row))
+            single_entry = convert_dates(single_entry)
+            special_prizes_dict[str(single_entry['end_date'])] = single_entry
+            
+            
+    yusho_history = {}
+    cursor.execute("""
+                SELECT 
+                    b.id AS basho_id,
+                    b.location,
+                    b.end_date,
+                    CASE
+                        WHEN b.makuuchi_yusho = %s THEN 'makuuchi_yusho'
+                        WHEN b.juryo_yusho = %s THEN 'juryo_yusho'
+                        WHEN b.sandanme_yusho = %s THEN 'sandanme_yusho'
+                        WHEN b.makushita_yusho = %s THEN 'makushita_yusho'
+                        WHEN b.jonidan_yusho = %s THEN 'jonidan_yusho'
+                        WHEN b.jonokuchi_yusho = %s THEN 'jonokuchi_yusho'
+                    END AS division_won
+                FROM basho b
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM matches m
+                    WHERE m.basho_id = b.id
+                    AND (m.west_rikishi_id = %s OR m.east_rikishi_id = %s)
+                )
+                AND (
+                    b.makuuchi_yusho = %s
+                OR b.juryo_yusho = %s
+                OR b.sandanme_yusho = %s
+                OR b.makushita_yusho = %s
+                OR b.jonidan_yusho = %s
+                OR b.jonokuchi_yusho = %s
+                );
+
+                """, (rikishi_id,))
+    rows = cursor.fetchall()
+    colnames = [desc[0] for desc in cursor.description]
+    conn.commit()
+    if rows:
+        for row in rows:
+            single_entry = dict(zip(colnames, row))
+            single_entry = convert_dates(single_entry)
+            yusho_history[str(single_entry['end_date'])] = single_entry
 
     rikishi_page_document = {
         "id": rikishi_id,
@@ -182,7 +240,9 @@ def create_rikishi_pages(rikishi_id, rikishi_docs):
         "rikishi_measurements_history": rikishi_measurements_history_dict,
         "rikishi_rank_history": rikishi_rank_history_dict,
         "rikishi_shikona_changes": rikishi_shikona_changes_dict,
-        "matches": match_dict
+        "matches": match_dict,
+        "special_prizes": special_prizes_dict,
+        "division wins": yusho_history
     }
 
     rikishi_docs.append(rikishi_page_document)
