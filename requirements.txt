@@ -7,3 +7,4 @@ kafka-python
 psycopg2
 pathlib
 pymongo[srv]
+tqdm
