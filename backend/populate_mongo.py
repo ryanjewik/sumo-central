@@ -13,7 +13,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from collections import defaultdict
 
-    
 #user database connection with retry mechanism
 def connect_to_database(max_retries=30, delay=2):
     """
@@ -65,7 +64,6 @@ def create_rikishi_pages(rikishi_id, rikishi_docs):
         port=os.getenv("DB_PORT")
     )
     cursor = conn.cursor()
-
     cursor.execute("""
                 SELECT *
                 FROM rikishi
@@ -79,6 +77,7 @@ def create_rikishi_pages(rikishi_id, rikishi_docs):
         rikishi_dict = convert_dates(rikishi_dict)
     else:
         rikishi_dict = {}
+        print("rikishi dictionary failed")
 
     rikishi_measurements_history_dict = {}
     cursor.execute("""
@@ -127,7 +126,7 @@ def create_rikishi_pages(rikishi_id, rikishi_docs):
 
     match_dict = {}
     cursor.execute("""
-                SELECT m.id, m.basho_id, m.east_rikishi_id, m.west_rikishi_id, m.east_rank, m.west_rank, m.eastshikona, m.westshikona, m.winner, m.kimarite, m.day, m.division, b.location, b.start_date
+                SELECT DISTINCT m.basho_id, m.east_rikishi_id, m.west_rikishi_id, m.east_rank, m.west_rank, m.eastshikona, m.westshikona, m.winner, m.kimarite, m.day, m.match_number, m.division, b.location, b.start_date
                 FROM matches m
                 LEFT JOIN basho b ON m.basho_id = b.id
                 WHERE m.west_rikishi_id = %s OR m.east_rikishi_id = %s
@@ -143,9 +142,15 @@ def create_rikishi_pages(rikishi_id, rikishi_docs):
                 single_match['rikishi-shikona'] = single_match['westshikona']
             else:
                 single_match['rikishi-shikona'] = single_match['eastshikona']
-            match_dict[str(single_match['id'])] = single_match
-            
-            
+            start_date = single_match['start_date']
+            day = single_match['day']
+            match_number = single_match['match_number']
+            match_date = datetime.datetime.strptime(str(start_date), "%Y-%m-%d").date() + datetime.timedelta(days=day - 1)
+            match_date_str = match_date.strftime("%Y-%m-%d")
+            key = f"{match_date_str}:match_number:{match_number}"
+            match_dict[key] = single_match
+
+
     special_prizes_dict = {}
     cursor.execute("""
                 SELECT sp.id, sp.basho_id, sp.prize_name, b.location, b.end_date
@@ -165,35 +170,31 @@ def create_rikishi_pages(rikishi_id, rikishi_docs):
             
     yusho_history = {}
     cursor.execute("""
-                SELECT 
-                    b.id AS basho_id,
-                    b.location,
-                    b.end_date,
-                    CASE
-                        WHEN b.makuuchi_yusho = %s THEN 'makuuchi_yusho'
-                        WHEN b.juryo_yusho = %s THEN 'juryo_yusho'
-                        WHEN b.sandanme_yusho = %s THEN 'sandanme_yusho'
-                        WHEN b.makushita_yusho = %s THEN 'makushita_yusho'
-                        WHEN b.jonidan_yusho = %s THEN 'jonidan_yusho'
-                        WHEN b.jonokuchi_yusho = %s THEN 'jonokuchi_yusho'
-                    END AS division_won
-                FROM basho b
-                WHERE EXISTS (
-                    SELECT 1
-                    FROM matches m
-                    WHERE m.basho_id = b.id
-                    AND (m.west_rikishi_id = %s OR m.east_rikishi_id = %s)
-                )
-                AND (
-                    b.makuuchi_yusho = %s
-                OR b.juryo_yusho = %s
-                OR b.sandanme_yusho = %s
-                OR b.makushita_yusho = %s
-                OR b.jonidan_yusho = %s
-                OR b.jonokuchi_yusho = %s
-                );
+        SELECT 
+            b.id AS basho_id,
+            b.location,
+            b.end_date,
+            CASE
+                WHEN b.makuuchi_yusho  = %(rid)s THEN 'makuuchi_yusho'
+                WHEN b.juryo_yusho     = %(rid)s THEN 'juryo_yusho'
+                WHEN b.sandanme_yusho  = %(rid)s THEN 'sandanme_yusho'
+                WHEN b.makushita_yusho = %(rid)s THEN 'makushita_yusho'
+                WHEN b.jonidan_yusho   = %(rid)s THEN 'jonidan_yusho'
+                WHEN b.jonokuchi_yusho = %(rid)s THEN 'jonokuchi_yusho'
+            END AS division_won
+        FROM basho b
+        WHERE EXISTS (
+            SELECT 1
+            FROM matches m
+            WHERE m.basho_id = b.id
+            AND (m.west_rikishi_id = %(rid)s OR m.east_rikishi_id = %(rid)s)
+        )
+        AND %(rid)s IN (
+            b.makuuchi_yusho, b.juryo_yusho, b.sandanme_yusho,
+            b.makushita_yusho, b.jonidan_yusho, b.jonokuchi_yusho
+        );
+    """, {"rid": rikishi_id})
 
-                """, (rikishi_id,))
     rows = cursor.fetchall()
     colnames = [desc[0] for desc in cursor.description]
     conn.commit()
@@ -289,8 +290,6 @@ def create_basho_pages(basho_id, basho_docs):
         match_date = match_dict["match_date"].strftime("%Y-%m-%d")
         days_dict[division][match_date].append(match_dict)
     conn.commit()
-    cursor.close()
-    conn.close()
 
     # Sort matches by match_number for each division and date
     for division in days_dict:
@@ -318,7 +317,6 @@ def create_basho_pages(basho_id, basho_docs):
     cursor.close()
     conn.close()
 
-    pass
 
 #connect to Mongo database
 uri = os.getenv("MONGO_URI")
@@ -348,6 +346,7 @@ cursor.execute("""
                 FROM rikishi
                 """)
 rikishi_ids = [row[0] for row in cursor.fetchall()]
+conn.commit()
 #populate basho list
 cursor.execute("""
                SELECT id
@@ -356,7 +355,6 @@ cursor.execute("""
 basho_ids = [row[0] for row in cursor.fetchall()]
 conn.commit()
 
-
 #use this to run insertMany in mongo
 rikishi_docs = []
 basho_docs = []
@@ -364,20 +362,34 @@ basho_docs = []
 #get rikishi pages
 with ThreadPoolExecutor(max_workers=16) as executor:
     futures = [executor.submit(create_rikishi_pages, rikishi_id, rikishi_docs) for rikishi_id in rikishi_ids]
-    for _ in tqdm(as_completed(futures), total=len(futures), desc="Processing Rikishi"):
-        pass  # The function already appends to rikishi_docs
+    for future in tqdm(as_completed(futures), total=len(futures), desc="Processing Rikishi"):
+        try:
+            future.result()
+        except Exception as e:
+            print(f"Exception in rikishi thread: {e}")
 #get basho pages
 with ThreadPoolExecutor(max_workers=16) as executor:
     futures = [executor.submit(create_basho_pages, basho_id, basho_docs) for basho_id in basho_ids]
-    for _ in tqdm(as_completed(futures), total=len(futures), desc="Processing Basho"):
-        pass  # The function already appends to basho_docs
+    for future in tqdm(as_completed(futures), total=len(futures), desc="Processing Basho"):
+        try:
+            future.result()
+        except Exception as e:
+            print(f"Exception in basho thread: {e}")
 
 #create database
-collection = db["rikishi_pages"]
-collection.insert_many(rikishi_docs)
-collection = db["basho_pages"]
-collection.insert_many(basho_docs)
+if rikishi_docs:
+    db["rikishi_pages"].insert_many(rikishi_docs)
+else:
+    print("No rikishi docs to insert.")
+
+if basho_docs:
+    db["basho_pages"].insert_many(basho_docs)
+else:
+    print("No basho docs to insert.")
+
 print("Documents inserted into MongoDB.")
 
 cursor.close()
 conn.close()
+
+
