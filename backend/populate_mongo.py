@@ -12,6 +12,9 @@ import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from collections import defaultdict
+from pymongo import MongoClient, WriteConcern
+from pymongo.errors import AutoReconnect, NetworkTimeout, ConnectionFailure
+import time
 
 #user database connection with retry mechanism
 def connect_to_database(max_retries=30, delay=2):
@@ -215,7 +218,7 @@ def create_rikishi_pages(rikishi_id, rikishi_docs):
         "special_prizes": special_prizes_dict,
         "division wins": yusho_history
     }
-
+    rikishi_page_document = convert_dates(rikishi_page_document)
     rikishi_docs.append(rikishi_page_document)
     cursor.close()
     conn.close()
@@ -312,25 +315,14 @@ def create_basho_pages(basho_id, basho_docs):
         "basho": basho_dict,
         "days": days_dict
     }
-
+    basho_page_document = convert_dates(basho_page_document)
     basho_docs.append(basho_page_document)
     cursor.close()
     conn.close()
 
 
-#connect to Mongo database
-uri = os.getenv("MONGO_URI")
 
-# Create a new client and connect to the server
-client = MongoClient(uri, server_api=ServerApi('1'))
-db = client[os.getenv("MONGO_DB_NAME") or "your_database"]
 
-# Send a ping to confirm a successful connection
-try:
-    client.admin.command('ping')
-    print("Pinged your deployment. You successfully connected to MongoDB!")
-except Exception as e:
-    print(e)
 
 # Connect to PostgreSQL database
 try:
@@ -376,14 +368,49 @@ with ThreadPoolExecutor(max_workers=16) as executor:
         except Exception as e:
             print(f"Exception in basho thread: {e}")
 
-#create database
+
+#connect to Mongo database
+uri = os.getenv("MONGO_URI")
+
+# 1) ONE global client (thread-safe). Do NOT create one per thread.
+client = MongoClient(
+    uri,
+    maxPoolSize=50,                 # tune pool for your thread count
+    serverSelectionTimeoutMS=30000, # 30s
+    socketTimeoutMS=120000,         # 120s for large batches
+    connectTimeoutMS=20000,
+)
+db = client["sumo"]                 # your DB
+
+
+def insert_many_chunks(collection, docs, chunk_size=500, max_retries=5):
+    """Insert in chunks with exponential backoff on transient network errors."""
+    for i in range(0, len(docs), chunk_size):
+        chunk = docs[i:i+chunk_size]
+        attempt = 0
+        while True:
+            try:
+                # ordered=False lets Mongo continue on dup key etc.
+                collection.insert_many(chunk, ordered=False)
+                break
+            except (AutoReconnect, NetworkTimeout, ConnectionFailure) as e:
+                if attempt >= max_retries:
+                    raise
+                sleep_s = min(1.0 * (2 ** attempt), 10.0)
+                print(f"[insert_many_chunks] transient error: {e} — retrying in {sleep_s:.1f}s")
+                time.sleep(sleep_s)
+                attempt += 1
+# BEFORE inserting, make sure you actually have docs:
 if rikishi_docs:
-    db["rikishi_pages"].insert_many(rikishi_docs)
+    coll = db.get_collection("rikishi_pages", write_concern=WriteConcern(w=1))
+    insert_many_chunks(coll, rikishi_docs, chunk_size=300)  # 300–1000 is a good range
+    print("rikishi docs inserted")
 else:
     print("No rikishi docs to insert.")
-
 if basho_docs:
-    db["basho_pages"].insert_many(basho_docs)
+    coll = db.get_collection("basho_pages", write_concern=WriteConcern(w=1))
+    insert_many_chunks(coll, basho_docs, chunk_size=300)  # 300–1000 is a good range
+    print("basho docs inserted")
 else:
     print("No basho docs to insert.")
 
