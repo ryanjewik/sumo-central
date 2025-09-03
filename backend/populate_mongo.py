@@ -11,19 +11,8 @@ from pymongo import TEXT
 import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
+from collections import defaultdict
 
-uri = os.getenv("MONGO_URI")
-
-# Create a new client and connect to the server
-client = MongoClient(uri, server_api=ServerApi('1'))
-
-# Send a ping to confirm a successful connection
-try:
-    client.admin.command('ping')
-    print("Pinged your deployment. You successfully connected to MongoDB!")
-except Exception as e:
-    print(e)
-    
     
 #user database connection with retry mechanism
 def connect_to_database(max_retries=30, delay=2):
@@ -53,25 +42,6 @@ def connect_to_database(max_retries=30, delay=2):
                 print(f"💀 Failed to connect to database after {max_retries} attempts")
                 raise e
             
-try:
-    conn = connect_to_database()
-except Exception as e:
-    print("❌ Failed to establish database connection:", e)
-    conn = None
-    
-    
-cursor = conn.cursor()
-    
-cursor.execute("""
-               SELECT id
-                FROM rikishi
-                """)
-rikishi_ids = [row[0] for row in cursor.fetchall()]
-#print(rikishi_ids)
-conn.commit()
-rikishi_docs = []
-
-
 def convert_dates(obj):
     if isinstance(obj, dict):
         return {k: convert_dates(v) for k, v in obj.items()}
@@ -249,29 +219,165 @@ def create_rikishi_pages(rikishi_id, rikishi_docs):
     cursor.close()
     conn.close()
 
+def create_basho_pages(basho_id, basho_docs):
+    conn = psycopg2.connect(
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USERNAME"),
+        password=os.getenv("DB_PASSWORD"),
+        host=os.getenv("DB_HOST"),
+        port=os.getenv("DB_PORT")
+    )
+    cursor = conn.cursor()
+    cursor.execute("""
+                    SELECT 
+                        b.id AS basho_id,
+                        b.name AS basho_name,
+                        b.location,
+                        b.start_date,
+                        b.end_date,
+                        COALESCE(r_makuuchi.shikona, b.makuuchi_yusho::text)   AS makuuchi_yusho,
+                        COALESCE(r_juryo.shikona, b.juryo_yusho::text)         AS juryo_yusho,
+                        COALESCE(r_sandanme.shikona, b.sandanme_yusho::text)   AS sandanme_yusho,
+                        COALESCE(r_makushita.shikona, b.makushita_yusho::text) AS makushita_yusho,
+                        COALESCE(r_jonidan.shikona, b.jonidan_yusho::text)     AS jonidan_yusho,
+                        COALESCE(r_jonokuchi.shikona, b.jonokuchi_yusho::text) AS jonokuchi_yusho
+                    FROM basho b
+                    LEFT JOIN rikishi r_makuuchi   ON r_makuuchi.id   = b.makuuchi_yusho
+                    LEFT JOIN rikishi r_juryo      ON r_juryo.id      = b.juryo_yusho
+                    LEFT JOIN rikishi r_sandanme   ON r_sandanme.id   = b.sandanme_yusho
+                    LEFT JOIN rikishi r_makushita  ON r_makushita.id  = b.makushita_yusho
+                    LEFT JOIN rikishi r_jonidan    ON r_jonidan.id    = b.jonidan_yusho
+                    LEFT JOIN rikishi r_jonokuchi  ON r_jonokuchi.id  = b.jonokuchi_yusho
+                   WHERE b.id = %s
+                   """, (basho_id,))
+    rows = cursor.fetchall()
+    colnames = [desc[0] for desc in cursor.description]
+    for row in rows:
+        basho_dict = dict(zip(colnames, row))
+    conn.commit()
+    
+    
+    
+    days_dict = defaultdict(lambda: defaultdict(list))
+    cursor = conn.cursor()
+    cursor.execute("""
+                    SELECT DISTINCT
+                        (b.start_date + (m.day - 1) * INTERVAL '1 day') AS match_date,
+                        m.match_number,
+                        m.eastshikona,
+                        m.westshikona,
+                        m.division,
+                        CASE 
+                            WHEN m.winner = m.east_rikishi_id THEN m.eastshikona
+                            WHEN m.winner = m.west_rikishi_id THEN m.westshikona
+                            ELSE NULL
+                        END AS winner,
+                        m.kimarite,
+                        m.east_rikishi_id,
+                        m.west_rikishi_id,
+                        m.winner
+                    FROM matches m
+                    JOIN basho b ON m.basho_id = b.id
+                    WHERE b.id = %s
+                    ORDER BY match_date, match_number;
+                    """, (basho_id,))
+    rows = cursor.fetchall()
+    colnames = [desc[0] for desc in cursor.description]
+    for row in rows:
+        match_dict = dict(zip(colnames, row))
+        division = match_dict["division"]
+        match_date = match_dict["match_date"].strftime("%Y-%m-%d")
+        days_dict[division][match_date].append(match_dict)
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    # Sort matches by match_number for each division and date
+    for division in days_dict:
+        for match_date in days_dict[division]:
+            days_dict[division][match_date].sort(key=lambda x: x["match_number"])
+
+    def convert(obj):
+        if isinstance(obj, dict):
+            return {k: convert(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert(v) for v in obj]
+        elif hasattr(obj, 'isoformat'):
+            return obj.isoformat()
+        else:
+            return obj
+    days_dict = convert(days_dict)
+    
+    basho_page_document = {
+        "id": basho_id,
+        "basho": basho_dict,
+        "days": days_dict
+    }
+
+    basho_docs.append(basho_page_document)
+    cursor.close()
+    conn.close()
+
+    pass
+
+#connect to Mongo database
+uri = os.getenv("MONGO_URI")
+
+# Create a new client and connect to the server
+client = MongoClient(uri, server_api=ServerApi('1'))
+db = client[os.getenv("MONGO_DB_NAME") or "your_database"]
+
+# Send a ping to confirm a successful connection
+try:
+    client.admin.command('ping')
+    print("Pinged your deployment. You successfully connected to MongoDB!")
+except Exception as e:
+    print(e)
+
+# Connect to PostgreSQL database
+try:
+    conn = connect_to_database()
+except Exception as e:
+    print("❌ Failed to establish database connection:", e)
+    conn = None
+#postgres cursor    
+cursor = conn.cursor()
+#populate rikishi list
+cursor.execute("""
+               SELECT id
+                FROM rikishi
+                """)
+rikishi_ids = [row[0] for row in cursor.fetchall()]
+#populate basho list
+cursor.execute("""
+               SELECT id
+                FROM basho
+                """)
+basho_ids = [row[0] for row in cursor.fetchall()]
+conn.commit()
+
+
+#use this to run insertMany in mongo
+rikishi_docs = []
+basho_docs = []
+
+#get rikishi pages
 with ThreadPoolExecutor(max_workers=16) as executor:
     futures = [executor.submit(create_rikishi_pages, rikishi_id, rikishi_docs) for rikishi_id in rikishi_ids]
     for _ in tqdm(as_completed(futures), total=len(futures), desc="Processing Rikishi"):
         pass  # The function already appends to rikishi_docs
-    
+#get basho pages
+with ThreadPoolExecutor(max_workers=16) as executor:
+    futures = [executor.submit(create_basho_pages, basho_id, basho_docs) for basho_id in basho_ids]
+    for _ in tqdm(as_completed(futures), total=len(futures), desc="Processing Basho"):
+        pass  # The function already appends to basho_docs
+
 #create database
-db = client[os.getenv("MONGO_DB_NAME") or "your_database"]
 collection = db["rikishi_pages"]
 collection.insert_many(rikishi_docs)
+collection = db["basho_pages"]
+collection.insert_many(basho_docs)
 print("Documents inserted into MongoDB.")
-
-#create search index
-collection.create_index([("rikishi.shikona", TEXT)], name="rikishi_search_index", default_language="english")
-
-#test search
-print("test for search ryo")
-cursor = collection.find(
-    {"$text": {"$search": "ryo"}},
-    {"score": {"$meta": "textScore"}}
-).sort("score", {"$meta": "textScore"})
-
-for doc in cursor:
-    print("Found document:", doc)
 
 cursor.close()
 conn.close()
