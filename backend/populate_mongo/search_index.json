@@ -6,7 +6,7 @@
         "type": "document",
         "fields": {
           "shikona": {
-            "type": "autocomplete"
+            "type": "string"
           }
         }
       }
