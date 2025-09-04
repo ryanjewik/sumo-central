@@ -14,8 +14,8 @@ function App() {
           </div>
           <input className="navbar-search" type="text" placeholder="search" />
           <div className="navbar-right">
-            <button className="navbar-btn">language</button>
-            <button className="navbar-btn">acc</button>
+            <button className="navbar-btn">L</button>
+            <button className="navbar-btn">A</button>
           </div>
         </div>
         <div className="navbar-row navbar-row-bottom">
@@ -26,7 +26,20 @@ function App() {
           <a className="navbar-link" href="#">About</a>
         </div>
       </nav>
-      <div id="background"></div>
+      <div id="background">
+        <div className="content-box">
+          <div className="left-bar">Left</div>
+          <div className="main-content">
+            <div className="bracket-area">Bracket Area</div>
+            <div className="forum-area">
+              <div className="forum-post">Post 1</div>
+              <div className="forum-post">Post 2</div>
+              <div className="forum-post">Post 3</div>
+            </div>
+          </div>
+          <div className="right-bar">Right</div>
+        </div>
+      </div>
     </>
   )
 }
