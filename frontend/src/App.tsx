@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import { Button } from "@/components/base/buttons/button";
 
 function App() {
   const [count, setCount] = useState(0)
@@ -35,6 +36,14 @@ function App() {
               <div className="forum-post">Post 1</div>
               <div className="forum-post">Post 2</div>
               <div className="forum-post">Post 3</div>
+            </div>
+            {/* Untitled UI Test Button */}
+            <div style={{ marginTop: '2rem' }}>
+              {/* If you have the Button component from Untitled UI, use this import: */}
+              {/* import { Button } from "@/components/base/buttons/button"; */}
+              {/* Example usage: */}
+              {/* <Button color="primary">Untitled UI Test Button</Button> */}
+              <Button color="primary">Untitled UI Test Button</Button>
             </div>
           </div>
           <div className="right-bar">Right</div>

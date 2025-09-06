@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Untitled UI, Tailwind, and related packages
+@untitledui
+@untitledui/icons
+@tailwindcss
+tailwindcss
+tailwindcss-react-aria-components
+tailwind-merge
+tailwindcss-animate
+react-aria-components
+

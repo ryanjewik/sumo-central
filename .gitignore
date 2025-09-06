@@ -1,3 +1,4 @@
 .env
 venv
 downloaded_s3/
+node_modules
