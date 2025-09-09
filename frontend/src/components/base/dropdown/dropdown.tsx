@@ -17,7 +17,7 @@ import {
     Popover as AriaPopover,
     Separator as AriaSeparator,
 } from "react-aria-components";
-import { cx } from "@/utils/cx";
+import { cx } from "../../../utils/cx";
 
 interface DropdownItemProps extends AriaMenuItemProps {
     /** The label of the item to be displayed. */

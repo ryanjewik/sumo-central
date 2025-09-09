@@ -1,9 +1,10 @@
-import { useState } from 'react'
+//import { useState } from 'react'
 import './App.css'
-import { Button } from "@/components/base/buttons/button";
+import { TableCard, Table } from './components/application/table/table';
+import { Button } from "./components/base/buttons/button";
 
 function App() {
-  const [count, setCount] = useState(0)
+  //const [count, setCount] = useState(0)
 
   return (
     <>
@@ -29,7 +30,42 @@ function App() {
       </nav>
       <div id="background">
         <div className="content-box">
-          <div className="left-bar">Left</div>
+          <div className="left-bar">Left
+            <TableCard.Root>
+              <TableCard.Header title="Top Rikishi" description="Makuuchi" />
+              {/* Table content using Untitled UI Table component */}
+              {(() => {
+                const columns = [
+                  { id: 'name', label: 'Name' },
+                  { id: 'rank', label: 'Rank' },
+                  { id: 'wins', label: 'Wins' },
+                ];
+                const data = [
+                  { id: 1, name: 'Hakuho', rank: 'Yokozuna', wins: 45 },
+                  { id: 2, name: 'Asanoyama', rank: 'Ozeki', wins: 12 },
+                  { id: 3, name: 'Terunofuji', rank: 'Yokozuna', wins: 20 },
+                ];
+                return (
+                  <Table aria-label="Top Rikishi Table" selectionMode="none">
+                    <Table.Header columns={columns}>
+                      {column => (
+                        <Table.Head key={column.id} label={column.label} />
+                      )}
+                    </Table.Header>
+                    <Table.Body items={data}>
+                      {item => (
+                        <Table.Row key={item.id} columns={columns}>
+                          <Table.Cell>{item.name}</Table.Cell>
+                          <Table.Cell>{item.rank}</Table.Cell>
+                          <Table.Cell>{item.wins}</Table.Cell>
+                        </Table.Row>
+                      )}
+                    </Table.Body>
+                  </Table>
+                );
+              })()}
+            </TableCard.Root>
+          </div>
           <div className="main-content">
             <div className="bracket-area">Bracket Area</div>
             <div className="forum-area">

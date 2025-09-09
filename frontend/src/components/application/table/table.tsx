@@ -19,11 +19,11 @@ import {
     TableHeader as AriaTableHeader,
     useTableOptions,
 } from "react-aria-components";
-import { Badge } from "./base/badges/badges";
-import { Checkbox } from "./base/checkbox/checkbox";
-import { Dropdown } from "./base/dropdown/dropdown";
-import { Tooltip, TooltipTrigger } from "./base/tooltip/tooltip";
-import { cx } from "@/utils/cx";
+import { Badge } from "../../base/badges/badges";
+import { Checkbox } from "../../base/checkbox/checkbox";
+import { Dropdown } from "../../base/dropdown/dropdown";
+import { Tooltip, TooltipTrigger } from "../../base/tooltip/tooltip";
+import { cx } from "../../../utils/cx";
 
 export const TableRowActionsDropdown = () => (
     <Dropdown.Root>
