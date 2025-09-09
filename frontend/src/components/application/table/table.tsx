@@ -50,7 +50,7 @@ const TableContext = createContext<{ size: "sm" | "md" }>({ size: "md" });
 const TableCardRoot = ({ children, className, size = "md", ...props }: HTMLAttributes<HTMLDivElement> & { size?: "sm" | "md" }) => {
     return (
         <TableContext.Provider value={{ size }}>
-            <div {...props} className={cx("overflow-hidden rounded-xl bg-primary shadow-xs ring-1 ring-secondary", className)}>
+            <div {...props} className={cx("overflow-hidden rounded-xl bg-navbarbg shadow-xs ring-1 ring-bordersecondary", className)}>
                 {children}
             </div>
         </TableContext.Provider>
@@ -76,14 +76,14 @@ const TableCardHeader = ({ title, badge, description, contentTrailing, className
     return (
         <div
             className={cx(
-                "relative flex flex-col items-start gap-4 border-b border-secondary bg-primary px-4 md:flex-row",
+                "relative flex flex-col items-start gap-4 border-b border-bordersecondary bg-navbarbg px-4 md:flex-row",
                 size === "sm" ? "py-4 md:px-5" : "py-5 md:px-6",
                 className,
             )}
         >
             <div className="flex flex-1 flex-col gap-0.5">
                 <div className="flex items-center gap-2">
-                    <h2 className={cx("font-semibold text-primary", size === "sm" ? "text-md" : "text-lg")}>{title}</h2>
+                    <h2 className={cx("font-semibold text-navbartext", size === "sm" ? "text-md" : "text-lg")}>{title}</h2>
                     {badge ? (
                         isValidElement(badge) ? (
                             badge
@@ -94,7 +94,7 @@ const TableCardHeader = ({ title, badge, description, contentTrailing, className
                         )
                     ) : null}
                 </div>
-                {description && <p className="text-sm text-tertiary">{description}</p>}
+                {description && <p className="text-sm text-purple">{description}</p>}
             </div>
             {contentTrailing}
         </div>
@@ -133,12 +133,12 @@ const TableHeader = <T extends object>({ columns, children, bordered = true, cla
             {...props}
             className={(state) =>
                 cx(
-                    "relative bg-secondary",
+                    "relative bg-beige",
                     size === "sm" ? "h-9" : "h-11",
 
                     // Row border—using an "after" pseudo-element to avoid the border taking up space.
                     bordered &&
-                        "[&>tr>th]:after:pointer-events-none [&>tr>th]:after:absolute [&>tr>th]:after:inset-x-0 [&>tr>th]:after:bottom-0 [&>tr>th]:after:h-px [&>tr>th]:after:bg-border-secondary [&>tr>th]:focus-visible:after:bg-transparent",
+                        "[&>tr>th]:after:pointer-events-none [&>tr>th]:after:absolute [&>tr>th]:after:inset-x-0 [&>tr>th]:after:bottom-0 [&>tr>th]:after:h-px [&>tr>th]:after:bg-bordersecondary [&>tr>th]:focus-visible:after:bg-transparent",
 
                     typeof className === "function" ? className(state) : className,
                 )
@@ -183,13 +183,13 @@ const TableHead = ({ className, tooltip, label, children, ...props }: TableHeadP
             {(state) => (
                 <AriaGroup className="flex items-center gap-1">
                     <div className="flex items-center gap-1">
-                        {label && <span className="text-xs font-semibold whitespace-nowrap text-quaternary">{label}</span>}
+                        {label && <span className="text-xs font-semibold whitespace-nowrap text-navbartext">{label}</span>}
                         {typeof children === "function" ? children(state) : children}
                     </div>
 
                     {tooltip && (
                         <Tooltip title={tooltip} placement="top">
-                            <TooltipTrigger className="cursor-pointer text-fg-quaternary transition duration-100 ease-linear hover:text-fg-quaternary_hover focus:text-fg-quaternary_hover">
+                            <TooltipTrigger className="cursor-pointer text-purple transition duration-100 ease-linear hover:text-navbartext focus:text-navbartext">
                                 <HelpCircle className="size-4" />
                             </TooltipTrigger>
                         </Tooltip>
@@ -197,9 +197,9 @@ const TableHead = ({ className, tooltip, label, children, ...props }: TableHeadP
 
                     {state.allowsSorting &&
                         (state.sortDirection ? (
-                            <ArrowDown className={cx("size-3 stroke-[3px] text-fg-quaternary", state.sortDirection === "ascending" && "rotate-180")} />
+                            <ArrowDown className={cx("size-3 stroke-[3px] text-purple", state.sortDirection === "ascending" && "rotate-180")} />
                         ) : (
-                            <ChevronSelectorVertical size={12} strokeWidth={3} className="text-fg-quaternary" />
+                            <ChevronSelectorVertical size={12} strokeWidth={3} className="text-purple" />
                         ))}
                 </AriaGroup>
             )}
@@ -223,12 +223,12 @@ const TableRow = <T extends object>({ columns, children, className, highlightSel
             {...props}
             className={(state) =>
                 cx(
-                    "relative outline-focus-ring transition-colors after:pointer-events-none hover:bg-secondary focus-visible:outline-2 focus-visible:-outline-offset-2",
+                    "relative outline-focus-ring transition-colors after:pointer-events-none hover:bg-forumgreen focus-visible:outline-2 focus-visible:-outline-offset-2",
                     size === "sm" ? "h-14" : "h-18",
-                    highlightSelectedRow && "selected:bg-secondary",
+                    highlightSelectedRow && "selected:bg-forumgreen",
 
                     // Row border—using an "after" pseudo-element to avoid the border taking up space.
-                    "[&>td]:after:absolute [&>td]:after:inset-x-0 [&>td]:after:bottom-0 [&>td]:after:h-px [&>td]:after:w-full [&>td]:after:bg-border-secondary last:[&>td]:after:hidden [&>td]:focus-visible:after:opacity-0 focus-visible:[&>td]:after:opacity-0",
+                    "[&>td]:after:absolute [&>td]:after:inset-x-0 [&>td]:after:bottom-0 [&>td]:after:h-px [&>td]:after:w-full [&>td]:after:bg-bordersecondary last:[&>td]:after:hidden [&>td]:focus-visible:after:opacity-0 focus-visible:[&>td]:after:opacity-0",
 
                     typeof className === "function" ? className(state) : className,
                 )
@@ -261,7 +261,7 @@ const TableCell = ({ className, children, ...props }: TableCellProps) => {
             {...props}
             className={(state) =>
                 cx(
-                    "relative text-sm text-tertiary outline-focus-ring focus-visible:z-1 focus-visible:outline-2 focus-visible:-outline-offset-2",
+                    "relative text-sm text-navbartext outline-focus-ring focus-visible:z-1 focus-visible:outline-2 focus-visible:-outline-offset-2",
                     size === "sm" && "px-5 py-3",
                     size === "md" && "px-6 py-4",
 
