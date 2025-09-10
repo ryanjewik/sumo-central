@@ -155,21 +155,19 @@
   margin-left: clamp(0.5rem, 12vw, 15rem);
   margin-right: clamp(0.5rem, 12vw, 15rem);
   justify-content: center;
-  background-color: #888;
+
   min-height: calc(100vh - 8rem);
   box-sizing: border-box;
 }
 .left-bar, .right-bar {
-  width: 15%;
-  background-color: #ccc;
-  padding: 1rem;
+  width: clamp(15vw, 17vw, 20vw);
+
   box-sizing: border-box;
-  color: #555;
+
 }
 .main-content {
   flex: 1;
   background-color: #fff;
-  padding: 1rem;
   margin: 0 1rem;
   box-sizing: border-box;
 }

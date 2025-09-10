@@ -34,6 +34,9 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    require('tailwindcss-react-aria-components'),
+    require('tailwindcss-animate'),
+  ],
   darkMode: 'class',
 }

@@ -1,4 +1,4 @@
-
+#for the rikishi and basho pages
 import psycopg2
 import os, sys, json, time
 from pathlib import Path
