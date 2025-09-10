@@ -58,6 +58,32 @@ def convert_dates(obj):
     else:
         return obj
     
+    
+def order_ranks(rank_mapping):
+    # Convert to list of tuples for sorting
+    ranks = [(name, value) for name, value in rank_mapping.items()]
+
+    def rank_sort_key(item):
+        name, value = item
+        # Unranked goes last
+        if value == 0:
+            return (float('inf'), 1, name)
+        # For same value, East is better than West
+        east_west = 0 if 'East' in name else 1 if 'West' in name else 2
+        return (value, east_west, name)
+
+    # Sort by value, then east/west, then name
+    ranks_sorted = sorted(ranks, key=rank_sort_key)
+
+    # Assign order from 1 to N, use rank name as key
+    ordered_mapping = {}
+    for i, (name, value) in enumerate(ranks_sorted, 1):
+        ordered_mapping[name] = {
+            'rank_value': value,
+            'order': i
+        }
+    return ordered_mapping
+    
 # Connect to PostgreSQL database
 try:
     conn = connect_to_database()
@@ -73,6 +99,8 @@ conn = psycopg2.connect(
     port=os.getenv("DB_PORT")
 )
 cursor = conn.cursor()
+
+#getting the most recent basho
 cursor.execute("""
             SELECT MAX(id) AS most_recent_basho FROM basho
             """)
@@ -82,6 +110,24 @@ month = int(str(most_recent_basho)[4:6])
 date = f"{year}-{month:02d}-01"
 print(f"Most recent basho: {most_recent_basho} ({date})")
 conn.commit()
+
+
+
+#map the rank names and values
+cursor.execute("""
+               SELECT DISTINCT rank_name, rank_value FROM rikishi_rank_history ORDER BY rank_value;
+               """)
+rows = cursor.fetchall()
+rank_mapping = {}
+for row in rows:
+    rank_name = row[0]
+    rank_value = row[1]
+    rank_mapping[rank_name] = rank_value
+
+ordered_rank_mapping = order_ranks(rank_mapping)
+conn.commit()
+
+#getting the top rikishi from the most recent basho
 cursor.execute("""
                 SELECT *
                 FROM rikishi_rank_history
@@ -93,7 +139,45 @@ cursor.execute("""
 rows = cursor.fetchall()
 colnames = [desc[0] for desc in cursor.description]
 conn.commit()
-if rows:
-    top_rikishi_dict = dict(zip(colnames, rows[0]))
-    top_rikishi_dict = convert_dates(top_rikishi_dict)
-    print(top_rikishi_dict)
+
+# Build a new dict ordered by rank order
+ordered_top_rikishi = {}
+for row in rows:
+    rikishi_dict = dict(zip(colnames, row))
+    rikishi_dict = convert_dates(rikishi_dict)
+    rank_name = rikishi_dict.get('rank_name')
+    order = str(ordered_rank_mapping.get(rank_name, {}).get('order'))
+    if order is not None:
+        ordered_top_rikishi[order] = rikishi_dict
+
+# Optionally sort by order (not strictly necessary for dict, but for output)
+ordered_top_rikishi = dict(sorted(ordered_top_rikishi.items()))
+
+#print(json.dumps(ordered_top_rikishi, indent=2, ensure_ascii=False))
+
+#connect to Mongo database
+uri = os.getenv("MONGO_URI")
+
+# 1) ONE global client (thread-safe). Do NOT create one per thread.
+client = MongoClient(
+    uri,
+    maxPoolSize=50,                 # tune pool for your thread count
+    serverSelectionTimeoutMS=30000, # 30s
+    socketTimeoutMS=120000,         # 120s for large batches
+    connectTimeoutMS=20000,
+)
+db = client["sumo"]                 # your DB
+collection = db["homepage"]         # your collection
+collection.insert_one({"top_rikishi": ordered_top_rikishi})
+print("inserted top rikishi into MongoDB")
+
+
+
+#need to get the highlight rikishi
+cursor.execute("""
+               SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, day, match_number, winner, kimarite FROM matches WHERE winner = 19;
+               """)
+
+
+cursor.close()
+conn.close()
