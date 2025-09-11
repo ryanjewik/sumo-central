@@ -4,6 +4,9 @@ import './styles/globals.css'
 //import { TableCard, Table } from './components/application/table/table';
 import { RikishiTable } from './components/application/rikishi_table';
 import { Button } from "./components/base/buttons/button";
+import { RadarChart } from 'recharts';
+import KimariteRadarChart from "./components/application/charts/KimariteRadarChart";
+
 
 function App() {
   //const [count, setCount] = useState(0)
@@ -60,7 +63,12 @@ function App() {
               <Button color="primary">Untitled UI Test Button</Button>
             </div>
           </div>
-          <div className="right-bar">Right</div>
+          <div 
+            className="right-bar"
+            style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+          >
+            <KimariteRadarChart />
+          </div>
         </div>
       </div>
     </>
