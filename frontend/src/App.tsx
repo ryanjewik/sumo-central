@@ -6,6 +6,8 @@ import { RikishiTable } from './components/application/rikishi_table';
 import { Button } from "./components/base/buttons/button";
 import { RadarChart } from 'recharts';
 import KimariteRadarChart from "./components/application/charts/KimariteRadarChart";
+import SearchBar from './components/searchbar';
+import DividedList from './components/dividedlist';
 
 
 function App() {
@@ -19,7 +21,7 @@ function App() {
             <img src="/sumo_logo.png" alt="Sumo Logo" className="navbar-logo" />
             <span className="navbar-title">Sumo App</span>
           </div>
-          <input className="navbar-search" type="text" placeholder="search" />
+          <SearchBar />
           <div className="navbar-right">
             <button className="navbar-btn">L</button>
             <button className="navbar-btn">A</button>
@@ -42,8 +44,8 @@ function App() {
             <div style={{ flex: 1, paddingBottom: '1rem' }}>
                 <RikishiTable />
             </div>
-            <div style={{ flex: 1, gap: '1rem', backgroundColor: 'blue' }}>
-              test
+            <div style={{ flex: 1, gap: '1rem', display: 'flex', flexDirection: 'column' }}>
+              <DividedList></DividedList>
             </div>
             <div style={{ flex: 1, backgroundColor: 'red' }}>train</div>
           </div>
