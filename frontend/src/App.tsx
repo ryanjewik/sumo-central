@@ -45,7 +45,7 @@ function App() {
                 <RikishiTable />
             </div>
             <div style={{ flex: 1, gap: '1rem', display: 'flex', flexDirection: 'column' }}>
-              <DividedList></DividedList>
+              <KimariteRadarChart />
             </div>
             <div style={{ flex: 1, backgroundColor: 'red' }}>train</div>
           </div>
@@ -69,7 +69,8 @@ function App() {
             className="right-bar"
             style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
           >
-            <KimariteRadarChart />
+            <DividedList />
+            
           </div>
         </div>
       </div>

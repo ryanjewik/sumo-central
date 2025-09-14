@@ -1,4 +1,4 @@
-import { cx } from "@/utils/cx";
+import { cx } from "../../../utils/cx";
 
 export interface ProgressBarProps {
     /**
@@ -92,11 +92,11 @@ export const ProgressBar = ({ value, min = 0, max = 100, valueFormatter, labelPo
             );
         case "top-floating":
             return (
-                <div className="relative flex flex-col items-end gap-2">
+                <div className="relative flex flex-col items-end gap-2 pt-6">
                     {baseProgressBar}
                     <div
                         style={{ left: `${percentage}%` }}
-                        className="absolute -top-2 -translate-x-1/2 -translate-y-full rounded-lg bg-primary_alt px-3 py-2 shadow-lg ring-1 ring-secondary_alt"
+                        className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full rounded-lg bg-primary_alt px-3 py-2 shadow-lg ring-1 ring-secondary_alt z-0"
                     >
                         <div className="text-xs font-semibold text-secondary tabular-nums">{formattedValue}</div>
                     </div>
@@ -104,11 +104,11 @@ export const ProgressBar = ({ value, min = 0, max = 100, valueFormatter, labelPo
             );
         case "bottom-floating":
             return (
-                <div className="relative flex flex-col items-end gap-2">
+                <div className="relative flex flex-col items-end gap-2 pb-6">
                     {baseProgressBar}
                     <div
                         style={{ left: `${percentage}%` }}
-                        className="absolute -bottom-2 -translate-x-1/2 translate-y-full rounded-lg bg-primary_alt px-3 py-2 shadow-lg ring-1 ring-secondary_alt"
+                        className="pointer-events-none absolute -bottom-2 -translate-x-1/2 translate-y-full rounded-lg bg-primary_alt px-3 py-2 shadow-lg ring-1 ring-secondary_alt z-0"
                     >
                         <div className="text-xs font-semibold text-secondary">{formattedValue}</div>
                     </div>

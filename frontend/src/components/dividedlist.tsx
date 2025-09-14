@@ -2,9 +2,8 @@ import * as React from 'react';
 import Avatar from '@mui/joy/Avatar';
 import Box from '@mui/joy/Box';
 import List from '@mui/joy/List';
-import ListDivider from '@mui/joy/ListDivider';
 import ListItem from '@mui/joy/ListItem';
-import ListItemDecorator from '@mui/joy/ListItemDecorator';
+import ListItemButton from '@mui/joy/ListItemButton';
 import Typography from '@mui/joy/Typography';
 import { ProgressBar } from "../components/base/progress-indicators/progress-indicators";
 
@@ -34,32 +33,78 @@ const sampleMatches = [
 export default function DividedList() {
   return (
     <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 4 }}>
-      <div className="w-full h-full"
-        style={{
-          background: '#A3E0B8', // forum post green
+      <Box
+        sx={{
+          width: '100%',
+          background: '#A3E0B8',
           borderRadius: '1rem',
           boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-          padding: '1rem',
+          p: '1rem',
           minWidth: 260,
           fontFamily: "'Courier New', Courier, monospace",
+          border: '4px solid #563861',
+          position: 'relative',
+          zIndex: 0,
         }}
       >
         <Typography level="title-lg" sx={{ mb: 2, fontWeight: 700 }}>
           Recent Matches
         </Typography>
-        <List variant="outlined" sx={{ minWidth: 240, borderRadius: 'sm' }}>
+
+        <List variant="outlined" sx={{ minWidth: 240, borderRadius: 'sm', p: 0, m: 0 }}>
           {sampleMatches.map((match, idx) => (
-            <React.Fragment key={idx}>
-              <ListItem sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, background: '#F5E6C8', borderRadius: '0.75rem', mb: .5, minHeight: 60 }}>
-                {/* West Rikishi Avatar with winner indicator */}
+            <ListItem key={idx} sx={{ p: 0, m: 0, listStyle: 'none', position: 'relative' }}>
+              <ListItemButton
+                sx={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 2,
+                  background: '#F5E6C8',
+                  borderRadius: '0.75rem',
+                  minHeight: 60,
+                  cursor: 'pointer',
+                  transition: 'transform 0.15s, box-shadow 0.15s',
+                  position: 'relative',
+                  isolation: 'isolate',
+                  mb: idx < sampleMatches.length - 1 ? 0.5 : 0,
+                  pb: idx < sampleMatches.length - 1 ? 'calc(0.5rem + 1px)' : 0, // room for divider line
+                  '&:hover': {
+                    transform: 'scale(1.03)',
+                    boxShadow: '0 4px 16px rgba(86,56,97,0.15)',
+                  },
+                }}
+              >
+                {/* West avatar + WIN badge */}
                 <Box sx={{ position: 'relative' }}>
                   <Avatar size="sm" src="/static/images/avatar/default.jpg" />
                   {match.winner === 'west' && (
-                    <Box sx={{ position: 'absolute', top: -8, right: -8, background: '#22c55e', color: 'white', borderRadius: '50%', width: 17, height: 17, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
+                    <Box
+                      sx={{
+                        pointerEvents: 'none',
+                        position: 'absolute',
+                        top: -8,
+                        right: -8,
+                        background: '#22c55e',
+                        color: '#fff',
+                        borderRadius: '50%',
+                        width: 17,
+                        height: 17,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 9,
+                        fontWeight: 700,
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                      }}
+                    >
                       W
                     </Box>
                   )}
                 </Box>
+
+                {/* Middle content */}
                 <Box sx={{ textAlign: 'center', flex: 1 }}>
                   <Typography level="body-md" sx={{ fontWeight: 500 }}>
                     {match.westShikona} vs {match.eastShikona}
@@ -67,28 +112,60 @@ export default function DividedList() {
                   <Typography level="body-xs" sx={{ color: 'text.secondary' }}>
                     {match.westRank} vs {match.eastRank}
                   </Typography>
-                    {/* Centered Progress Indicator */}
-                    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
-                      <Box sx={{ width: 160 }}>
-                        <ProgressBar value={50} className="bg-red-500" progressClassName="bg-blue-500" />
-                      </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+                    <Box sx={{ width: 160 }}>
+                      <ProgressBar value={50} className="bg-red-500" progressClassName="bg-blue-500" />
                     </Box>
+                  </Box>
                 </Box>
-                {/* East Rikishi Avatar with winner indicator */}
+
+                {/* East avatar + WIN badge */}
                 <Box sx={{ position: 'relative' }}>
                   <Avatar size="sm" src="/static/images/avatar/default.jpg" />
                   {match.winner === 'east' && (
-                    <Box sx={{ position: 'absolute', top: -8, left: -8, background: '#22c55e', color: 'white', borderRadius: '50%', width: 17, height: 17, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
+                    <Box
+                      sx={{
+                        pointerEvents: 'none',
+                        position: 'absolute',
+                        top: -8,
+                        right: -8,
+                        background: '#22c55e',
+                        color: '#fff',
+                        borderRadius: '50%',
+                        width: 17,
+                        height: 17,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 9,
+                        fontWeight: 700,
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                      }}
+                    >
                       W
                     </Box>
                   )}
                 </Box>
-              </ListItem>
-              {idx < sampleMatches.length - 1 && <ListDivider inset="gutter" />}
-            </React.Fragment>
+
+                {/* Divider drawn INSIDE this item (never overlaps the next row) */}
+                {idx < sampleMatches.length - 1 && (
+                  <Box
+                    sx={{
+                      pointerEvents: 'none',
+                      position: 'absolute',
+                      left: 16,
+                      right: 16,
+                      bottom: 0,
+                      height: 1,
+                      backgroundColor: 'var(--joy-palette-divider)',
+                    }}
+                  />
+                )}
+              </ListItemButton>
+            </ListItem>
           ))}
         </List>
-      </div>
+      </Box>
     </Box>
   );
 }
