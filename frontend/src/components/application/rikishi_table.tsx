@@ -30,21 +30,40 @@ const rawData = [
     wins: 20,
     profile: "../../../../sumo_logo.png",
   },
+  {
+    id: 4,
+    name: "Takakeisho",
+    rank: "Ozeki",
+    wins: 18,
+    profile: "../../../../sumo_logo.png",
+  },
+  {
+    id: 5,
+    name: "Wakatakakage",
+    rank: "Sekiwake",
+    wins: 10,
+    profile: "../../../../sumo_logo.png",
+  },
+  {
+    id: 6,
+    name: "Shodai",
+    rank: "Sekiwake",
+    wins: 8,
+    profile: "../../../../sumo_logo.png",
+  },
 ];
 
 const data = rawData.map((item, idx) => ({ ...item, index: idx }));
 
 export function RikishiTable() {
   return (
-    <div className="w-full h-full">
-  <TableCard.Root size="sm" className="bg-[#A3E0B8] text-[#563861] border-3 border-[#563861]" style={{ fontFamily: 'Space Grotesk, Inter, sans-serif' }}>
-        <TableCard.Header title="Top Rikishi" description="Makuuchi Division" className="bg-[#A3E0B8]" />
-
-  <Table aria-label="Top Rikishi Table" selectionMode="none" className="w-full">
+    <div className="w-full h-full app-text text-[1.15rem]">
+      <TableCard.Root size="sm" className="bg-[#A3E0B8] border-3 border-[#563861]">
+        <TableCard.Header title="Top Rikishi" description="Makuuchi Division" className="bg-[#A3E0B8] font-extrabold text-[1.35rem]" />
+        <Table aria-label="Top Rikishi Table" selectionMode="none" className="w-full">
           <Table.Header columns={columns}>
             {(column) => <Table.Head key={column.id} label={column.label} />}
           </Table.Header>
-
           <Table.Body items={data}>
             {(item) => (
               <Table.Row

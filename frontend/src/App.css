@@ -15,6 +15,11 @@
   }
 }
 
+.app-text {
+  color: #563861 !important;
+  font-family: 'Courier New', Courier, monospace !important;
+}
+
 /* ---------- Navbar ---------- */
 .navbar {
   width: 100%;
@@ -23,16 +28,19 @@
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 100;
+  z-index: 10000;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   font-family: 'Courier New', Courier, monospace;
   padding: 2rem 0 0 0;
 }
+
+/* Use symmetric, shrinking gutters via padding instead of margins */
 .navbar-row {
   display: flex;
-  margin-left: clamp(0.5rem, 12vw, 15rem);
-  margin-right: clamp(0.5rem, 12vw, 15rem);
+  margin-inline: 0;
+  padding-inline: clamp(0.5rem, 15vw, 25rem);
 }
+
 .navbar-row-top {
   justify-content: space-between;
   align-items: center;
@@ -41,6 +49,7 @@
   gap: 1rem;
   position: relative;
 }
+
 .navbar-search {
   padding: 0.5rem 1.5rem;
   border-radius: 10px;
@@ -55,20 +64,30 @@
   height: 2rem;
 }
 .navbar-search:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
 .navbar-row-bottom {
   justify-content: space-evenly;
   gap: 2.5rem;
   padding-bottom: 0.75rem;
   border-bottom: 1px solid #d1b2c7;
 }
+
 .navbar-left, .navbar-right {
   display: flex;
   align-items: center;
   gap: 1rem;
   width: 20rem;
 }
-.navbar-right { justify-content: right; }
-.navbar-logo { width: 100px; height: 100px; object-fit: contain; margin-right: 0.5rem; }
+
+/* Remove one-sided outer margins so gutters stay symmetric */
+.navbar-left { margin-left: 0; justify-content: left; }
+.navbar-right { justify-content: right; margin-right: 0; padding-right: 0; }
+
+.navbar-logo { 
+  width: 100px; 
+  height: 100px;
+  object-fit: contain;
+}
 .navbar-title {
   font-size: 1.7rem; font-weight: bold; letter-spacing: 2px; color: #563861; margin-right: 1.5rem;
 }
@@ -87,93 +106,109 @@
 /* ---------- Page background ---------- */
 /* was: position:absolute; z-index:-1; */
 #background {
-  position: absolute;     /* or: static */
+  position: absolute;
   top: 0; left: 0; right: 0;
   min-height: 100vh;
   width: 100%;
-  z-index: auto;          /* ← no negative z-index */
+  z-index: auto;
   background: #E4E0BE;
 }
 
 /* ---------- 3-column layout (flex) ---------- */
 .content-box {
   margin-top: 12rem;
-  padding: 2rem;
+
+  /* Symmetric gutters that shrink together before content */
+  margin-inline: 0;
+  padding-block: 2rem;
+  padding-inline: clamp(0.5rem, 15vw, 25rem);
+
   font-size: 1.5rem;
   text-align: center;
-
-  margin-left: clamp(0.5rem, 12vw, 15rem);
-  margin-right: clamp(0.5rem, 12vw, 15rem);
-
   display: flex;
   align-items: flex-start;
-  gap: 1rem;                 /* ← use gap instead of column margins */
+  gap: 1rem;                 /* use gap instead of column margins */
   position: relative;
-
   min-height: calc(100vh - 8rem);
   box-sizing: border-box;
 }
 
 /* Columns */
+/* Let sidebars shrink (so center isn't crushed first) */
 .left-bar {
-  flex: 0 0 clamp(220px, 17vw, 260px);  /* fixed basis, no overlap */
+  flex: 0 1 clamp(220px, 17vw, 260px);
   box-sizing: border-box;
-  
+  margin-left: 0;            /* no extra outer gutter */
 }
+
 .main-content {
-  flex: 1 1 auto;            /* fill remaining space */
-  min-width: 0;              /* ← IMPORTANT: allow shrink to avoid overflow overlay */
-  background-color: #fff;
+  flex: 1 1 auto;
+  min-width: 360px;          /* protects the center from disappearing */
   box-sizing: border-box;
   margin: 0;                 /* gap handles spacing */
   position: relative;
   z-index: 1;
-  overflow: hidden !important;         /* don’t clip scaled children */
+  overflow: hidden !important;
 }
+
 .right-bar {
-  flex: 0 0 clamp(260px, 20vw, 340px); /* fixed basis */
+  flex: 0 1 clamp(260px, 20vw, 340px);
   box-sizing: border-box;
   position: relative;
-  z-index: 9999;                /* paint above center column */
-  transform: translateZ(0);  /* own layer for reliable hit-testing */
+  transform: translateZ(0);
   pointer-events: auto;
+  margin-right: 0;           /* no extra outer gutter */
 }
 
 /* Center widgets */
 .bracket-area, .forum-area {
   margin-bottom: 1rem;
-  padding: 1rem;
-  background-color: #f9f9f9;
+  padding: 0.5rem;
   border: 2px solid #000000;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-
   position: relative;
-  z-index: 0;                /* never outpaint columns */
+  z-index: 0;
   overflow: visible;
 }
 .bracket-area {
   height: 500px;
   color: #888;
   margin-bottom: 2rem;
+  background-color: #fff;
 }
 .forum-area {
-  height: 1000px;
-  color: #888;
+  color: #563861;
+  border-width: 4px;
+  border-color: #563861;
+  background-color: #A3E0B8;
 }
-
 .forum-post {
   border-bottom: 1px solid #ddd;
   padding: 1rem 0;
   height: 150px;
-  background-color: #A3E0B8;
-
   position: relative;
   z-index: 0;
   overflow: visible;
+  border-width: 3px;
+  border-color: #563861;
 }
 
-
-
-/* --------- Optional Debug: toggle this block to confirm right column wins --------- */
-
+/* ---------- Responsive column stacking (optional, nicer on small screens) ---------- */
+@media (max-width: 1300px) {
+  .content-box {
+    flex-direction: column;
+  }
+  .main-content { 
+    min-width: auto;
+    width: 100%; 
+  }
+  .right-bar {
+    width: 100%;
+    margin-top: 1rem;
+  }
+  .left-bar {
+    width: 100%;
+    margin-bottom: 1rem;  
+  }
+}
