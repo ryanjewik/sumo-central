@@ -1,19 +1,4 @@
-/* ---------- Mobile tweaks ---------- */
-@media (max-width: 768px) {
-  .navbar-row {
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-  }
-  .navbar-row-top, .navbar-row-bottom {
-    justify-content: center;
-  }
-  .navbar-search {
-    margin-right: 0;
-    width: 100%;
-    max-width: 300px;
-  }
-}
+
 
 .app-text {
   color: #563861 !important;
@@ -194,6 +179,63 @@
   border-color: #563861;
 }
 
+
+.highlighted-match-stats {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    gap: 0.3rem;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+}
+.highlighted-match-vs-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 2.5rem;
+    justify-content: center;
+    width: auto;
+}
+/* Highlighted match responsive layout fix */
+.highlighted-match-flex-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: 2rem;
+}
+.rikishi-img {
+  width: 120px;
+  height: 160px;
+  border-radius: 18px;
+  border: 3px solid #388eec;
+  object-fit: cover;
+  background: #fff;
+}
+.rikishi-img.east {
+  border-color: #d32f2f;
+}
+.vs-text {
+  font-weight: bold;
+  font-size: 2.5rem;
+  color: #563861;
+  margin: 0 0.5rem;
+}
+
+
+@media (max-width: 2300px) {
+  .highlighted-match-vs-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.5rem;
+    justify-content: center;
+    width: auto;
+  }
+}
+
 /* ---------- Responsive column stacking (optional, nicer on small screens) ---------- */
 @media (max-width: 1300px) {
   .content-box {
@@ -210,5 +252,44 @@
   .left-bar {
     width: 100%;
     margin-bottom: 1rem;  
+  }
+  .highlighted-match-vs-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 2.5rem;
+    justify-content: center;
+    width: auto;
+  }
+}
+
+
+
+@media (max-width: 900px) {
+  .highlighted-match-vs-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.5rem;
+    justify-content: center;
+    width: auto;
+  }
+  .rikishi-img {
+    width: 80px !important;
+    height: 110px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+  }
+}
+/* ---------- Mobile tweaks ---------- */
+@media (max-width: 768px) {
+
+  .navbar-row-top, .navbar-row-bottom {
+    justify-content: center;
+  }
+  .navbar-search {
+    margin-right: 0;
+    width: 100%;
+    max-width: 300px;
   }
 }

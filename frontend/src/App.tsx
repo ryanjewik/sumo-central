@@ -167,37 +167,47 @@ function App() {
               width: '100%',
               maxWidth: '100%',
             }}>
-              <h2 style={{ fontSize: '2rem', fontWeight: 'bold', color: '#563861', marginBottom: '1.5rem' }}>Highlighted Match</h2>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', gap: '2rem' }}>
-                {/* West Rikishi Stats (left) */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flex: 1, gap: '0.3rem' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#388eec' }}>Hoshoryu</div>
-                  <div style={{ fontSize: '1rem', color: '#388eec' }}>Sekiwake</div>
-                  <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Age: 25</div>
-                  <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Height: 187cm</div>
-                  <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Weight: 155kg</div>
-                  <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Shushin: Mongolia</div>
-                  <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Heya: Tatsunami</div>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#388eec', marginTop: '0.5rem' }}>120 votes</div>
+              <h2 style={{ fontSize: '2rem', fontWeight: 'bold', color: '#563861', marginBottom: '1.5rem' }}>
+                Highlighted Match
+              </h2>
+
+              <div className="highlighted-match-flex-group">
+                {/* Left: WEST stats only */}
+                <div className="highlighted-match-profile-group">
+                  <div className="highlighted-match-stats west">
+                    <div style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#388eec' }}>Hoshoryu</div>
+                    <div style={{ fontSize: '1rem', color: '#388eec' }}>Sekiwake</div>
+                    <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Age: 25</div>
+                    <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Height: 187cm</div>
+                    <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Weight: 155kg</div>
+                    <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Shushin: Mongolia</div>
+                    <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Heya: Tatsunami</div>
+                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#388eec', marginTop: '0.5rem' }}>120 votes</div>
+                  </div>
                 </div>
-                {/* Images and VS (center) */}
-                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '2.5rem' }}>
-                  <img src="/sumo_logo.png" alt="West Rikishi" style={{ width: 120, height: 160, borderRadius: '18px', border: '3px solid #388eec', objectFit: 'cover', background: '#fff' }} />
-                  <div style={{ fontWeight: 'bold', fontSize: '2.5rem', color: '#563861', margin: '0 0.5rem' }}>VS</div>
-                  <img src="/sumo_logo.png" alt="East Rikishi" style={{ width: 120, height: 160, borderRadius: '18px', border: '3px solid #d32f2f', objectFit: 'cover', background: '#fff' }} />
+
+                {/* Center: BOTH images + VS (this is what we’ll stack early) */}
+                <div className="highlighted-match-vs-group">
+                  <img src="/sumo_logo.png" alt="West Rikishi" className="rikishi-img west" />
+                  <div className="vs-text">VS</div>
+                  <img src="/sumo_logo.png" alt="East Rikishi" className="rikishi-img east" />
                 </div>
-                {/* East Rikishi Stats (right) */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: 1, gap: '0.3rem' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#d32f2f' }}>Takakeisho</div>
-                  <div style={{ fontSize: '1rem', color: '#d32f2f' }}>Ozeki</div>
-                  <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Age: 28</div>
-                  <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Height: 175cm</div>
-                  <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Weight: 169kg</div>
-                  <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Shushin: Hyogo</div>
-                  <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Heya: Tokiwayama</div>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#d32f2f', marginTop: '0.5rem' }}>120 votes</div>
+
+                {/* Right: EAST stats only */}
+                <div className="highlighted-match-profile-group">
+                  <div className="highlighted-match-stats east">
+                    <div style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#d32f2f' }}>Takakeisho</div>
+                    <div style={{ fontSize: '1rem', color: '#d32f2f' }}>Ozeki</div>
+                    <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Age: 28</div>
+                    <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Height: 175cm</div>
+                    <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Weight: 169kg</div>
+                    <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Shushin: Hyogo</div>
+                    <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Heya: Tokiwayama</div>
+                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#d32f2f', marginTop: '0.5rem' }}>120 votes</div>
+                  </div>
                 </div>
               </div>
+
               {/* Progress Bar */}
               <div style={{ width: '100%', marginTop: '2rem', display: 'flex', justifyContent: 'center' }}>
                 <div style={{ width: '80%', maxWidth: 600 }}>
