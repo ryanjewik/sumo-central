@@ -62,7 +62,13 @@ export function RikishiTable() {
         <TableCard.Header title="Top Rikishi" description="Makuuchi Division" className="bg-[#A3E0B8] font-extrabold text-[1.35rem]" />
         <Table aria-label="Top Rikishi Table" selectionMode="none" className="w-full">
           <Table.Header columns={columns}>
-            {(column) => <Table.Head key={column.id} label={column.label} />}
+            {(column) => (
+              <Table.Head
+                key={column.id}
+                label={column.label}
+                {...(columns.findIndex((c) => c.id === column.id) === 0 ? { isRowHeader: true } : {})}
+              />
+            )}
           </Table.Header>
           <Table.Body items={data}>
             {(item) => (
