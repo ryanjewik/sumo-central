@@ -1,0 +1,23 @@
+.modern-navbar-link {
+  border-radius: 0.7rem;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.25s, border-radius 0.25s;
+}
+.modern-navbar-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #e0a3c2 0%, #563861 100%);
+  transition: width 0.35s cubic-bezier(0.77,0,0.175,1);
+}
+.modern-navbar-link:hover {
+  background: rgba(224,163,194,0.13);
+  border-radius: 0.7rem;
+}
+.modern-navbar-link:hover::after {
+  width: 100%;
+}

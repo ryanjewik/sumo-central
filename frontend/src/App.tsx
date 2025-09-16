@@ -3,21 +3,19 @@ import './App.css'
 import './styles/globals.css'
 //import { TableCard, Table } from './components/application/table/table';
 import { RikishiTable } from './components/application/rikishi_table';
-import { Button } from "./components/base/buttons/button";
 import KimariteRadarChart from "./components/application/charts/KimariteRadarChart";
-import RikishiWinLossSparkline from './components/sparkline';
+import ClimbingRikishiCard from './components/ClimbingRikishiCard';
 import { ChartBarInteractive } from './components/heya_bar_chart';
 import { ShusshinHeatMapCard } from './components/ShusshinHeatMapCard';
 import SearchBar from './components/searchbar';
 import RecentMatchesList from './components/recent_matches_list';
 import NavbarSelection from './components/horizontal_list';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-
-
+import ForumSection from './components/ForumSection';
+import HighlightedRikishiCard from './components/HighlightedRikishiCard';
+import HighlightedMatchCard from './components/HighlightedMatchCard';
+import SumoTicketsCard from './components/SumoTicketsCard';
 function App() {
-  //const [count, setCount] = useState(0)
-    // Animation state for navbar
+  // Animation state for navbar
   const [navbarVisible, setNavbarVisible] = useState(false);
   const [searchBarVisible, setSearchBarVisible] = useState(false);
   const [sideBarsVisible, setSideBarsVisible] = useState(false);
@@ -129,7 +127,7 @@ function App() {
         </div>
       </nav>
       <div id="background">
-        <div className="content-box">
+        <div className="content-box" style={{ marginTop: '13rem' }}>
           <div
             className="left-bar"
             style={{
@@ -141,13 +139,15 @@ function App() {
               transition: 'transform 1.1s cubic-bezier(0.77,0,0.175,1), opacity 1.1s cubic-bezier(0.77,0,0.175,1)',
             }}
           >
+            {/* Highlighted Rikishi Card */}
+            <HighlightedRikishiCard />
+            {/* End Highlighted Rikishi Card */}
             <div style={{ flex: 1, paddingBottom: '1rem' }}>
                 <RikishiTable />
             </div>
             <div style={{ flex: 1, gap: '1rem', display: 'flex', flexDirection: 'column' }}>
               <KimariteRadarChart />
             </div>
-            <div style={{ flex: 1, backgroundColor: 'red' }}>train</div>
           </div>
           <div
             className="main-content app-text"
@@ -156,85 +156,8 @@ function App() {
               transition: 'opacity 1.1s cubic-bezier(0.77,0,0.175,1)',
             }}
           >
-            <div className="highlighted-match-area" style={{
-              background: '#A3E0B8',
-              borderRadius: '1rem',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-              padding: '2rem',
-              marginBottom: '2rem',
-              border: '4px solid #563861',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              minWidth: 320,
-              width: '100%',
-              maxWidth: '100%',
-            }}>
-              <h2 style={{ fontSize: '2rem', fontWeight: 'bold', color: '#563861', marginBottom: '1.5rem' }}>
-                Highlighted Match
-              </h2>
+            <HighlightedMatchCard />
 
-              <div className="highlighted-match-flex-group">
-                {/* Left: WEST stats only */}
-                <div className="highlighted-match-profile-group">
-                  <div className="highlighted-match-stats west">
-                    <div style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#388eec' }}>Hoshoryu</div>
-                    <div style={{ fontSize: '1rem', color: '#388eec' }}>Sekiwake</div>
-                    <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Age: 25</div>
-                    <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Height: 187cm</div>
-                    <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Weight: 155kg</div>
-                    <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Shushin: Mongolia</div>
-                    <div style={{ fontSize: '0.95rem', color: '#388eec' }}>Heya: Tatsunami</div>
-                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#388eec', marginTop: '0.5rem' }}>120 votes</div>
-                  </div>
-                </div>
-
-                {/* Center: BOTH images + VS (this is what we’ll stack early) */}
-                <div className="highlighted-match-vs-group">
-                  <img src="/sumo_logo.png" alt="West Rikishi" className="rikishi-img west" />
-                  <div className="vs-text">VS</div>
-                  <img src="/sumo_logo.png" alt="East Rikishi" className="rikishi-img east" />
-                </div>
-
-                {/* Right: EAST stats only */}
-                <div className="highlighted-match-profile-group">
-                  <div className="highlighted-match-stats east">
-                    <div style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#d32f2f' }}>Takakeisho</div>
-                    <div style={{ fontSize: '1rem', color: '#d32f2f' }}>Ozeki</div>
-                    <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Age: 28</div>
-                    <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Height: 175cm</div>
-                    <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Weight: 169kg</div>
-                    <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Shushin: Hyogo</div>
-                    <div style={{ fontSize: '0.95rem', color: '#d32f2f' }}>Heya: Tokiwayama</div>
-                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#d32f2f', marginTop: '0.5rem' }}>120 votes</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div style={{ width: '100%', marginTop: '2rem', display: 'flex', justifyContent: 'center' }}>
-                <div style={{ width: '80%', maxWidth: 600 }}>
-                  {/* Calculate percentage for west rikishi */}
-                  {(() => {
-                    const westVotes = 120;
-                    const eastVotes = 120;
-                    const totalVotes = westVotes + eastVotes;
-                    const westPercent = Math.round((westVotes / totalVotes) * 100);
-                    const eastPercent = 100 - westPercent;
-                    return (
-                      <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                        <span style={{ fontWeight: 'bold', color: '#388e3c', minWidth: 40, textAlign: 'right', marginRight: 8 }}>{westPercent}%</span>
-                        <div style={{ flex: 1, height: 18, background: '#F5E6C8', borderRadius: '0.75rem', position: 'relative', display: 'flex', overflow: 'hidden' }}>
-                          <div style={{ background: '#388eec', width: `${westPercent}%`, height: '100%', borderRadius: '0.75rem 0 0 0.75rem' }}></div>
-                          <div style={{ background: '#d32f2f', width: `${eastPercent}%`, height: '100%', borderRadius: '0 0.75rem 0.75rem 0' }}></div>
-                        </div>
-                        <span style={{ fontWeight: 'bold', color: '#d32f2f', minWidth: 40, textAlign: 'left', marginLeft: 8 }}>{eastPercent}%</span>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
             {/* Dashboard Section: Climbing Rikishi */}
 
             <div className="dashboard-section-wrapper" style={{
@@ -272,106 +195,10 @@ function App() {
                     maxWidth: 220,
                     width: '100%',
                     flex: 1,
-                    alignSelf: 'stretch',      // ensure full height
+                    alignSelf: 'stretch',
                   }}
                 >
-                  <div
-                    className="climbing-rikishi-card"
-                    style={{
-                      background: '#F5E6C8',
-                      borderRadius: '1rem',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                      border: '2px solid #563861',
-                      padding: '1.2rem 1rem',
-                      minWidth: 170,
-                      maxWidth: 220,
-                      width: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '1.5rem',
-                      height: '100%',
-                      flex: 1,
-                    }}
-                  >
-                    {/* ... keep your existing climbing rikishi content ... */}
-                    <div style={{ width: '100%', marginBottom: '0.5rem' }}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          fontWeight: 'bold',
-                          fontSize: '1.1rem',
-                          color: '#fff',
-                          background: '#563861',
-                          borderRadius: '0.5rem',
-                          padding: '0.25rem 1rem',
-                          letterSpacing: '0.05em',
-                          margin: '0 auto',
-                        }}
-                      >
-                        Climbing Rikishi
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '1.2rem',
-                        width: '100%',
-                        justifyContent: 'center',
-                        flex: 1,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: '0.4rem',
-                          minWidth: 90,
-                        }}
-                      >
-                        <img
-                          src="/sumo_logo.png"
-                          alt="Rikishi Profile"
-                          style={{
-                            width: 70,
-                            height: 70,
-                            borderRadius: '50%',
-                            border: '3px solid #388eec',
-                            background: '#fff',
-                          }}
-                        />
-                        <div
-                          style={{
-                            fontWeight: 'bold',
-                            fontSize: '1.15rem',
-                            color: '#563861',
-                            textAlign: 'center',
-                          }}
-                        >
-                          Kotonowaka
-                        </div>
-                        <div style={{ fontSize: '0.95rem', color: '#388eec', textAlign: 'center' }}>
-                          Komusubi
-                        </div>
-                        {/* Rikishi Stats removed */}
-                      </div>
-                      <div
-                        style={{
-                          minWidth: 120,
-                          maxWidth: 180,
-                          flex: 1,
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <RikishiWinLossSparkline />
-                      </div>
-                    </div>
-                  </div>
+                  <ClimbingRikishiCard />
                 </div>
 
                 {/* Right: stats row (two cards) + heya card spanning full width below */}
@@ -403,6 +230,14 @@ function App() {
                       flexDirection: 'column',
                       alignItems: 'center',
                       gap: '1rem',
+                      transition: 'box-shadow 0.18s',
+                      cursor: 'pointer',
+                    }}
+                    onMouseOver={e => {
+                      (e.currentTarget as HTMLElement).style.boxShadow = '0 16px 48px 0 rgba(86,56,97,0.32), 0 2px 16px 0 rgba(224,163,194,0.18)';
+                    }}
+                    onMouseOut={e => {
+                      (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
                     }}
                   >
                     <span
@@ -440,6 +275,14 @@ function App() {
                       flexDirection: 'column',
                       alignItems: 'center',
                       gap: '1rem',
+                      transition: 'box-shadow 0.18s',
+                      cursor: 'pointer',
+                    }}
+                    onMouseOver={e => {
+                      (e.currentTarget as HTMLElement).style.boxShadow = '0 16px 48px 0 rgba(86,56,97,0.32), 0 2px 16px 0 rgba(224,163,194,0.18)';
+                    }}
+                    onMouseOut={e => {
+                      (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
                     }}
                   >
                     <span
@@ -474,6 +317,14 @@ function App() {
                       display: 'flex',
                       flexDirection: 'column',
                       height: '100%',              // fills remaining height of the right column
+                      transition: 'box-shadow 0.18s',
+                      cursor: 'pointer',
+                    }}
+                    onMouseOver={e => {
+                      (e.currentTarget as HTMLElement).style.boxShadow = '0 16px 48px 0 rgba(86,56,97,0.32), 0 2px 16px 0 rgba(224,163,194,0.18)';
+                    }}
+                    onMouseOut={e => {
+                      (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
                     }}
                   >
                     <span
@@ -503,63 +354,30 @@ function App() {
               </div>
 
               {/* Shusshin Heat Map Card Below the Heya Bar Chart */}
-              <div style={{ width: '100%', maxWidth: 900 }}>
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: 900,
+                  background: '#F5E6C8',
+                  borderRadius: '1rem',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  border: '2px solid #563861',
+                  padding: '0.8rem 1rem',
+                  transition: 'box-shadow 0.18s',
+                  cursor: 'pointer',
+                }}
+                onMouseOver={e => {
+                  (e.currentTarget as HTMLElement).style.boxShadow = '0 16px 48px 0 rgba(86,56,97,0.32), 0 2px 16px 0 rgba(224,163,194,0.18)';
+                }}
+                onMouseOut={e => {
+                  (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
+                }}
+              >
                 <ShusshinHeatMapCard />
               </div>
             </div>
 
-            <div className="forum-area">
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#563861' }}>Trending Forum Discussions</h2>
-              {sampleForumPosts.map(post => (
-                <a
-                  key={post.id}
-                  href={"/forum/" + post.id}
-                  className="forum-post"
-                  style={{
-                    display: 'block',
-                    marginBottom: '1rem',
-                    padding: '1rem',
-                    background: '#E4E0BE',
-                    borderRadius: '8px',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                    textDecoration: 'none',
-                    color: 'inherit',
-                    transition: 'box-shadow 0.15s, transform 0.15s',
-                  }}
-                  onClick={e => {
-                    // Prevent default for now if you want to handle navigation in React Router
-                    // e.preventDefault();
-                  }}
-                  onMouseOver={e => {
-                    (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(86,56,97,0.15)';
-                    (e.currentTarget as HTMLElement).style.transform = 'scale(1.02)';
-                  }}
-                  onMouseOut={e => {
-                    (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
-                    (e.currentTarget as HTMLElement).style.transform = 'none';
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'left' }}>{post.title}</div>
-                      <div style={{ fontSize: '0.95rem', color: '#555', marginBottom: '0.5rem', textAlign: 'left' }}>By {post.author}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                      <span style={{ color: '#388e3c', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
-                        <ArrowUpwardIcon fontSize="small" style={{ marginRight: '0.25rem' }} />{post.upvotes}
-                      </span>
-                      <span style={{ color: '#d32f2f', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
-                        <ArrowDownwardIcon fontSize="small" style={{ marginRight: '0.25rem' }} />{post.downvotes}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: '0.5rem', color: '#563861', fontSize: '1rem', textAlign: 'left' }}>{post.body}</div>
-                  <div style={{ fontSize: '0.9rem', color: '#555', textAlign: 'right' }}>
-                    {post.date_created}
-                  </div>
-                </a>
-              ))}
-            </div>
+            <ForumSection posts={sampleForumPosts} />
           </div>
           <div
             className="right-bar"
@@ -573,12 +391,12 @@ function App() {
             }}
           >
             <RecentMatchesList />
-            
+            <SumoTicketsCard />
           </div>
         </div>
       </div>
     </>
-  )
+  );
 }
 
 export default App

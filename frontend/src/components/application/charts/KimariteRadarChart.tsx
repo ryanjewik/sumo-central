@@ -110,7 +110,6 @@ const KimariteRadarChart: React.FC = () => {
     const mainTextColor = '#563861';
     const axisTextColor = '#563861';
 
-    const purple = '#563861';
     return (
         <div
             className="rounded-xl shadow-lg p-4 flex flex-col items-center justify-center app-text"
@@ -188,70 +187,75 @@ const KimariteRadarChart: React.FC = () => {
                             style: { transform: "translateZ(0)" },
                         }}
                     />
-                    {/* All Radar lines use purple for stroke and fill */}
                     <Radar
                         isAnimationActive={false}
+                        className={colors["Hoshoryu"]}
                         dataKey="Hoshoryu"
                         name="Hoshoryu"
-                        stroke={purple}
+                        stroke="currentColor"
                         strokeWidth={2}
                         strokeLinejoin="round"
-                        fill={purple}
+                        fill="currentColor"
                         fillOpacity={0.2}
                         activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
                     />
                     <Radar
                         isAnimationActive={false}
+                        className={colors["Terunofuji"]}
                         dataKey="Terunofuji"
                         name="Terunofuji"
-                        stroke={purple}
+                        stroke="currentColor"
                         strokeWidth={2}
                         strokeLinejoin="round"
-                        fill={purple}
+                        fill="currentColor"
                         fillOpacity={0.2}
                         activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
                     />
                     <Radar
                         isAnimationActive={false}
+                        className={colors["Takakeisho"]}
                         dataKey="Takakeisho"
                         name="Takakeisho"
-                        stroke={purple}
+                        stroke="currentColor"
                         strokeWidth={2}
                         strokeLinejoin="round"
-                        fill={purple}
+                        fill="currentColor"
                         fillOpacity={0.2}
                         activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
                     />
                     <Radar
                         isAnimationActive={false}
+                        className={colors["Asanoyama"]}
                         dataKey="Asanoyama"
                         name="Asanoyama"
-                        stroke={purple}
+                        stroke="currentColor"
                         strokeWidth={2}
                         strokeLinejoin="round"
-                        fill={purple}
+                        fill="currentColor"
                         fillOpacity={0.2}
                         activeDot={{ className: "fill-bg-primary stroke-utility-green-500 stroke-2" }}
                     />
                     <Radar
                         isAnimationActive={false}
+                        className={colors["Wakatakakage"]}
                         dataKey="Wakatakakage"
                         name="Wakatakakage"
-                        stroke={purple}
+                        stroke="currentColor"
                         strokeWidth={2}
                         strokeLinejoin="round"
-                        fill={purple}
+                        fill="currentColor"
                         fillOpacity={0.2}
                         activeDot={{ className: "fill-bg-primary stroke-utility-orange-500 stroke-2" }}
                     />
                     <Radar
                         isAnimationActive={false}
+                        className={colors["Shodai"]}
                         dataKey="Shodai"
                         name="Shodai"
-                        stroke={purple}
+                        stroke="currentColor"
                         strokeWidth={2}
                         strokeLinejoin="round"
-                        fill={purple}
+                        fill="currentColor"
                         fillOpacity={0.2}
                         activeDot={{ className: "fill-bg-primary stroke-utility-purple-500 stroke-2" }}
                     />

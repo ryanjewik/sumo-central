@@ -149,7 +149,14 @@ const SumoMenu = React.forwardRef(
               props.onMouseEnter?.(event);
               setAnchorEl(event.currentTarget);
             }}
-            sx={[open && ((theme) => theme.variants.plainHover.neutral)]}
+            sx={[
+              { fontSize: '1.25rem', fontWeight: 500, color: '#563861', borderRadius: '0.75rem', transition: 'background 0.22s, color 0.22s' },
+              open && {
+                background: '#f5e6c8',
+                color: '#563861',
+                borderRadius: '0.75rem',
+              }
+            ]}
           >
             Sumo <KeyboardArrowDown />
           </ListItemButton>
@@ -236,7 +243,35 @@ export default function HorizontalList() {
             role="menuitem"
             component="a"
             href="#horizontal-list"
-            className="text-[#563861] text-[1.1rem] font-medium pb-[2px] border-b-2 border-transparent transition-colors duration-200 hover:border-b-2 hover:border-[#563861]"
+            className="modern-navbar-link"
+            sx={{
+              position: 'relative',
+              color: '#563861',
+              fontSize: '1.25rem',
+              fontWeight: 500,
+              pb: '2px',
+              overflow: 'hidden',
+              borderRadius: '0.75rem',
+              transition: 'background 0.22s, color 0.22s',
+              '::after': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                bottom: 0,
+                width: 0,
+                height: '2px',
+                background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
+                transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
+              },
+              '&:hover::after': {
+                width: '100%',
+              },
+              '&:hover': {
+                color: '#563861',
+                background: '#f5e6c8',
+                borderRadius: '0.75rem',
+              },
+            }}
           >
             Discussions
           </ListItemButton>
@@ -247,7 +282,35 @@ export default function HorizontalList() {
             role="menuitem"
             component="a"
             href="#horizontal-list"
-            className="text-[#563861] text-[1.1rem] font-medium pb-[2px] border-b-2 border-transparent transition-colors duration-200 hover:border-b-2 hover:border-[#563861]"
+            className="modern-navbar-link"
+            sx={{
+              position: 'relative',
+              color: '#563861',
+              fontSize: '1.25rem',
+              fontWeight: 500,
+              pb: '2px',
+              overflow: 'hidden',
+              borderRadius: '0.75rem',
+              transition: 'background 0.22s, color 0.22s',
+              '::after': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                bottom: 0,
+                width: 0,
+                height: '2px',
+                background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
+                transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
+              },
+              '&:hover::after': {
+                width: '100%',
+              },
+              '&:hover': {
+                color: '#563861',
+                background: '#f5e6c8',
+                borderRadius: '0.75rem',
+              },
+            }}
           >
             Brackets
           </ListItemButton>
@@ -258,7 +321,35 @@ export default function HorizontalList() {
             role="menuitem"
             component="a"
             href="#horizontal-list"
-            className="text-[#563861] text-[1.1rem] font-medium pb-[2px] border-b-2 border-transparent transition-colors duration-200 hover:border-b-2 hover:border-[#563861]"
+            className="modern-navbar-link"
+            sx={{
+              position: 'relative',
+              color: '#563861',
+              fontSize: '1.25rem',
+              fontWeight: 500,
+              pb: '2px',
+              overflow: 'hidden',
+              borderRadius: '0.75rem',
+              transition: 'background 0.22s, color 0.22s',
+              '::after': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                bottom: 0,
+                width: 0,
+                height: '2px',
+                background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
+                transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
+              },
+              '&:hover::after': {
+                width: '100%',
+              },
+              '&:hover': {
+                color: '#563861',
+                background: '#f5e6c8',
+                borderRadius: '0.75rem',
+              },
+            }}
           >
             Resources
           </ListItemButton>
@@ -269,7 +360,35 @@ export default function HorizontalList() {
             role="menuitem"
             component="a"
             href="#horizontal-list"
-            className="text-[#563861] text-[1.1rem] font-medium pb-[2px] border-b-2 border-transparent transition-colors duration-200 hover:border-b-2 hover:border-[#563861]"
+            className="modern-navbar-link"
+            sx={{
+              position: 'relative',
+              color: '#563861',
+              fontSize: '1.25rem',
+              fontWeight: 500,
+              pb: '2px',
+              overflow: 'hidden',
+              borderRadius: '0.75rem',
+              transition: 'background 0.22s, color 0.22s',
+              '::after': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                bottom: 0,
+                width: 0,
+                height: '2px',
+                background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
+                transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
+              },
+              '&:hover::after': {
+                width: '100%',
+              },
+              '&:hover': {
+                color: '#563861',
+                background: '#f5e6c8',
+                borderRadius: '0.75rem',
+              },
+            }}
           >
             About
           </ListItemButton>
