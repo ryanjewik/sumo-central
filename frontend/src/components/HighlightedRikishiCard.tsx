@@ -14,6 +14,7 @@ const HighlightedRikishiCard: React.FC = () => (
       alignItems: 'center',
       gap: '0.8rem',
       width: '100%',
+      fontFamily: `'Courier New', Courier, monospace`,
     }}
   >
     <span
@@ -28,6 +29,7 @@ const HighlightedRikishiCard: React.FC = () => (
         letterSpacing: '0.05em',
         marginBottom: '0.5rem',
         alignSelf: 'center',
+        fontFamily: `'Courier New', Courier, monospace`,
       }}
     >
       Highlighted Rikishi
@@ -46,29 +48,29 @@ const HighlightedRikishiCard: React.FC = () => (
           boxShadow: '0 6px 24px rgba(56,142,236,0.18)',
         }}
       />
-      <div style={{ textAlign: 'center', minWidth: 200 }}>
-        <div style={{ fontWeight: 'bold', fontSize: '1.35rem', color: '#563861' }}>Kotonowaka</div>
-        <div style={{ fontSize: '1.1rem', color: '#388eec', marginBottom: 4 }}>Komusubi</div>
-        <div style={{ fontSize: '1.05rem', color: '#563861' }}>Age: 26</div>
-        <div style={{ fontSize: '1.05rem', color: '#563861' }}>Height: 188cm</div>
-        <div style={{ fontSize: '1.05rem', color: '#563861' }}>Weight: 163kg</div>
-        <div style={{ fontSize: '1.05rem', color: '#563861' }}>Heya: Sadogatake</div>
-        <div style={{ fontSize: '1.05rem', color: '#563861' }}>Shusshin: Chiba</div>
-        <div style={{ fontSize: '1.05rem', color: '#388eec', marginTop: 6 }}><b>Wins:</b> 51</div>
-        <div style={{ fontSize: '1.05rem', color: '#d32f2f' }}><b>Losses:</b> 44</div>
+      <div style={{ textAlign: 'center', minWidth: 200, fontFamily: `'Courier New', Courier, monospace` }}>
+        <div style={{ fontWeight: 'bold', fontSize: '1.35rem', color: '#563861', fontFamily: `'Courier New', Courier, monospace` }}>Kotonowaka</div>
+        <div style={{ fontSize: '1.1rem', color: '#388eec', marginBottom: 4, fontFamily: `'Courier New', Courier, monospace` }}>Komusubi</div>
+        <div style={{ fontSize: '1.05rem', color: '#563861', fontFamily: `'Courier New', Courier, monospace` }}>Age: 26</div>
+        <div style={{ fontSize: '1.05rem', color: '#563861', fontFamily: `'Courier New', Courier, monospace` }}>Height: 188cm</div>
+        <div style={{ fontSize: '1.05rem', color: '#563861', fontFamily: `'Courier New', Courier, monospace` }}>Weight: 163kg</div>
+        <div style={{ fontSize: '1.05rem', color: '#563861', fontFamily: `'Courier New', Courier, monospace` }}>Heya: Sadogatake</div>
+        <div style={{ fontSize: '1.05rem', color: '#563861', fontFamily: `'Courier New', Courier, monospace` }}>Shusshin: Chiba</div>
+        <div style={{ fontSize: '1.05rem', color: '#388eec', marginTop: 6, fontFamily: `'Courier New', Courier, monospace` }}><b>Wins:</b> 51</div>
+        <div style={{ fontSize: '1.05rem', color: '#d32f2f', fontFamily: `'Courier New', Courier, monospace` }}><b>Losses:</b> 44</div>
       </div>
     </div>
     {/* Yusho and Special Prizes row below stats */}
-    <div style={{ width: '100%', marginTop: 10, display: 'flex', flexDirection: 'row', gap: 18, justifyContent: 'flex-start' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, color: '#563861', fontSize: '1rem' }}>
-        <span role="img" aria-label="Trophy" style={{ fontSize: 22, color: '#388eec', marginRight: 2 }}>🏆</span>
-        <span style={{ color: '#388eec', fontWeight: 700 }}>1</span>
-        <span style={{ fontSize: '0.95rem', color: '#563861', marginLeft: 2 }}>(Juryo)</span>
+    <div style={{ width: '100%', marginTop: 10, display: 'flex', flexDirection: 'row', gap: 18, justifyContent: 'flex-start', fontFamily: `'Courier New', Courier, monospace` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, color: '#563861', fontSize: '1rem', fontFamily: `'Courier New', Courier, monospace` }}>
+        <span role="img" aria-label="Trophy" style={{ fontSize: 22, color: '#388eec', marginRight: 2, fontFamily: `'Courier New', Courier, monospace` }}>🏆</span>
+        <span style={{ color: '#388eec', fontWeight: 700, fontFamily: `'Courier New', Courier, monospace` }}>1</span>
+        <span style={{ fontSize: '0.95rem', color: '#563861', marginLeft: 2, fontFamily: `'Courier New', Courier, monospace` }}>(Juryo)</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, color: '#563861', fontSize: '1rem' }}>
-        <span role="img" aria-label="Star" style={{ fontSize: 20, color: '#e0a3c2', marginRight: 2 }}>⭐</span>
-        <span style={{ color: '#e0a3c2', fontWeight: 700 }}>2</span>
-        <span style={{ fontSize: '0.95rem', color: '#563861', marginLeft: 2 }}>(Fighting Spirit, Outstanding Performance)</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, color: '#563861', fontSize: '1rem', fontFamily: `'Courier New', Courier, monospace` }}>
+        <span role="img" aria-label="Star" style={{ fontSize: 20, color: '#e0a3c2', marginRight: 2, fontFamily: `'Courier New', Courier, monospace` }}>⭐</span>
+        <span style={{ color: '#e0a3c2', fontWeight: 700, fontFamily: `'Courier New', Courier, monospace` }}>2</span>
+        <span style={{ fontSize: '0.95rem', color: '#563861', marginLeft: 2, fontFamily: `'Courier New', Courier, monospace` }}>(Fighting Spirit, Outstanding Performance)</span>
       </div>
     </div>
   </div>

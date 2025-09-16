@@ -107,14 +107,14 @@ export function ChartBarInteractive() {
   const maxCount = Math.max(...rikishiCounts);
   return (
     <Card
-      className="flex flex-col p-10 gap-1 bg-[#F5E6C8] border-2  rounded-xl shadow w-full"
+      className="flex flex-col gap-1 bg-[#F5E6C8] border-2  rounded-xl shadow w-full"
       style={{ color: '#563861' }}
     >
 
       <div className="w-full">
         <ChartContainer
           config={chartConfig}
-          className="aspect-auto h-[180px] w-full"
+          className="aspect-auto h-full w-full min-h-[180px]"
         >
           <BarChart
             accessibilityLayer

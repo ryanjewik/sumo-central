@@ -6,7 +6,9 @@ import { RikishiTable } from './components/application/rikishi_table';
 import KimariteRadarChart from "./components/application/charts/KimariteRadarChart";
 
 
+
 import LeaderboardTable from "./components/leaderboard_table";
+import LoginDialog from "./components/login_dialog";
 
 
 // Sample leaderboard data (top 10 users)
@@ -35,6 +37,8 @@ import HighlightedMatchCard from './components/HighlightedMatchCard';
 import SumoTicketsCard from './components/SumoTicketsCard';
 import UpcomingMatchesList from './components/upcoming_matches_list';
 function App() {
+  // Login dialog state
+  const [loginOpen, setLoginOpen] = useState(false);
   // Sample upcoming matches data
   // All upcoming matches are on the same day
   const upcomingDate = '2025-09-20';
@@ -173,7 +177,8 @@ function App() {
           </div>
           <div className="navbar-right">
             <button className="navbar-btn">L</button>
-            <button className="navbar-btn">A</button>
+            <button className="navbar-btn" onClick={() => setLoginOpen(true)}>A</button>
+            <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
           </div>
         </div>
         <div className="navbar-row navbar-row-bottom app-text">
@@ -202,6 +207,7 @@ function App() {
             <div style={{ flex: 1, gap: '1rem', display: 'flex', flexDirection: 'column' }}>
               <KimariteRadarChart />
               <LeaderboardTable leaderboard={sampleLeaderboard} />
+              <SumoTicketsCard />
             </div>
           </div>
           <div
@@ -449,7 +455,6 @@ function App() {
               <UpcomingMatchesList matches={sampleUpcomingMatches} date={upcomingDate}/>
             </div>
             <RecentMatchesList date={recentMatchesDate} />
-            <SumoTicketsCard />
           </div>
         </div>
       </div>
