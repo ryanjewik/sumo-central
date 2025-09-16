@@ -7,6 +7,10 @@ import ListItemButton from '@mui/joy/ListItemButton';
 import Typography from '@mui/joy/Typography';
 import { ProgressBar } from "../components/base/progress-indicators/progress-indicators";
 
+interface RecentMatchesListProps {
+  date?: string;
+}
+
 const sampleMatches = [
   { westShikona: 'Hoshoryu', westRank: 'Sekiwake', eastShikona: 'Takakeisho', eastRank: 'Ozeki', winner: 'west' },
   { westShikona: 'Wakatakakage', westRank: 'Komusubi', eastShikona: 'Mitakeumi', eastRank: 'Sekiwake', winner: 'east' },
@@ -30,7 +34,7 @@ const sampleMatches = [
   { westShikona: 'Kotoshogiku', westRank: 'Maegashira 33', eastShikona: 'Sadanoumi', eastRank: 'Maegashira 34', winner: 'west' },
 ];
 
-export default function DividedList() {
+const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date }) => {
   return (
     <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 4 }}>
       <Box
@@ -47,9 +51,14 @@ export default function DividedList() {
           zIndex: 0,
         }}
       >
-        <Typography className="app-text" level="title-lg" sx={{ mb: 2, fontWeight: 1000, fontSize: '1.5rem' }}>
+        <Typography className="app-text" level="title-lg" sx={{ fontWeight: 1000, fontSize: '1.5rem' }}>
           Recent Matches
         </Typography>
+        {date && (
+          <Typography sx={{ color: '#563861', fontWeight: 500, fontSize: '1.08rem', mb: 2 }}>
+            {date}
+          </Typography>
+        )}
 
         <List variant="outlined" sx={{ minWidth: 240, borderRadius: 'sm', p: 0, m: 0 }}>
           {sampleMatches.map((match, idx) => (
@@ -191,3 +200,5 @@ export default function DividedList() {
     </Box>
   );
 }
+
+export default RecentMatchesList;

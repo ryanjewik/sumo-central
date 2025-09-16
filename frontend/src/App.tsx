@@ -4,6 +4,25 @@ import './styles/globals.css'
 //import { TableCard, Table } from './components/application/table/table';
 import { RikishiTable } from './components/application/rikishi_table';
 import KimariteRadarChart from "./components/application/charts/KimariteRadarChart";
+
+
+import LeaderboardTable from "./components/leaderboard_table";
+
+
+// Sample leaderboard data (top 10 users)
+const sampleLeaderboard = [
+  { username: 'sumofan123', correctPredictions: 42 },
+  { username: 'rikishi_enthusiast', correctPredictions: 39 },
+  { username: 'banzukeMaster', correctPredictions: 37 },
+  { username: 'sumoStats', correctPredictions: 35 },
+  { username: 'newbieSumo', correctPredictions: 33 },
+  { username: 'yokozunaFan', correctPredictions: 30 },
+  { username: 'komusubiKid', correctPredictions: 28 },
+  { username: 'heyaHero', correctPredictions: 27 },
+  { username: 'bashoboy', correctPredictions: 25 },
+  { username: 'kimariteKing', correctPredictions: 24 },
+  // ...more users
+];
 import ClimbingRikishiCard from './components/ClimbingRikishiCard';
 import { ChartBarInteractive } from './components/heya_bar_chart';
 import { ShusshinHeatMapCard } from './components/ShusshinHeatMapCard';
@@ -14,7 +33,42 @@ import ForumSection from './components/ForumSection';
 import HighlightedRikishiCard from './components/HighlightedRikishiCard';
 import HighlightedMatchCard from './components/HighlightedMatchCard';
 import SumoTicketsCard from './components/SumoTicketsCard';
+import UpcomingMatchesList from './components/upcoming_matches_list';
 function App() {
+  // Sample upcoming matches data
+  // All upcoming matches are on the same day
+  const upcomingDate = '2025-09-20';
+  const sampleUpcomingMatches = [
+    {
+      id: 1,
+      rikishi1: 'Terunofuji',
+      rikishi2: 'Takakeisho',
+      rikishi1Rank: 'Yokozuna',
+      rikishi2Rank: 'Ozeki',
+      date: upcomingDate,
+      venue: 'Ryogoku Kokugikan',
+    },
+    {
+      id: 2,
+      rikishi1: 'Hoshoryu',
+      rikishi2: 'Wakatakakage',
+      rikishi1Rank: 'Sekiwake',
+      rikishi2Rank: 'Komusubi',
+      date: upcomingDate,
+      venue: 'Ryogoku Kokugikan',
+    },
+    {
+      id: 3,
+      rikishi1: 'Abi',
+      rikishi2: 'Shodai',
+      rikishi1Rank: 'Maegashira 1',
+      rikishi2Rank: 'Maegashira 2',
+      date: upcomingDate,
+      venue: 'Ryogoku Kokugikan',
+    },
+  ];
+  // Previous day for recent matches
+  const recentMatchesDate = '2025-09-19';
   // Animation state for navbar
   const [navbarVisible, setNavbarVisible] = useState(false);
   const [searchBarVisible, setSearchBarVisible] = useState(false);
@@ -147,6 +201,7 @@ function App() {
             </div>
             <div style={{ flex: 1, gap: '1rem', display: 'flex', flexDirection: 'column' }}>
               <KimariteRadarChart />
+              <LeaderboardTable leaderboard={sampleLeaderboard} />
             </div>
           </div>
           <div
@@ -390,7 +445,10 @@ function App() {
               transition: 'transform 1.1s cubic-bezier(0.77,0,0.175,1), opacity 1.1s cubic-bezier(0.77,0,0.175,1)',
             }}
           >
-            <RecentMatchesList />
+            <div style={{ marginBottom: '1.5rem' }}>
+              <UpcomingMatchesList matches={sampleUpcomingMatches} date={upcomingDate}/>
+            </div>
+            <RecentMatchesList date={recentMatchesDate} />
             <SumoTicketsCard />
           </div>
         </div>
