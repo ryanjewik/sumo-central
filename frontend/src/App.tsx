@@ -242,7 +242,7 @@ function App() {
               margin: '2rem 0',
               border: '4px solid #563861',
               borderRadius: '1.2rem',
-              background: '#f9f6ef',
+              background: 'linear-gradient(135deg, #f5e6c8 0%, #e0a3c2 100%)',
               boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
               padding: '2.5rem 1.5rem',
               display: 'flex',
@@ -251,116 +251,257 @@ function App() {
               gap: '2rem',
               flexWrap: 'wrap',
             }}>
-              <div style={{ display: 'flex', flexDirection: 'row', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: 700 }}>
-                {/* Climbing Rikishi Card */}
-                <div className="climbing-rikishi-card" style={{
-                  background: '#F5E6C8',
-                  borderRadius: '1rem',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  border: '2px solid #563861',
-                  padding: '2rem',
-                  minWidth: 220,
-                  maxWidth: 400,
-                  width: '100%',
+              <div
+                style={{
                   display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '1.5rem',
-                }}>
-                  <div style={{ width: '100%', marginBottom: '0.5rem' }}>
-                    <span style={{
-                      display: 'inline-block',
-                      fontWeight: 'bold',
-                      fontSize: '1.1rem',
-                      color: '#fff',
-                      background: '#563861',
-                      borderRadius: '0.5rem',
-                      padding: '0.25rem 1rem',
-                      letterSpacing: '0.05em',
-                      margin: '0 auto',
-                    }}>
-                      Climbing Rikishi
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.75rem', width: '100%', justifyContent: 'center', flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', minWidth: 90 }}>
-                      <img src="/sumo_logo.png" alt="Rikishi Profile" style={{ width: 70, height: 70, borderRadius: '50%', border: '3px solid #388eec', background: '#fff' }} />
-                      <div style={{ fontWeight: 'bold', fontSize: '1.15rem', color: '#563861', textAlign: 'center' }}>Kotonowaka</div>
-                      <div style={{ fontSize: '0.95rem', color: '#388eec', textAlign: 'center' }}>Komusubi</div>
+                  flexDirection: 'row',
+                  gap: '1rem',                 // even gaps
+                  flexWrap: 'wrap',
+                  justifyContent: 'center',
+                  width: '100%',
+                  maxWidth: 900,
+                  alignItems: 'stretch',       // make both columns the same height
+                }}
+              >
+                {/* Left: Climbing Rikishi Card */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minWidth: 170,
+                    maxWidth: 220,
+                    width: '100%',
+                    flex: 1,
+                    alignSelf: 'stretch',      // ensure full height
+                  }}
+                >
+                  <div
+                    className="climbing-rikishi-card"
+                    style={{
+                      background: '#F5E6C8',
+                      borderRadius: '1rem',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                      border: '2px solid #563861',
+                      padding: '1.2rem 1rem',
+                      minWidth: 170,
+                      maxWidth: 220,
+                      width: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '1.5rem',
+                      height: '100%',
+                      flex: 1,
+                    }}
+                  >
+                    {/* ... keep your existing climbing rikishi content ... */}
+                    <div style={{ width: '100%', marginBottom: '0.5rem' }}>
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          fontWeight: 'bold',
+                          fontSize: '1.1rem',
+                          color: '#fff',
+                          background: '#563861',
+                          borderRadius: '0.5rem',
+                          padding: '0.25rem 1rem',
+                          letterSpacing: '0.05em',
+                          margin: '0 auto',
+                        }}
+                      >
+                        Climbing Rikishi
+                      </span>
                     </div>
-                    <div style={{ minWidth: 180, maxWidth: 220, flex: 1 }}>
-                      <RikishiWinLossSparkline />
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '1.2rem',
+                        width: '100%',
+                        justifyContent: 'center',
+                        flex: 1,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          minWidth: 90,
+                        }}
+                      >
+                        <img
+                          src="/sumo_logo.png"
+                          alt="Rikishi Profile"
+                          style={{
+                            width: 70,
+                            height: 70,
+                            borderRadius: '50%',
+                            border: '3px solid #388eec',
+                            background: '#fff',
+                          }}
+                        />
+                        <div
+                          style={{
+                            fontWeight: 'bold',
+                            fontSize: '1.15rem',
+                            color: '#563861',
+                            textAlign: 'center',
+                          }}
+                        >
+                          Kotonowaka
+                        </div>
+                        <div style={{ fontSize: '0.95rem', color: '#388eec', textAlign: 'center' }}>
+                          Komusubi
+                        </div>
+                        {/* Rikishi Stats removed */}
+                      </div>
+                      <div
+                        style={{
+                          minWidth: 120,
+                          maxWidth: 180,
+                          flex: 1,
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <RikishiWinLossSparkline />
+                      </div>
                     </div>
                   </div>
                 </div>
-                {/* Column: Average Weight and Height */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', justifyContent: 'center', minWidth: 180, maxWidth: 250 }}>
-                  {/* Average Rikishi Weight Card */}
-                  <div className="average-weight-card" style={{
-                    background: '#F5E6C8',
-                    borderRadius: '1rem',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                    border: '2px solid #563861',
-                    padding: '1rem 1.2rem',
-                    minWidth: 180,
-                    maxWidth: 250,
-                    width: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '1rem',
-                  }}>
-                    <span style={{
-                      display: 'inline-block',
-                      fontWeight: 'bold',
-                      fontSize: '0.95rem',
-                      color: '#fff',
-                      background: '#563861',
-                      borderRadius: '0.5rem',
-                      padding: '0.18rem 0.7rem',
-                      letterSpacing: '0.05em',
-                      marginBottom: '0.5rem',
-                    }}>
+
+                {/* Right: stats row (two cards) + heya card spanning full width below */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gridTemplateRows: 'auto 1fr', // heya row fills remaining height
+                    gap: '1rem',                  // even gaps everywhere
+                    minWidth: 320,
+                    maxWidth: 650,
+                    flex: 1,
+                    height: '100%',               // match the left column height
+                    alignSelf: 'stretch',
+                  }}
+                >
+                  {/* Average Yusho Weight */}
+                  <div
+                    className="average-weight-card"
+                    style={{
+                      background: '#F5E6C8',
+                      borderRadius: '1rem',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                      border: '2px solid #563861',
+                      padding: '1rem 1.2rem',
+                      minWidth: 0,
+                      width: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '1rem',
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        fontWeight: 'bold',
+                        fontSize: '0.95rem',
+                        color: '#fff',
+                        background: '#563861',
+                        borderRadius: '0.5rem',
+                        padding: '0.18rem 0.7rem',
+                        letterSpacing: '0.05em',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
                       Average Yusho Weight
                     </span>
-                    <span style={{ fontWeight: 600, fontSize: '2rem', color: '#563861', fontFamily: 'inherit' }}>157.42kg</span>
+                    <span style={{ fontWeight: 600, fontSize: '2rem', color: '#563861', fontFamily: 'inherit' }}>
+                      157.42kg
+                    </span>
                   </div>
-                  {/* Average Rikishi Height Card */}
-                  <div className="average-height-card" style={{
-                    background: '#F5E6C8',
-                    borderRadius: '1rem',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                    border: '2px solid #563861',
-                    padding: '1rem 1.2rem',
-                    minWidth: 180,
-                    maxWidth: 250,
-                    width: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '1rem',
-                  }}>
-                    <span style={{
-                      display: 'inline-block',
-                      fontWeight: 'bold',
-                      fontSize: '0.95rem',
-                      color: '#fff',
-                      background: '#563861',
-                      borderRadius: '0.5rem',
-                      padding: '0.18rem 0.7rem',
-                      letterSpacing: '0.05em',
-                      marginBottom: '0.5rem',
-                    }}>
+
+                  {/* Average Yusho Height */}
+                  <div
+                    className="average-height-card"
+                    style={{
+                      background: '#F5E6C8',
+                      borderRadius: '1rem',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                      border: '2px solid #563861',
+                      padding: '1rem 1.2rem',
+                      minWidth: 0,
+                      width: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '1rem',
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        fontWeight: 'bold',
+                        fontSize: '0.95rem',
+                        color: '#fff',
+                        background: '#563861',
+                        borderRadius: '0.5rem',
+                        padding: '0.18rem 0.7rem',
+                        letterSpacing: '0.05em',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
                       Average Yusho Height
                     </span>
-                    <span style={{ fontWeight: 600, fontSize: '2rem', color: '#563861', fontFamily: 'inherit' }}>185.27cm</span>
+                    <span style={{ fontWeight: 600, fontSize: '2rem', color: '#563861', fontFamily: 'inherit' }}>
+                      185.27cm
+                    </span>
+                  </div>
+
+                  {/* Heya Average Rank — spans BOTH columns and fills to the same floor */}
+                  <div
+                    style={{
+                      gridColumn: '1 / span 2',    // full width under the two cards
+                      background: '#F5E6C8',
+                      borderRadius: '1rem',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                      border: '2px solid #563861',
+                      padding: '0.8rem 1rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      height: '100%',              // fills remaining height of the right column
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        fontWeight: 'bold',
+                        fontSize: '0.95rem',
+                        color: '#fff',
+                        background: '#563861',
+                        borderRadius: '0.5rem',
+                        padding: '0.18rem 0.7rem',
+                        letterSpacing: '0.05em',
+                        marginBottom: '0.5rem',
+                        alignSelf: 'flex-start',
+                      }}
+                    >
+                      Heya Average Rank
+                    </span>
+                    <div style={{ flex: 1, display: 'flex' }}>
+                      {/* Let the chart stretch */}
+                      <div style={{ flex: 1, display: 'flex' }}>
+                        <ChartBarInteractive />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-              {/* Heya Bar Chart Below the Row */}
-              <div style={{ width: '100%', maxWidth: 900, marginBottom: '2rem' }}>
-                <ChartBarInteractive />
-              </div>
+
               {/* Shusshin Heat Map Card Below the Heya Bar Chart */}
               <div style={{ width: '100%', maxWidth: 900 }}>
                 <ShusshinHeatMapCard />

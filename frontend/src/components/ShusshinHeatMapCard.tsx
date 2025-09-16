@@ -73,7 +73,14 @@ import countries110m from '../assets/countries-110m.json';
         </span>
       </div>
       <div style={{ width: '100%', height: 320, background: '#f9f6ef', borderRadius: 12, overflow: 'hidden', border: '1px solid #e0a3c2' }}>
-        <ComposableMap projection="geoMercator" projectionConfig={{ scale: 90 }} style={{ width: '100%', height: '100%' }}>
+        <ComposableMap
+          projection="geoMercator"
+          projectionConfig={{
+            scale: 900, // higher = more zoom
+            center: [135, 40] as [Longitude, Latitude] // [longitude, latitude] to focus on Japan/Mongolia
+          }}
+          style={{ width: '100%', height: '100%' }}
+        >
           <Geographies geography={countries110m}>
             {({ geographies }: { geographies: any[] }) =>
               geographies.map((geo: any, idx: number) => (
@@ -99,16 +106,13 @@ import countries110m from '../assets/countries-110m.json';
               <text
                 textAnchor="middle"
                 y={-10 - (m.count / maxCount) * 10}
-                style={{ fontFamily: 'inherit', fontSize: 12, fill: '#563861', fontWeight: 700 }}
+                style={{ fontFamily: 'inherit', fontSize: 20, fill: '#563861', fontWeight: 700 }}
               >
                 {m.count}
               </text>
             </Marker>
           ))}
         </ComposableMap>
-      </div>
-      <div style={{ color: '#888', fontSize: 12, marginTop: 8 }}>
-        (Counts shown as circles; darker/larger = more rikishi)
       </div>
     </Card>
   );

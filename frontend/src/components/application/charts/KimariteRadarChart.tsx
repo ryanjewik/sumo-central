@@ -105,143 +105,160 @@ const KimariteRadarChart: React.FC = () => {
         Shodai: "text-utility-purple-500",
     };
 
-        return (
-            <div className="rounded-xl bg-utility-gray-200 shadow-lg p-4 flex flex-col items-center justify-center app-text" style={{ width: '100%', height: 500, border: '4px solid #563861', backgroundColor: '#323834ff' }}>
-                                <div
-                                    style={{
-                                        fontWeight: 'bold',
-                                        fontSize: 'clamp(1rem, 1.2vw, 1.5rem)',
-                                        marginBottom: '1rem',
-                                        color: '#c3c1c1ff',
-                                        fontFamily: 'Courier New, Courier, monospace',
-                                        whiteSpace: 'nowrap',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        width: '100%',
-                                        textAlign: 'center',
-                                    }}
-                                >
-                                    Top Rikishi Kimarite Usage
-                                </div>
-                <ResponsiveContainer width="100%" height="100%">
-                    <RechartsRadarChart
-                        cx="50%"
-                        cy="50%"
-                        outerRadius="80%"
-                        data={radarData}
-                        className="size-full font-medium text-tertiary [&_.recharts-polar-grid]:text-utility-gray-100 [&_.recharts-text]:text-sm"
-                        margin={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                    >
-                        <Legend
-                            verticalAlign="bottom"
-                            align="center"
-                            layout="horizontal"
-                            content={CustomLegend}
-                        />
-                        <PolarGrid stroke="currentColor" className="text-utility-gray-100" />
-                        <PolarAngleAxis
-                            dataKey="technique"
-                            stroke="currentColor"
-                            tick={({ x, y, textAnchor, index, payload, ...props }) => (
-                                <text
-                                    x={x}
-                                    y={index === 0 ? Number(y) - 14 : index === 3 || index === 4 ? Number(y) + 10 : Number(y)}
-                                    textAnchor={textAnchor}
-                                    {...props}
-                                    className={cx("recharts-text recharts-polar-angle-axis-tick-value", props.className)}
-                                >
-                                    <tspan dy="0em" className="text-[#c3c1c1ff] text-xs font-medium">
-                                        {payload.value}
-                                    </tspan>
-                                </text>
-                            )}
-                            tickLine={false}
-                            axisLine={false}
-                        />
-                        <PolarRadiusAxis textAnchor="middle" tick={(props) => <CustomRadarChartTick {...props} />} axisLine={false} angle={90} domain={[0, 20]} />
-                        <Tooltip
-                            content={<ChartTooltipContent />}
-                            cursor={{
-                                className: "stroke-utility-brand-600  stroke-2",
-                                style: { transform: "translateZ(0)" },
-                            }}
-                        />
-                        <Radar
-                            isAnimationActive={false}
-                            className={colors["Hoshoryu"]}
-                            dataKey="Hoshoryu"
-                            name="Hoshoryu"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                            strokeLinejoin="round"
-                            fill="currentColor"
-                            fillOpacity={0.2}
-                            activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
-                        />
-                        <Radar
-                            isAnimationActive={false}
-                            className={colors["Terunofuji"]}
-                            dataKey="Terunofuji"
-                            name="Terunofuji"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                            strokeLinejoin="round"
-                            fill="currentColor"
-                            fillOpacity={0.2}
-                            activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
-                        />
-                        <Radar
-                            isAnimationActive={false}
-                            className={colors["Takakeisho"]}
-                            dataKey="Takakeisho"
-                            name="Takakeisho"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                            strokeLinejoin="round"
-                            fill="currentColor"
-                            fillOpacity={0.2}
-                            activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
-                        />
-                        <Radar
-                            isAnimationActive={false}
-                            className={colors["Asanoyama"]}
-                            dataKey="Asanoyama"
-                            name="Asanoyama"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                            strokeLinejoin="round"
-                            fill="currentColor"
-                            fillOpacity={0.2}
-                            activeDot={{ className: "fill-bg-primary stroke-utility-green-500 stroke-2" }}
-                        />
-                        <Radar
-                            isAnimationActive={false}
-                            className={colors["Wakatakakage"]}
-                            dataKey="Wakatakakage"
-                            name="Wakatakakage"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                            strokeLinejoin="round"
-                            fill="currentColor"
-                            fillOpacity={0.2}
-                            activeDot={{ className: "fill-bg-primary stroke-utility-orange-500 stroke-2" }}
-                        />
-                        <Radar
-                            isAnimationActive={false}
-                            className={colors["Shodai"]}
-                            dataKey="Shodai"
-                            name="Shodai"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                            strokeLinejoin="round"
-                            fill="currentColor"
-                            fillOpacity={0.2}
-                            activeDot={{ className: "fill-bg-primary stroke-utility-purple-500 stroke-2" }}
-                        />
-                    </RechartsRadarChart>
-                </ResponsiveContainer>
+    // Gradient background and font color for contrast
+    const gradientBg = 'linear-gradient(135deg, #f5e6c8 0%, #e0a3c2 100%)';
+    const mainTextColor = '#563861';
+    const axisTextColor = '#563861';
+
+    const purple = '#563861';
+    return (
+        <div
+            className="rounded-xl shadow-lg p-4 flex flex-col items-center justify-center app-text"
+            style={{
+                width: '100%',
+                height: 500,
+                border: '4px solid #563861',
+                background: gradientBg,
+                color: mainTextColor,
+            }}
+        >
+            <div
+                style={{
+                    fontWeight: 'bold',
+                    fontSize: 'clamp(1rem, 1.2vw, 1.5rem)',
+                    marginBottom: '1rem',
+                    color: mainTextColor,
+                    fontFamily: 'Courier New, Courier, monospace',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    width: '100%',
+                    textAlign: 'center',
+                }}
+            >
+                Top Rikishi Kimarite Usage
             </div>
-        );
+            <ResponsiveContainer width="100%" height="100%">
+                <RechartsRadarChart
+                    cx="50%"
+                    cy="50%"
+                    outerRadius="80%"
+                    data={radarData}
+                    className="size-full font-medium text-tertiary [&_.recharts-polar-grid]:text-utility-gray-100 [&_.recharts-text]:text-sm"
+                    margin={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                >
+                    <Legend
+                        verticalAlign="bottom"
+                        align="center"
+                        layout="horizontal"
+                        content={CustomLegend}
+                    />
+                    <PolarGrid stroke="currentColor" className="text-utility-gray-100" />
+                    <PolarAngleAxis
+                        dataKey="technique"
+                        stroke="currentColor"
+                        tick={({ x, y, textAnchor, index, payload, ...props }) => (
+                            <text
+                                x={x}
+                                y={index === 0 ? Number(y) - 14 : index === 3 || index === 4 ? Number(y) + 10 : Number(y)}
+                                textAnchor={textAnchor}
+                                {...props}
+                                className={cx("recharts-text recharts-polar-angle-axis-tick-value", props.className)}
+                                fill={axisTextColor}
+                            >
+                                <tspan dy="0em" style={{ fill: axisTextColor }} className="text-xs font-medium">
+                                    {payload.value}
+                                </tspan>
+                            </text>
+                        )}
+                        tickLine={false}
+                        axisLine={false}
+                    />
+                    <PolarRadiusAxis
+                        textAnchor="middle"
+                        tick={props => <CustomRadarChartTick {...props} fill={axisTextColor} />}
+                        axisLine={false}
+                        angle={90}
+                        domain={[0, 20]}
+                    />
+                    <Tooltip
+                        content={<ChartTooltipContent />}
+                        cursor={{
+                            className: "stroke-utility-brand-600  stroke-2",
+                            style: { transform: "translateZ(0)" },
+                        }}
+                    />
+                    {/* All Radar lines use purple for stroke and fill */}
+                    <Radar
+                        isAnimationActive={false}
+                        dataKey="Hoshoryu"
+                        name="Hoshoryu"
+                        stroke={purple}
+                        strokeWidth={2}
+                        strokeLinejoin="round"
+                        fill={purple}
+                        fillOpacity={0.2}
+                        activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
+                    />
+                    <Radar
+                        isAnimationActive={false}
+                        dataKey="Terunofuji"
+                        name="Terunofuji"
+                        stroke={purple}
+                        strokeWidth={2}
+                        strokeLinejoin="round"
+                        fill={purple}
+                        fillOpacity={0.2}
+                        activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
+                    />
+                    <Radar
+                        isAnimationActive={false}
+                        dataKey="Takakeisho"
+                        name="Takakeisho"
+                        stroke={purple}
+                        strokeWidth={2}
+                        strokeLinejoin="round"
+                        fill={purple}
+                        fillOpacity={0.2}
+                        activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
+                    />
+                    <Radar
+                        isAnimationActive={false}
+                        dataKey="Asanoyama"
+                        name="Asanoyama"
+                        stroke={purple}
+                        strokeWidth={2}
+                        strokeLinejoin="round"
+                        fill={purple}
+                        fillOpacity={0.2}
+                        activeDot={{ className: "fill-bg-primary stroke-utility-green-500 stroke-2" }}
+                    />
+                    <Radar
+                        isAnimationActive={false}
+                        dataKey="Wakatakakage"
+                        name="Wakatakakage"
+                        stroke={purple}
+                        strokeWidth={2}
+                        strokeLinejoin="round"
+                        fill={purple}
+                        fillOpacity={0.2}
+                        activeDot={{ className: "fill-bg-primary stroke-utility-orange-500 stroke-2" }}
+                    />
+                    <Radar
+                        isAnimationActive={false}
+                        dataKey="Shodai"
+                        name="Shodai"
+                        stroke={purple}
+                        strokeWidth={2}
+                        strokeLinejoin="round"
+                        fill={purple}
+                        fillOpacity={0.2}
+                        activeDot={{ className: "fill-bg-primary stroke-utility-purple-500 stroke-2" }}
+                    />
+                </RechartsRadarChart>
+            </ResponsiveContainer>
+        </div>
+    );
 };
 
 export default KimariteRadarChart;

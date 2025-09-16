@@ -107,24 +107,10 @@ export function ChartBarInteractive() {
   const maxCount = Math.max(...rikishiCounts);
   return (
     <Card
-      className="flex flex-col p-3 gap-2 bg-[#F5E6C8] border-2 border-[#563861] rounded-xl shadow"
+      className="flex flex-col p-10 gap-1 bg-[#F5E6C8] border-2  rounded-xl shadow w-full"
       style={{ color: '#563861' }}
     >
-      <div style={{ width: '100%', marginBottom: '0.3rem' }}>
-        <span style={{
-          display: 'inline-block',
-          fontWeight: 'bold',
-          fontSize: '1.05rem',
-          color: '#fff',
-          background: '#563861',
-          borderRadius: '0.5rem',
-          padding: '0.18rem 0.7rem',
-          letterSpacing: '0.05em',
-          margin: '0 auto',
-        }}>
-          Heya Average Rank
-        </span>
-      </div>
+
       <div className="w-full">
         <ChartContainer
           config={chartConfig}
