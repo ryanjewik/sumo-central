@@ -9,11 +9,14 @@ import urllib.parse as ul
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, Tuple, Iterable
 
+from dotenv import load_dotenv
 import requests
 import boto3
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+
+load_dotenv()
 # -----------------------------
 # Configuration via env
 # -----------------------------
@@ -21,6 +24,13 @@ USER_AGENT = os.getenv(
     "SUMO_UA",
     "SumoCentralBot/1.0 (+https://your-site.example; contact@your-email.example)"
 )
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "y", "on")
 
 # Postgres
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -30,8 +40,8 @@ DB_USERNAME = os.getenv("DB_USERNAME", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
 # S3
-S3_BUCKET = os.getenv("S3_BUCKET") or os.getenv("AWS_S3_BUCKET") or ""
-S3_PREFIX = os.getenv("S3_PREFIX") or os.getenv("AWS_S3_PREFIX") or "rikishi_headshots/"
+S3_BUCKET = os.getenv("S3_BUCKET")
+S3_PREFIX = os.getenv("S3_PREFIX")
 AWS_REGION = os.getenv("AWS_REGION") or ""
 
 # Wikimedia OAuth2 (optional—but recommended for api.wikimedia.org)
@@ -40,7 +50,7 @@ WIKIMEDIA_CLIENT_SECRET = os.getenv("WIKIMEDIA_CLIENT_SECRET", "")
 
 # Ingest behavior
 PREFER_FULLRES = False         # False = use thumbnail when available
-SAVE_PUBLIC = True             # put S3 object ACL public-read (adjust for your bucket policy)
+SAVE_PUBLIC = env_bool("SAVE_PUBLIC", False)  # default False since your bucket disables ACLs
 BATCH_LIMIT = int(os.getenv("BATCH_LIMIT", "0"))   # 0 = all rows; else limit for testing
 SLEEP_BETWEEN_ROWS = float(os.getenv("SLEEP_BETWEEN_ROWS", "0.0"))  # extra pause per row (seconds)
 
@@ -399,6 +409,28 @@ def load_shikona_list(limit: int = 0) -> list:
             rows = cur.fetchall()
     return [row["shikona"] for row in rows]
 
+def update_rikishi_image(shikona: str, rec: ImageRecord):
+    q = """
+        UPDATE rikishi
+        SET image_url = %s,
+            commons_source_url = %s,
+            license = %s,
+            license_url = %s,
+            attribution_html = %s
+        WHERE shikona = %s
+    """
+    with pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(q, (
+                rec.s3_url,
+                rec.commons_source_url,
+                rec.license,
+                rec.license_url,
+                rec.attribution_html,
+                shikona,
+            ))
+        conn.commit()
+
 # -----------------------------
 # Runner
 # -----------------------------
@@ -421,6 +453,7 @@ def main():
             if rec and rec.s3_url:
                 success += 1
                 print(f"[{idx}/{total}] OK  {s}  → {rec.s3_url}  (license: {rec.license})")
+                update_rikishi_image
             else:
                 misses += 1
                 tried = ", ".join(variants[:3]) + ("..." if len(variants) > 3 else "")
