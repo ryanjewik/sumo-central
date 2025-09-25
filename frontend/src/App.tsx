@@ -4,27 +4,8 @@ import './styles/globals.css'
 //import { TableCard, Table } from './components/application/table/table';
 import { RikishiTable } from './components/application/rikishi_table';
 import KimariteRadarChart from "./components/application/charts/KimariteRadarChart";
-
-
-
 import LeaderboardTable from "./components/leaderboard_table";
 import LoginDialog from "./components/login_dialog";
-
-
-// Sample leaderboard data (top 10 users)
-const sampleLeaderboard = [
-  { username: 'sumofan123', correctPredictions: 42 },
-  { username: 'rikishi_enthusiast', correctPredictions: 39 },
-  { username: 'banzukeMaster', correctPredictions: 37 },
-  { username: 'sumoStats', correctPredictions: 35 },
-  { username: 'newbieSumo', correctPredictions: 33 },
-  { username: 'yokozunaFan', correctPredictions: 30 },
-  { username: 'komusubiKid', correctPredictions: 28 },
-  { username: 'heyaHero', correctPredictions: 27 },
-  { username: 'bashoboy', correctPredictions: 25 },
-  { username: 'kimariteKing', correctPredictions: 24 },
-  // ...more users
-];
 import ClimbingRikishiCard from './components/ClimbingRikishiCard';
 import { ChartBarInteractive } from './components/heya_bar_chart';
 import { ShusshinHeatMapCard } from './components/ShusshinHeatMapCard';
@@ -36,12 +17,35 @@ import HighlightedRikishiCard from './components/HighlightedRikishiCard';
 import HighlightedMatchCard from './components/HighlightedMatchCard';
 import SumoTicketsCard from './components/SumoTicketsCard';
 import UpcomingMatchesList from './components/upcoming_matches_list';
+
+
+
+
 function App() {
   // Login dialog state
   const [loginOpen, setLoginOpen] = useState(false);
+  // User state (null if not logged in)
+  const [user, setUser] = useState<{ id: string; username: string } | null>(null);
   // Sample upcoming matches data
   // All upcoming matches are on the same day
   const upcomingDate = '2025-09-20';
+
+  // Sample leaderboard data (top 10 users)
+  const sampleLeaderboard = [
+    { username: 'sumofan123', correctPredictions: 42 },
+    { username: 'rikishi_enthusiast', correctPredictions: 39 },
+    { username: 'banzukeMaster', correctPredictions: 37 },
+    { username: 'sumoStats', correctPredictions: 35 },
+    { username: 'newbieSumo', correctPredictions: 33 },
+    { username: 'yokozunaFan', correctPredictions: 30 },
+    { username: 'komusubiKid', correctPredictions: 28 },
+    { username: 'heyaHero', correctPredictions: 27 },
+    { username: 'bashoboy', correctPredictions: 25 },
+    { username: 'kimariteKing', correctPredictions: 24 },
+    // ...more users
+  ];
+
+
   const sampleUpcomingMatches = [
     {
       id: 1,
@@ -177,8 +181,41 @@ function App() {
           </div>
           <div className="navbar-right">
             <button className="navbar-btn">L</button>
-            <button className="navbar-btn" onClick={() => setLoginOpen(true)}>A</button>
-            <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
+            {/* Login/User button with fixed width */}
+            <button
+              className="navbar-btn"
+              style={{
+                minWidth: 100,
+                maxWidth: 120,
+                width: 110,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                display: 'inline-block',
+                justifyContent: 'center',
+                alignItems: 'center',
+                borderRadius: '999px', // pill/rounded rectangle
+                border: '2px solid #563861',
+                background: '#563861',
+                color: '#fff',
+                fontWeight: 600,
+                fontSize: '1rem',
+                fontFamily: 'inherit',
+                transition: 'background 0.18s, color 0.18s',
+              }}
+              onClick={() => {
+                if (!user) setLoginOpen(true);
+              }}
+              disabled={!!user}
+            >
+              {user ? user.username : 'Sign In'}
+            </button>
+            <LoginDialog
+              open={loginOpen}
+              onClose={() => setLoginOpen(false)}
+              // Pass setUser to LoginDialog so it can set user on successful login
+              setUser={setUser}
+            />
           </div>
         </div>
         <div className="navbar-row navbar-row-bottom app-text">

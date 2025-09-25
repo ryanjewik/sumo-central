@@ -21,22 +21,51 @@ const Transition = React.forwardRef(function Transition(
 interface LoginDialogProps {
   open: boolean;
   onClose: () => void;
+  setUser: (user: { id: string; username: string } | null) => void;
 }
 
-const LoginDialog: React.FC<LoginDialogProps> = ({ open, onClose }) => {
+const LoginDialog: React.FC<LoginDialogProps> = ({ open, onClose, setUser }) => {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [registerOpen, setRegisterOpen] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [success, setSuccess] = React.useState(false);
 
   const handleClose = () => {
     setUsername('');
     setPassword('');
+    setError('');
+    setSuccess(false);
     onClose();
   };
 
-  const handleLogin = () => {
-    // Implement login logic here
-    handleClose();
+  const handleLogin = async () => {
+    setError('');
+    setSuccess(false);
+    if (!username || !password) {
+      setError('Please enter both username and password.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (data.success && data.id && data.username) {
+        setSuccess(true);
+        setUser({ id: data.id, username: data.username });
+        setTimeout(() => {
+          setSuccess(false);
+          handleClose();
+        }, 1200);
+      } else {
+        setError(data.error || 'Login failed.');
+      }
+    } catch (err) {
+      setError('Login failed.');
+    }
   };
 
   const handleOpenRegister = () => setRegisterOpen(true);
@@ -77,6 +106,14 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ open, onClose }) => {
         </DialogTitle>
 
         <DialogContent sx={{ pt: 1.5, pb: 0 }}>
+          {success && (
+            <Box sx={{ color: 'green', fontSize: '1.05em', textAlign: 'center', mb: 1 }}>
+              Login successful!
+            </Box>
+          )}
+          {error && (
+            <Box sx={{ color: 'red', fontSize: '0.98em', textAlign: 'center', mb: 1 }}>{error}</Box>
+          )}
           <Box
             component="form"
             sx={{

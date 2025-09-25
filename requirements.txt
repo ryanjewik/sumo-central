@@ -8,3 +8,6 @@ psycopg2
 pathlib
 pymongo[srv]
 tqdm
+flask-cors
+pymongo
+bcrypt

@@ -31,20 +31,59 @@ const RegisterDialog: React.FC<RegisterDialogProps> = ({ open, onClose }) => {
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [error, setError] = React.useState('');
+  const [success, setSuccess] = React.useState(false);
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     // Basic validation
     if (!username || !email || !password || !confirmPassword) {
       setError('Please fill in all fields.');
+      return;
+    }
+    // Email format validation
+    const emailRegex = /^[\w.-]+@[\w.-]+\.\w+$/;
+    if (!emailRegex.test(email)) {
+      setError('Invalid email format.');
+      return;
+    }
+    // Password strength validation
+    if (password.length < 10) {
+      setError('Password must be at least 10 characters.');
+      return;
+    }
+    if (!/[A-Z]/.test(password)) {
+      setError('Password must contain at least one uppercase letter.');
+      return;
+    }
+    if (!/\d/.test(password)) {
+      setError('Password must contain at least one number.');
       return;
     }
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
     }
-    // Registration logic here
     setError('');
-    onClose();
+    setSuccess(false);
+    // Send registration data to backend
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccess(true);
+        setTimeout(() => {
+          setSuccess(false);
+          handleClose();
+        }, 1500);
+      } else {
+        setError(data.error || 'Registration failed.');
+      }
+    } catch (err) {
+      setError('Registration failed.');
+    }
   };
 
   const handleClose = () => {
@@ -53,6 +92,7 @@ const RegisterDialog: React.FC<RegisterDialogProps> = ({ open, onClose }) => {
     setPassword('');
     setConfirmPassword('');
     setError('');
+    setSuccess(false);
     onClose();
   };
 
@@ -87,6 +127,11 @@ const RegisterDialog: React.FC<RegisterDialogProps> = ({ open, onClose }) => {
         </Box>
       </DialogTitle>
       <DialogContent sx={{ pt: 1.5, pb: 0 }}>
+        {success && (
+          <Box sx={{ color: 'green', fontSize: '1.05em', textAlign: 'center', mb: 1 }}>
+            Registration successful!
+          </Box>
+        )}
         <Box
           component="form"
           sx={{
