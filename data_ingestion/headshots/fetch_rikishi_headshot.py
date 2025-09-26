@@ -396,16 +396,21 @@ def pg_conn():
         connect_timeout=10,
     )
 
-def load_shikona_list(limit: int = 0) -> list:
+def load_shikona_list(limit: int = 0, start_from: int = 0) -> list:
     q = "SELECT shikona FROM rikishi WHERE shikona IS NOT NULL"
+    params = []
+    if start_from > 0:
+        q += " OFFSET %s"
+        params.append(start_from)
     if limit and limit > 0:
         q += " LIMIT %s"
-        params = (limit,)
-    else:
-        params = None
+        params.append(limit)
     with pg_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(q, params) if params else cur.execute(q)
+            if params:
+                cur.execute(q, tuple(params))
+            else:
+                cur.execute(q)
             rows = cur.fetchall()
     return [row["shikona"] for row in rows]
 
@@ -437,9 +442,11 @@ def update_rikishi_image(shikona: str, rec: ImageRecord):
 def main():
     if not S3_BUCKET:
         raise SystemExit("S3_BUCKET is required (env).")
-    shikonas = load_shikona_list(BATCH_LIMIT)
+    # Start from 9055th row (0-based offset)
+    START_FROM = 9055
+    shikonas = load_shikona_list(BATCH_LIMIT, start_from=START_FROM)
     total = len(shikonas)
-    print(f"Loaded {total} shikona rows")
+    print(f"Loaded {total} shikona rows (starting from {START_FROM})")
 
     success = 0
     misses = 0
