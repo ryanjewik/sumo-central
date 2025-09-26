@@ -3,4 +3,4 @@ venv
 downloaded_s3/
 node_modules
 secerts.txt
-.ipynb_checkpoints/
+**/.ipynb_checkpoints/
