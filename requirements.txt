@@ -11,3 +11,10 @@ tqdm
 flask-cors
 pymongo
 bcrypt
+jupyter
+ipykernel
+pyspark
+numpy
+matplotlib
+seaborn
+pandas
