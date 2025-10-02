@@ -1,31 +1,40 @@
-version: "3.9"
-
 services:
-  airflow-webserver:
-    build: .                         # Dockerfile in this folder (installs Spark + providers)
-    image: my-airflow-spark:3.1.0
-    user: "0"                        # helps with Windows volume perms
-    command: api-server              # Airflow 3.x UI/API
-    ports:
-      - "8081:8080"                  # open UI at http://localhost:8081
+  postgres:
+    image: postgres:15-alpine
     environment:
-      # ---- Core (stable single-process for SQLite) ----
-      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
-      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
-      # ---- Auth (FAB) ----
+  airflow-webserver:
+    build: .
+    image: my-airflow-spark:3.1.0
+    user: "0"
+    command: api-server
+    ports:
+      - "8081:8080"
+    environment:
+      # --- Core (LocalExecutor + Postgres) ---
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+
+      # --- Auth (FAB) ---
       AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       AIRFLOW__WEBSERVER__AUTHENTICATE: "True"
-
-      # ---- Spark connection (local mode) ----
-      AIRFLOW_CONN_SPARK_DEFAULT: >
-        {"conn_type":"spark",
-         "extra":{
-           "master":"local[*]",
-           "deploy_mode":"client",
-           "spark_binary":"/opt/spark/bin/spark-submit"
-         }}
+      SPARK_HOME: /opt/spark
+      # (optional) ensure PySpark uses python3
+      PYSPARK_PYTHON: python3
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./dags:/opt/airflow/dags
       - ./plugins:/opt/airflow/plugins
@@ -36,16 +45,15 @@ services:
     user: "0"
     command: scheduler
     environment:
-      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
-      AIRFLOW_CONN_SPARK_DEFAULT: >
-        {"conn_type":"spark",
-         "extra":{
-           "master":"local[*]",
-           "deploy_mode":"client",
-           "spark_binary":"/opt/spark/bin/spark-submit"
-         }}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      PYSPARK_PYTHON: python3
+      SPARK_HOME: /opt/spark
+
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./dags:/opt/airflow/dags
       - ./plugins:/opt/airflow/plugins
@@ -56,16 +64,15 @@ services:
     user: "0"
     command: dag-processor
     environment:
-      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
-      AIRFLOW_CONN_SPARK_DEFAULT: >
-        {"conn_type":"spark",
-         "extra":{
-           "master":"local[*]",
-           "deploy_mode":"client",
-           "spark_binary":"/opt/spark/bin/spark-submit"
-         }}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      PYSPARK_PYTHON: python3
+      SPARK_HOME: /opt/spark
+
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./dags:/opt/airflow/dags
       - ./plugins:/opt/airflow/plugins
@@ -73,3 +80,4 @@ services:
 
 volumes:
   airflow_data:
+  pg_data:
