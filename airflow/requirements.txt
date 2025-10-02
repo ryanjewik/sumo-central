@@ -1,0 +1,4 @@
+# airflow/requirements.txt
+apache-airflow-providers-apache-spark
+apache-airflow-providers-fab
+python-dotenv

@@ -443,6 +443,13 @@ main = main.drop('west_totalWins', 'west_totalMatches', 'west_totalLosses', 'eas
                  "east_makuuchi_yusho", "west_height", "west_weight", "east_height", "east_weight", "kimarite", "eastId", "westId", "west_specialist", "east_specialist",
                  "west_vs_oshi_winrate", "west_vs_yotsu_winrate", "west_vs_other_winrate", "east_vs_oshi_winrate", "east_vs_yotsu_winrate", "east_vs_other_winrate",
                 )
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+(main.write
+ .mode("overwrite")
+ .option("compression", "snappy")
+ .parquet(f"s3a://ryans-sumo-bucket/gold/ml_training/"))
+
+#MACHINE LEARNING MODEL--------------------------------------------
 
 feature_cols = [
     "west_yusho",

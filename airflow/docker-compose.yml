@@ -1,0 +1,75 @@
+version: "3.9"
+
+services:
+  airflow-webserver:
+    build: .                         # Dockerfile in this folder (installs Spark + providers)
+    image: my-airflow-spark:3.1.0
+    user: "0"                        # helps with Windows volume perms
+    command: api-server              # Airflow 3.x UI/API
+    ports:
+      - "8081:8080"                  # open UI at http://localhost:8081
+    environment:
+      # ---- Core (stable single-process for SQLite) ----
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+
+      # ---- Auth (FAB) ----
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+      AIRFLOW__WEBSERVER__AUTHENTICATE: "True"
+
+      # ---- Spark connection (local mode) ----
+      AIRFLOW_CONN_SPARK_DEFAULT: >
+        {"conn_type":"spark",
+         "extra":{
+           "master":"local[*]",
+           "deploy_mode":"client",
+           "spark_binary":"/opt/spark/bin/spark-submit"
+         }}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./plugins:/opt/airflow/plugins
+      - airflow_data:/opt/airflow
+
+  airflow-scheduler:
+    image: my-airflow-spark:3.1.0
+    user: "0"
+    command: scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW_CONN_SPARK_DEFAULT: >
+        {"conn_type":"spark",
+         "extra":{
+           "master":"local[*]",
+           "deploy_mode":"client",
+           "spark_binary":"/opt/spark/bin/spark-submit"
+         }}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./plugins:/opt/airflow/plugins
+      - airflow_data:/opt/airflow
+
+  airflow-dag-processor:
+    image: my-airflow-spark:3.1.0
+    user: "0"
+    command: dag-processor
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW_CONN_SPARK_DEFAULT: >
+        {"conn_type":"spark",
+         "extra":{
+           "master":"local[*]",
+           "deploy_mode":"client",
+           "spark_binary":"/opt/spark/bin/spark-submit"
+         }}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./plugins:/opt/airflow/plugins
+      - airflow_data:/opt/airflow
+
+volumes:
+  airflow_data:
