@@ -1,13 +1,10 @@
-FROM apache/airflow:3.1.0
 
-# Use the same constraints Airflow uses
-ENV PIP_CONSTRAINT="https://raw.githubusercontent.com/apache/airflow/constraints-3.1.0/constraints-3.12.txt"
+FROM apache/airflow:2.8.1-python3.8
+ENV PIP_CONSTRAINT="https://raw.githubusercontent.com/apache/airflow/constraints-2.8.1/constraints-3.8.txt"
 
-# Copy requirements (auth + providers you need right now)
 COPY requirements.txt /tmp/requirements.txt
 
-# Install as the airflow user (best practice)
-USER airflow
+RUN curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py -o get-pip.py && python get-pip.py
+RUN pip install --force-reinstall --upgrade setuptools==68.2.2
+RUN pip install jaraco.functools jaraco.text
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
-
-# Back to default cmd handled by compose

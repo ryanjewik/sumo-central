@@ -1,9 +1,0 @@
-docker compose down -v
-docker compose build --no-cache
-docker compose up -d postgres
-docker compose run --rm airflow-webserver airflow db migrate
-docker compose up -d
-docker compose run --rm airflow-webserver airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin
-
-docker compose exec -u airflow airflow-webserver bash -lc "airflow connections add spark_default --conn-uri 'spark:///?master=local[*]&deploy_mode=client&spark_binary=/opt/spark/bin/spark-submit'"
-docker compose exec -u airflow airflow-webserver bash -lc "airflow connections get spark_default --output json"

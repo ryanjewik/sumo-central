@@ -1,83 +1,161 @@
-services:
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+# docker-compose.yml
 
+x-spark-common: &spark-common
+  image: apache/spark:3.5.2-java17-python3
+  volumes:
+    - ./jobs:/opt/spark/work-dir/jobs
+  networks: [airflow]
+  environment:
+    - SPARK_HOME=/opt/spark
+    - JAVA_HOME=/opt/java/openjdk
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file:
+    - .env
+  environment: &airflow-env
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW_CONN_SPARK_DEFAULT: 'spark://spark-master:7077?deploy_mode=cluster&spark_binary=spark-submit'
+
+    # DB connection from .env
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${AIRFLOW_PG_USER}:${AIRFLOW_PG_PASSWORD}@airflow-postgres:5432/${AIRFLOW_PG_DB}"
+
+    # Executor & concurrency
+    AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
+    AIRFLOW__CORE__PARALLELISM: "1"
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "1"
+    AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR: "True"
+    AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: "1"
+    AIRFLOW__CORE__TASK_RUNNER: "StandardTaskRunner"
+    AIRFLOW__CORE__STORE_SERIALIZED_DAGS: "True"
+    AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+  volumes:
+    - ./jobs:/opt/airflow/jobs
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+  networks: [airflow]
+  depends_on:
+    airflow-postgres:
+      condition: service_healthy
+
+services:
+  # -------------------- Spark --------------------
+  spark-master:
+    <<: *spark-common
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "9090:8080"
+      - "7077:7077"
+
+  spark-worker:
+    <<: *spark-common
+    depends_on: [spark-master]
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - JAVA_HOME=/opt/java/openjdk
+
+  # -------------------- Postgres --------------------
+  airflow-postgres:
+    image: postgres:14.0
+    environment:
+      - POSTGRES_USER=${AIRFLOW_PG_USER}
+      - POSTGRES_PASSWORD=${AIRFLOW_PG_PASSWORD}
+      - POSTGRES_DB=${AIRFLOW_PG_DB}
+    networks: [airflow]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # -------------------- One-shot DB init --------------------
+  airflow-init:
+    <<: *airflow-common
+    restart: "no"
+    command: >
+      bash -lc '
+        echo "Running Airflow DB initialization...";
+        airflow db init &&
+        echo "Creating initial user (idempotent)..." &&
+        airflow users create \
+          --username "$AIRFLOW_USERNAME" \
+          --firstname "$AIRFLOW_FIRSTNAME" \
+          --lastname "$AIRFLOW_LASTNAME" \
+          --role Admin \
+          --email "$AIRFLOW_EMAIL" \
+          --password "$AIRFLOW_PASSWORD" || true;
+        echo "Removing spark_default connection from metadata DB...";
+        airflow connections delete spark_default || true;
+        echo "Init completed.";
+      '
+
+  # -------------------- Webserver --------------------
   airflow-webserver:
-    build: .
-    image: my-airflow-spark:3.1.0
-    user: "0"
-    command: api-server
+    <<: *airflow-common
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
     ports:
       - "8081:8080"
-    environment:
-      # --- Core (LocalExecutor + Postgres) ---
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
-
-      # --- Auth (FAB) ---
-      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
-      AIRFLOW__WEBSERVER__AUTHENTICATE: "True"
-      SPARK_HOME: /opt/spark
-      # (optional) ensure PySpark uses python3
-      PYSPARK_PYTHON: python3
-    depends_on:
-      postgres:
-        condition: service_healthy
+    command: >
+      bash -lc '
+        until airflow db check-migrations; do
+          echo "Waiting for DB migrations to finish..."; sleep 3;
+        done;
+        exec airflow webserver
+      '
     volumes:
+      - ./jobs:/opt/airflow/jobs
       - ./dags:/opt/airflow/dags
-      - ./plugins:/opt/airflow/plugins
-      - airflow_data:/opt/airflow
+      - ./logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock
 
+  # -------------------- Scheduler (Execution API INSIDE) --------------------
   airflow-scheduler:
-    image: my-airflow-spark:3.1.0
-    user: "0"
-    command: scheduler
-    environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
-      PYSPARK_PYTHON: python3
-      SPARK_HOME: /opt/spark
-
+    <<: *airflow-common
     depends_on:
-      postgres:
-        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-env
+    command: >
+      bash -lc '
+        set -euo pipefail
+        until airflow db check-migrations; do
+          echo "Waiting for DB migrations to finish..."; sleep 2;
+        done;
+        exec airflow scheduler
+      '
     volumes:
+      - ./jobs:/opt/airflow/jobs
       - ./dags:/opt/airflow/dags
-      - ./plugins:/opt/airflow/plugins
-      - airflow_data:/opt/airflow
+      - ./logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock
 
+  # -------------------- DAG Processor --------------------
   airflow-dag-processor:
-    image: my-airflow-spark:3.1.0
-    user: "0"
-    command: dag-processor
-    environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
-      PYSPARK_PYTHON: python3
-      SPARK_HOME: /opt/spark
-
+    <<: *airflow-common
     depends_on:
-      postgres:
-        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    command: >
+      bash -lc '
+        until airflow db check-migrations; do
+          echo "Waiting for DB migrations to finish..."; sleep 3;
+        done;
+        exec airflow dag-processor
+      '
     volumes:
+      - ./jobs:/opt/airflow/jobs
       - ./dags:/opt/airflow/dags
-      - ./plugins:/opt/airflow/plugins
-      - airflow_data:/opt/airflow
+      - ./logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock
 
-volumes:
-  airflow_data:
-  pg_data:
+networks:
+  airflow:

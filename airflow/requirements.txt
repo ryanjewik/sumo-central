@@ -1,4 +1,3 @@
-# airflow/requirements.txt
-apache-airflow-providers-apache-spark
-apache-airflow-providers-fab
+pyspark==3.5.0
 python-dotenv
+apache-airflow-providers-apache-spark==4.7.0
