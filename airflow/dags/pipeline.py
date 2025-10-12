@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+from airflow.operators.bash import BashOperator
 
 def start_msg():
     print("DAG starting")
@@ -26,26 +27,17 @@ with DAG(
         python_callable=start_msg,
     )
 
-    from airflow.operators.bash import BashOperator
+    from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
-    spark_smoke = BashOperator(
+    spark_smoke = SparkSubmitOperator(
         task_id="spark_smoke",
-        bash_command=r"""
-            set -euo pipefail
-        # Find the spark-master container via its compose service label
-        MASTER_ID="$(docker ps -q -f label=com.docker.compose.service=spark-master)"
-        if [ -z "$MASTER_ID" ]; then
-        echo 'spark-master container not found (is the stack up?)'
-        docker ps -a
-        exit 1
-        fi
+        application="/opt/airflow/jobs/spark_smoke.py",   # this path matches your compose mounts
+        conn_id="spark_default",                          # optional; keep if you want (binary is in PATH)
+        # optional tuning:
+        # driver_memory="1g", executor_memory="1g", executor_cores=1,
+        # verbose=True,
+    )
 
-        # Submit inside the master container
-        docker exec "$MASTER_ID" sh -lc '/opt/spark/bin/spark-submit \
-        --master spark://spark-master:7077 \
-        /opt/spark/work-dir/jobs/spark_smoke.py'
-        """,
-        )
 
 
     end = PythonOperator(

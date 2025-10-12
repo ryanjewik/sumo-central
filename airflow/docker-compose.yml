@@ -17,10 +17,13 @@ x-airflow-common: &airflow-common
     - .env
   environment: &airflow-env
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-    AIRFLOW_CONN_SPARK_DEFAULT: 'spark://spark-master:7077?deploy_mode=cluster&spark_binary=spark-submit'
+
 
     # DB connection from .env
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${AIRFLOW_PG_USER}:${AIRFLOW_PG_PASSWORD}@airflow-postgres:5432/${AIRFLOW_PG_DB}"
+
+    JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+    SPARK_HOME: /opt/spark
 
     # Executor & concurrency
     AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
@@ -78,22 +81,42 @@ services:
   airflow-init:
     <<: *airflow-common
     restart: "no"
-    command: >
-      bash -lc '
-        echo "Running Airflow DB initialization...";
-        airflow db init &&
-        echo "Creating initial user (idempotent)..." &&
+    command:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+
+        echo 'Running Airflow DB initialization...'
+        airflow db init
+
+        echo 'Creating initial user (idempotent)...'
         airflow users create \
           --username "$AIRFLOW_USERNAME" \
           --firstname "$AIRFLOW_FIRSTNAME" \
           --lastname "$AIRFLOW_LASTNAME" \
           --role Admin \
           --email "$AIRFLOW_EMAIL" \
-          --password "$AIRFLOW_PASSWORD" || true;
-        echo "Removing spark_default connection from metadata DB...";
-        airflow connections delete spark_default || true;
-        echo "Init completed.";
-      '
+          --password "$AIRFLOW_PASSWORD" || true
+
+        echo 'Seeding spark_default connection...'
+        cat > /tmp/spark_conn.json <<'JSON'
+        {
+          "conn_type": "spark",
+          "host": "spark://spark-master:7077",
+          "extra": {
+            "deploy_mode": "cluster",
+            "spark_binary": "spark-submit",
+            "master": "spark://spark-master:7077"
+          }
+        }
+        JSON
+
+        airflow connections delete spark_default || true
+        airflow connections add spark_default --conn-json "$(cat /tmp/spark_conn.json)"
+
+        echo 'Init completed.'
+
 
   # -------------------- Webserver --------------------
   airflow-webserver:
