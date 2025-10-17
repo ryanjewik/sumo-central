@@ -64,7 +64,7 @@ def _s3_put_json(doc, key):
 
 def _save_to_s3(data, prefix, name):
     stamp = now_utc_iso()
-    fname = f"{stamp}_{name}.json"
+    fname = f"{name}.json"
     if prefix and not prefix.endswith("/"):
         prefix = prefix + "/"
     s3_key = f"{prefix}{fname}"

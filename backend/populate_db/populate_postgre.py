@@ -148,7 +148,7 @@ if conn: # drop and create tables-----------------------------------------------
         # Create matches table (mock)
         create_matches_table_query = '''
         CREATE TABLE IF NOT EXISTS matches (
-            id SERIAL PRIMARY KEY,
+            id BIGINT PRIMARY KEY,
             basho_id INT REFERENCES basho(id),
             east_rikishi_id INT REFERENCES rikishi(id),
             west_rikishi_id INT REFERENCES rikishi(id),
@@ -172,7 +172,7 @@ if conn: # drop and create tables-----------------------------------------------
         CREATE TABLE IF NOT EXISTS match_predictions (
             id SERIAL PRIMARY KEY,
             user_id UUID REFERENCES users(id),
-            match_id INT REFERENCES matches(id),
+            match_id BIGINT REFERENCES matches(id),
             predicted_winner INT REFERENCES rikishi(id),
             prediction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             is_correct BOOLEAN
@@ -514,11 +514,11 @@ def insert_match(cursor, basho_id, division, day, match_number, east_id, east_sh
     cursor.execute(
         '''
         INSERT INTO matches (
-            basho_id, division, day, match_number, east_rikishi_id, eastShikona, east_rank, west_rikishi_id, westShikona, west_rank, winner, kimarite
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            id, basho_id, division, day, match_number, east_rikishi_id, eastShikona, east_rank, west_rikishi_id, westShikona, west_rank, winner, kimarite
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT DO NOTHING;
         ''',
-        (basho_id, division, day, match_number, east_id, east_shikona, east_rank, west_id, west_shikona, west_rank, winner_id, kimarite)
+        (int(str(basho_id) + str(day) + str(match_number) + str(east_id) + str(west_id)), basho_id, division, day, match_number, east_id, east_shikona, east_rank, west_id, west_shikona, west_rank, winner_id, kimarite)
     )
 
 # --- Process rikishi_matches JSON files ---

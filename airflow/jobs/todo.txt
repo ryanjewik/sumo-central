@@ -1,0 +1,7 @@
+1. complete extra api calls from recent basho 202509 and push to s3
+2. update postgres tables (basho, special prizes, rikishi, matches, ranks)
+3. update mongo tables for homepage and basho / rikishi pages
+4. perform cleaning from bronze to silver data
+5. perform cleaning from silver to gold data
+6. update ML training dataset
+7. train XGboost model
