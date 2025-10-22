@@ -8,6 +8,7 @@
      - basho end another postgres read and run for the basho and the rikishi yushos
      - match result we just updated the rikishi match histories
  - homepage updates should be run on every webhook
+ - might need to delete and readd affected mongo documents
 4. perform cleaning from bronze to silver data
 5. perform cleaning from silver to gold data
 6. update ML training dataset
