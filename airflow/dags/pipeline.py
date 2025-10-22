@@ -37,6 +37,13 @@ with DAG(
         # driver_memory="1g", executor_memory="1g", executor_cores=1,
         # verbose=True,
     )
+    
+    #1. postgres updates (can be done concurrently)
+    #2. mongo updates (can be done concurrently)
+    #3. bronze to silver
+    #4. silver to gold
+    #5. update ML training set
+    #6. trigger model retraining
 
 
 

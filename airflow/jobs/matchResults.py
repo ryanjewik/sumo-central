@@ -5,6 +5,8 @@ from pathlib import Path
 import logging
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
+from .utils.save_to_s3 import _save_to_s3
+from .utils.api_call import get_json
 load_dotenv()
 
 
@@ -12,45 +14,7 @@ S3_BUCKET = os.getenv("S3_BUCKET")
 S3_REGION = os.getenv("AWS_REGION")
 S3_PREFIX = os.getenv("S3_PREFIX", "sumo-api-calls/")
 
-def _boto3_client():
-    import boto3
-    return boto3.client(
-        "s3",
-        region_name=S3_REGION,
-        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-        aws_session_token=os.getenv("AWS_SESSION_TOKEN") or None,
-    )
-    
-def _s3_enabled():
-    return bool(S3_BUCKET and S3_REGION and os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
 
-def _safe_json(obj):
-    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), indent=2)
-
-def _s3_put_json(doc, key):
-    if not _s3_enabled():
-        return
-    try:
-        body = _safe_json(doc).encode("utf-8")
-        _boto3_client().put_object(
-            Bucket=S3_BUCKET,
-            Key=key,
-            Body=body,
-            ContentType="application/json",
-        )
-        print(f"S3 PUT s3://{S3_BUCKET}/{key}")
-    except ModuleNotFoundError:
-        print("boto3 not installed; skipping S3 upload.")
-    except Exception as e:
-        print(f"S3 upload failed: {e}")
-        
-def _save_to_s3(data, prefix, name):
-    fname = f"{name}.json"
-    if prefix and not prefix.endswith("/"):
-        prefix = prefix + "/"
-    s3_key = f"{prefix}{fname}"
-    _s3_put_json(data, s3_key)
     
 def insert_match(cursor, basho_id, division, day, match_number, east_id, east_shikona, east_rank, west_id, west_shikona, west_rank, winner_id, kimarite):
     cursor.execute(
@@ -63,35 +27,6 @@ def insert_match(cursor, basho_id, division, day, match_number, east_id, east_sh
         (int(str(basho_id) + str(day) + str(match_number) + str(east_id) + str(west_id)), basho_id, division, day, match_number, east_id, east_shikona, east_rank, west_id, west_shikona, west_rank, winner_id, kimarite)
     )
     print(int(str(basho_id) + str(day) + str(match_number) + str(east_id) + str(west_id)))
-
-def get_json(path):
-    """GET {base_url}{path} with timeout & retries; return dict via safe_json."""
-    try:
-        res = _session.get(base_url + path, timeout=DEFAULT_TIMEOUT)
-        return safe_json(res)
-    except Exception as e:
-        logging.warning("HTTP error GET %s: %s", path, e)
-        return {}
-    
-def safe_json(res):
-    """
-    Always return a dict. If API returns a list/null/HTML/error, normalize to {} or {'records': list}.
-    """
-    try:
-        # If response isn't OK, still try to capture body but normalize to {}
-        if not getattr(res, "ok", False):
-            logging.warning("HTTP %s for %s", getattr(res, "status_code", "?"), getattr(res, "url", "unknown"))
-        data = res.json()
-        if isinstance(data, dict):
-            return data
-        if data is None:
-            return {}
-        if isinstance(data, list):
-            return {"records": data}
-        return {}
-    except Exception as e:
-        logging.warning("Error decoding JSON for %s: %s", getattr(res, "url", "unknown"), e)
-        return {}
 
 webhook = {
   "received_at": 1756357624,

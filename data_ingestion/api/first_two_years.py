@@ -22,7 +22,7 @@ def fetch_and_save_basho(basho_id):
     resp.raise_for_status()  # raises error if request fails
     
     timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    filename = f"{timestamp}_basho_{basho_id}.json"
+    filename = f"basho_{basho_id}.json"
     filepath = os.path.join(OUTPUT_DIR, filename)
 
     with open(filepath, "w", encoding="utf-8") as f:

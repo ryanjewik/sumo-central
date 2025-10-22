@@ -2,8 +2,12 @@ from concurrent.futures import ThreadPoolExecutor
 import psycopg2
 from dotenv import load_dotenv
 import os, sys, json, time
-from pathlib import Path
+
 load_dotenv()
+
+S3_BUCKET = os.getenv("S3_BUCKET")
+S3_REGION = os.getenv("AWS_REGION")
+S3_PREFIX = os.getenv("S3_PREFIX", "sumo-api-calls/")
 
 webhook = {
   "received_at": 1756357623,
@@ -367,6 +371,9 @@ webhook = {
   ]
 }
 
+from utils.save_to_s3 import _save_to_s3
+from utils.api_call import get_json
+
 def insert_match(cursor, match_id, basho_id, division, day, match_number, east_id, east_shikona, east_rank, west_id, west_shikona, west_rank, winner_id, kimarite):
   """Insert a match using the provided match_id (string)."""
   cursor.execute(
@@ -379,6 +386,17 @@ def insert_match(cursor, match_id, basho_id, division, day, match_number, east_i
     # Use the provided match id (string) instead of concatenating integers which may overflow
     (match_id, basho_id, division, day, match_number, east_id, east_shikona, east_rank, west_id, west_shikona, west_rank, winner_id, kimarite)
   )
+  
+def insert_rikishi(cursor, rikishi_id, shikona, birthdate, retirement_date, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count):
+    cursor.execute(
+        '''
+        INSERT INTO rikishi (
+            id, shikona, birthdate, retirement_date, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (id) DO NOTHING;
+        ''',
+        (rikishi_id, shikona, birthdate, retirement_date, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count)
+    )
 
 
 def rikishi_exists(cursor, rikishi_id):
@@ -411,28 +429,88 @@ if webhook.get('type') == 'newMatches':
       east_id = match.get('eastId')
       west_id = match.get('westId')
       winner_id = match.get('winnerId') if match.get('winnerId') != 0 else None
+      
+
 
       if not rikishi_exists(cur, east_id):
         print(f"East rikishi ID {east_id} does not exist in rikishi table. Inserting placeholder rikishi.")
         match_date = f"{match['bashoId'][:4]}-{match['bashoId'][4:6]}-{match['bashoId'][6:8]}"
-        cur.execute(
-          """
-          INSERT INTO rikishi (id, shikona, current_rank, debut) VALUES (%s, %s, %s, %s)
-          ON CONFLICT (id) DO NOTHING;
-          """,
-          (east_id, match.get('eastShikona'), match.get('eastRank'), match_date),
-        )
+
+        rikishi = get_json(f"/rikishi/{east_id}")
+        _save_to_s3(rikishi, S3_PREFIX + "rikishis", f"rikishi_{east_id}")
+      
+        rikishi_id = rikishi['id']
+        shikona_en = rikishi.get('shikonaEn', '')
+        shikona_jp = rikishi.get('shikonaJp', '')
+        shikona = f"{shikona_en} ({shikona_jp})" if shikona_jp else shikona_en
+        birthdate = rikishi.get('birthDate', None)
+        if birthdate:
+            birthdate = birthdate[:10]
+        current_rank = rikishi.get('currentRank')
+        heya = rikishi.get('heya')
+        shusshin = rikishi.get('shusshin')
+        current_height = rikishi.get('height')
+        current_weight = rikishi.get('weight')
+        debut = rikishi.get('debut')
+        retirement_date = rikishi.get('intai', None)
+        if debut and len(debut) == 6:
+            debut = f"{debut[:4]}-{debut[4:6]}-01"
+        else:
+            debut = None
+        last_match = rikishi.get('updatedAt', None)
+        if last_match:
+            last_match = last_match[:10]
+            
+        basho_count = 1
+        absent_count = 0
+        wins = 0
+        losses = 0
+        matches = 0
+        yusho_count = 0
+        sansho_count = 0
+        
+        insert_rikishi(cur, rikishi_id, shikona, birthdate, retirement_date, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count)
+
 
       if not rikishi_exists(cur, west_id):
         print(f"West rikishi ID {west_id} does not exist in rikishi table. Inserting placeholder rikishi.")
         match_date = f"{match['bashoId'][:4]}-{match['bashoId'][4:6]}-{match['bashoId'][6:8]}"
-        cur.execute(
-          """
-          INSERT INTO rikishi (id, shikona, current_rank, debut) VALUES (%s, %s, %s, %s)
-          ON CONFLICT (id) DO NOTHING;
-          """,
-          (west_id, match.get('westShikona'), match.get('westRank'), match_date),
-        )
+        
+        
+        rikishi = get_json(f"/rikishi/{west_id}")
+        _save_to_s3(rikishi, S3_PREFIX + "rikishis", f"rikishi_{west_id}")
+      
+        rikishi_id = rikishi['id']
+        shikona_en = rikishi.get('shikonaEn', '')
+        shikona_jp = rikishi.get('shikonaJp', '')
+        shikona = f"{shikona_en} ({shikona_jp})" if shikona_jp else shikona_en
+        birthdate = rikishi.get('birthDate', None)
+        if birthdate:
+            birthdate = birthdate[:10]
+        current_rank = rikishi.get('currentRank')
+        heya = rikishi.get('heya')
+        shusshin = rikishi.get('shusshin')
+        current_height = rikishi.get('height')
+        current_weight = rikishi.get('weight')
+        debut = rikishi.get('debut')
+        retirement_date = rikishi.get('intai', None)
+        if debut and len(debut) == 6:
+            debut = f"{debut[:4]}-{debut[4:6]}-01"
+        else:
+            debut = None
+        last_match = rikishi.get('updatedAt', None)
+        if last_match:
+            last_match = last_match[:10]
+            
+        basho_count = 1
+        absent_count = 0
+        wins = 0
+        losses = 0
+        matches = 0
+        yusho_count = 0
+        sansho_count = 0
+        
+        insert_rikishi(cur, rikishi_id, shikona, birthdate, retirement_date, current_rank, heya, shusshin, current_height, current_weight, debut, last_match, basho_count, absent_count, wins, losses, matches, yusho_count, sansho_count)
 
       try:
         insert_match(
