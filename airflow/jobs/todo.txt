@@ -1,6 +1,13 @@
 1. complete extra api calls from recent basho 202509 and push to s3
 2. update postgres tables (basho, special prizes, rikishi, matches, ranks)
 3. update mongo tables for homepage and basho / rikishi pages
+ - we only want to update the pages that are affected by the webhooks. we can write conditions depending on the webhook
+ - we can use spark to read from postgres, perform the aggregations we want and push them to mongo for the homepage
+     - for new match we just need to check if there's a new rikishi and maybe add to their match history / rerun the upsert
+     - new basho we can add an empty page
+     - basho end another postgres read and run for the basho and the rikishi yushos
+     - match result we just updated the rikishi match histories
+ - homepage updates should be run on every webhook
 4. perform cleaning from bronze to silver data
 5. perform cleaning from silver to gold data
 6. update ML training dataset
