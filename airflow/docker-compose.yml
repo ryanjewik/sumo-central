@@ -21,6 +21,9 @@ x-airflow-common: &airflow-common
 
     # DB connection from .env
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${AIRFLOW_PG_USER}:${AIRFLOW_PG_PASSWORD}@airflow-postgres:5432/${AIRFLOW_PG_DB}"
+    AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+    AIRFLOW_CONN_MONGO_DEFAULT: "${MONGO_URI}"
+    AIRFLOW_CONN_AWS_DEFAULT: "aws://@/?region_name=${AWS_REGION}&aws_access_key_id=${AWS_ACCESS_KEY_ID}&aws_secret_key=${AWS_SECRET_ACCESS_KEY}"
 
     JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
     SPARK_HOME: /opt/spark
