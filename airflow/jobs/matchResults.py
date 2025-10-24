@@ -1,31 +1,27 @@
-import psycopg2
-from dotenv import load_dotenv
-import os, sys, json, time, requests
-from pathlib import Path
-import logging
-from requests.adapters import HTTPAdapter
-from urllib3 import Retry
-"""Clean matchResults job implementation.
-
-Exports:
- - process_match_results(webhook: dict)
-
-No module-level `webhook` is defined. A small sample is used only when run
-directly for local testing.
-"""
-
-import os
+import os, json
 import psycopg2
 from dotenv import load_dotenv
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
-from utils.save_to_s3 import _save_to_s3
 from utils.api_call import get_json
 
 load_dotenv()
 
 S3_PREFIX = os.getenv("S3_PREFIX", "sumo-api-calls/")
+S3_BUCKET = os.getenv("S3_BUCKET")
+S3_REGION = os.getenv("AWS_REGION")
+
+
+try:
+    from airflow.providers.postgres.hooks.postgres import PostgresHook
+except Exception:
+    PostgresHook = None
+
+try:
+    from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+except Exception:
+    S3Hook = None
 
 
 def insert_match(cursor, match_id, basho_id, division, day, match_number, east_id, east_shikona, east_rank, west_id, west_shikona, west_rank, winner_id, kimarite):
@@ -41,20 +37,16 @@ def insert_match(cursor, match_id, basho_id, division, day, match_number, east_i
 
 
 def process_match_results(webhook: dict):
-    """Process a matchResults webhook: insert matches and update rikishi stats."""
     if not webhook or webhook.get('type') != 'matchResults':
         return
 
     rikishi_list = []
 
     try:
-        conn = psycopg2.connect(
-            dbname=os.getenv("DB_NAME"),
-            user=os.getenv("DB_USERNAME"),
-            password=os.getenv("DB_PASSWORD"),
-            host=os.getenv("DB_HOST"),
-            port=os.getenv("DB_PORT", 5432),
-        )
+        pg_conn_id = os.getenv("POSTGRES_CONN_ID", "postgres_default")
+        if PostgresHook:
+            pg = PostgresHook(postgres_conn_id=pg_conn_id)
+            conn = pg.get_conn()
         cur = conn.cursor()
 
         for match in webhook.get('payload_decoded', []):
@@ -133,6 +125,13 @@ def process_match_results(webhook: dict):
         cur.close()
         conn.close()
 
+        # initialize S3 hook and fetch per-rikishi matches and save to S3
+        s3_conn_id = os.getenv("S3_CONN_ID", "aws_default")
+        try:
+            s3_hook = S3Hook(aws_conn_id=s3_conn_id) if S3Hook else None
+        except Exception:
+            s3_hook = None
+
         # fetch per-rikishi matches and save to S3
         _session = requests.Session()
         _retry = Retry(
@@ -150,7 +149,19 @@ def process_match_results(webhook: dict):
 
         for rikishi in rikishi_list:
             matches = get_json(f"/rikishi/{rikishi}/matches")
-            _save_to_s3(matches, S3_PREFIX + "rikishi_matches", f"rikishi_{rikishi}")
+            try:
+                if s3_hook and S3_BUCKET:
+                    s3_key = f"{S3_PREFIX}rikishi_matches/rikishi_{rikishi}.json"
+                    s3_hook.load_string(json.dumps(matches), key=s3_key, bucket_name=S3_BUCKET, replace=True)
+                else:
+                    # fallback to local helper if present
+                    try:
+                        from utils.save_to_s3 import _save_to_s3
+                        _save_to_s3(matches, S3_PREFIX + "rikishi_matches", f"rikishi_{rikishi}")
+                    except Exception:
+                        print(f"No S3 hook or local saver available for rikishi {rikishi}")
+            except Exception as exc:
+                print(f"Failed to save matches for rikishi {rikishi}: {exc}")
 
     except Exception as e:
         print("Database error:", e)

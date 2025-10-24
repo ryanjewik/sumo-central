@@ -3,23 +3,29 @@ from dotenv import load_dotenv
 import os, sys, json, time
 from pathlib import Path
 load_dotenv()
-def process_new_basho(webhook: dict):
-  """Process a newBasho webhook payload and insert into Postgres.
 
-  webhook: dict - expected to contain keys 'type' and 'payload_decoded'
-  """
+try:
+  from airflow.providers.postgres.hooks.postgres import PostgresHook
+except Exception:
+  PostgresHook = None
+def process_new_basho(webhook: dict):
   if not webhook or webhook.get('type') != 'newBasho':
     return
 
   print("New basho announced:", webhook['payload_decoded'].get('startDate'), "at", webhook['payload_decoded'].get('location'))
   try:
-    conn = psycopg2.connect(
-      dbname=os.getenv("DB_NAME"),
-      user=os.getenv("DB_USERNAME"),
-      password=os.getenv("DB_PASSWORD"),
-      host=os.getenv("DB_HOST"),
-      port=os.getenv("DB_PORT", 5432),
-    )
+    # Use PostgresHook if available (Airflow environment); otherwise fall back
+    pg_conn_id = os.getenv("POSTGRES_CONN_ID", "postgres_default")
+    if PostgresHook:
+      pg = PostgresHook(postgres_conn_id=pg_conn_id)
+      # log resolved connection details for debugging (host/port/uri)
+      try:
+        conn_obj = pg.get_connection(pg_conn_id)
+        print(f"Resolved Airflow connection {pg_conn_id}: host={conn_obj.host} port={conn_obj.port} ")
+      except Exception:
+        # ignore if connection metadata isn't available
+        pass
+      conn = pg.get_conn()
     cur = conn.cursor()
     insert_query = """
     INSERT INTO basho (
@@ -40,7 +46,9 @@ def process_new_basho(webhook: dict):
     conn.close()
     print("Basho event recorded in database.")
   except Exception as e:
+    # Log and re-raise so Airflow marks the task as failed and we can see the error
     print("Database error:", e)
+    raise
 
 
 if __name__ == "__main__":

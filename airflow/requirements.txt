@@ -1,9 +1,9 @@
 pyspark==3.5.2
 python-dotenv
 apache-airflow-providers-apache-spark==4.7.0
-apache-airflow-providers-postgres>=6
-apache-airflow-providers-mongo>=5
-apache-airflow-providers-amazon>=10
+apache-airflow-providers-postgres
+apache-airflow-providers-mongo
+apache-airflow-providers-amazon
 psycopg2-binary
 pymongo
 boto3

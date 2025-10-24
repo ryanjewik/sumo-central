@@ -24,6 +24,8 @@ x-airflow-common: &airflow-common
     AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
     AIRFLOW_CONN_MONGO_DEFAULT: "${MONGO_URI}"
     AIRFLOW_CONN_AWS_DEFAULT: "aws://@/?region_name=${AWS_REGION}&aws_access_key_id=${AWS_ACCESS_KEY_ID}&aws_secret_key=${AWS_SECRET_ACCESS_KEY}"
+    # Connection to your Sumo Postgres database (dev service added below)
+    AIRFLOW_CONN_SUMO_DB: "postgresql+psycopg2://${DB_USERNAME}:${DB_PASSWORD}@sumo-db:5432/${DB_NAME}"
 
     JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
     SPARK_HOME: /opt/spark
@@ -79,6 +81,49 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  # -------------------- Sumo Postgres (dev) --------------------
+  # This Postgres service is intended for local development/testing only.
+  # It will initialize from any SQL files placed in ./db_init on first start.
+  sumo-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    volumes:
+      - sumo-db-data:/var/lib/postgresql/data
+    networks: [airflow]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME} -h localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # -------------------- One-shot restore (runs after sumo-db is healthy)
+  # Restores any .dump or .sql files found in ./db_init into the sumo-db
+  sumo-db-restore:
+    image: ${SUMO_RESTORE_IMAGE:-postgres:18}
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=sumo-db
+      - DB_PORT=5432
+      - FORCE_RESTORE=1
+    depends_on:
+      sumo-db:
+        condition: service_healthy
+    volumes:
+      - ./db_init:/db_init:ro
+    entrypoint: ["/bin/bash", "/db_init/restore_sumo_db.sh"]
+    networks: [airflow]
+
+  
 
   # -------------------- One-shot DB init --------------------
   airflow-init:
@@ -182,6 +227,9 @@ services:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  sumo-db-data: {}
 
 networks:
   airflow:

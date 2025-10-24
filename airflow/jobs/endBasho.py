@@ -6,11 +6,21 @@ import logging
 load_dotenv()
 from utils.save_to_s3 import _save_to_s3
 
-
 S3_BUCKET = os.getenv("S3_BUCKET")
 S3_REGION = os.getenv("AWS_REGION")
 S3_PREFIX = os.getenv("S3_PREFIX", "sumo-api-calls/")
-    
+
+try:
+  from airflow.providers.postgres.hooks.postgres import PostgresHook
+except Exception:
+  PostgresHook = None
+
+try:
+  from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+except Exception:
+  S3Hook = None
+
+
 def process_end_basho(webhook: dict):
   """Process an endBasho webhook payload: update yusho/special prizes and save to S3."""
   if not webhook or webhook.get('type') != 'endBasho':
@@ -18,13 +28,10 @@ def process_end_basho(webhook: dict):
 
   print("New basho announced:", webhook['payload_decoded'].get('startDate'), "at", webhook['payload_decoded'].get('location'))
   try:
-    conn = psycopg2.connect(
-      dbname=os.getenv("DB_NAME"),
-      user=os.getenv("DB_USERNAME"),
-      password=os.getenv("DB_PASSWORD"),
-      host=os.getenv("DB_HOST"),
-      port=os.getenv("DB_PORT", 5432),
-    )
+    pg_conn_id = os.getenv("POSTGRES_CONN_ID", "postgres_default")
+    if PostgresHook:
+      pg = PostgresHook(postgres_conn_id=pg_conn_id)
+      conn = pg.get_conn()
     cur = conn.cursor()
     basho_query = """
     UPDATE basho
@@ -81,8 +88,18 @@ def process_end_basho(webhook: dict):
     print("Basho event recorded in database.")
 
     basho_file = webhook['payload_decoded']
-    _save_to_s3(basho_file, S3_PREFIX + "basho", f"basho_{webhook['payload_decoded']['date']}")
-    print("insert webhook payload into s3 completed.")
+    # Save to S3 via hook when available, otherwise fall back to helper
+    try:
+      s3_conn_id = os.getenv("S3_CONN_ID", "aws_default")
+      if S3Hook and S3_BUCKET:
+        s3 = S3Hook(aws_conn_id=s3_conn_id)
+        s3_key = f"{S3_PREFIX}basho/basho_{webhook['payload_decoded']['date']}.json"
+        s3.load_string(json.dumps(basho_file), key=s3_key, bucket_name=S3_BUCKET, replace=True)
+      else:
+        _save_to_s3(basho_file, S3_PREFIX + "basho", f"basho_{webhook['payload_decoded']['date']}")
+      print("insert webhook payload into s3 completed.")
+    except Exception as ex:
+      print("Failed to save basho to S3:", ex)
 
   except Exception as e:
     print("Database error:", e)

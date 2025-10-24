@@ -1,7 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
-import psycopg2
 from dotenv import load_dotenv
 import os, sys, json, time
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from utils.api_call import get_json
 
 load_dotenv()
 
@@ -9,9 +11,6 @@ S3_BUCKET = os.getenv("S3_BUCKET")
 S3_REGION = os.getenv("AWS_REGION")
 S3_PREFIX = os.getenv("S3_PREFIX", "sumo-api-calls/")
 
-
-from utils.save_to_s3 import _save_to_s3
-from utils.api_call import get_json
 
 
 def insert_match(cursor, match_id, basho_id, division, day, match_number, east_id, east_shikona, east_rank, west_id, west_shikona, west_rank, winner_id, kimarite):
@@ -47,21 +46,29 @@ def rikishi_exists(cursor, rikishi_id):
 
 
 def process_new_matches(webhook: dict):
-  """Process a newMatches webhook: insert matches and create placeholder rikishi where needed."""
   if not webhook or webhook.get('type') != 'newMatches':
     return
 
-  try:
-    conn = psycopg2.connect(
-      dbname=os.getenv("DB_NAME"),
-      user=os.getenv("DB_USERNAME"),
-      password=os.getenv("DB_PASSWORD"),
-      host=os.getenv("DB_HOST"),
-      port=os.getenv("DB_PORT", 5432),
-    )
-    cur = conn.cursor()
+  # Prefer Airflow hooks when running inside an Airflow worker; fall back to
+  # environment variables (and a direct psycopg2 connect) if not available.
+  pg_conn_id = os.getenv("POSTGRES_CONN_ID", "postgres_default")
+  s3_conn_id = os.getenv("S3_CONN_ID", "aws_default")
 
-    for match in webhook.get('payload_decoded', []):
+  try:
+    pg_hook = PostgresHook(postgres_conn_id=pg_conn_id)
+    conn = pg_hook.get_conn()
+    cur = conn.cursor()
+  except Exception:
+    # If PostgresHook isn't available or fails, surface a helpful error
+    raise
+  # initialize S3 hook for saving rikishi payloads
+  try:
+    s3_hook = S3Hook(aws_conn_id=s3_conn_id)
+  except Exception:
+    s3_hook = None
+    
+
+  for match in webhook.get('payload_decoded', []):
       # validate and pull the canonical match id (string) from payload
       match_id = match.get('bashoId') + str(match.get('day')) + str(match.get('matchNo')) + str(match.get('eastId')) + str(match.get('westId'))
       match_id = int(match_id)
@@ -79,7 +86,13 @@ def process_new_matches(webhook: dict):
         match_date = f"{match['bashoId'][:4]}-{match['bashoId'][4:6]}-{match['bashoId'][6:8]}"
 
         rikishi = get_json(f"/rikishi/{east_id}")
-        _save_to_s3(rikishi, S3_PREFIX + "rikishis", f"rikishi_{east_id}")
+        # persist rikishi snapshot to S3 (if hook available)
+        try:
+          if s3_hook and S3_BUCKET:
+            s3_key = f"{S3_PREFIX}rikishis/rikishi_{east_id}.json"
+            s3_hook.load_string(json.dumps(rikishi), key=s3_key, bucket_name=S3_BUCKET, replace=True)
+        except Exception as exc:
+          print(f"Failed to save rikishi {east_id} to S3: {exc}")
 
         rikishi_id = rikishi['id']
         shikona_en = rikishi.get('shikonaEn', '')
@@ -118,7 +131,12 @@ def process_new_matches(webhook: dict):
         match_date = f"{match['bashoId'][:4]}-{match['bashoId'][4:6]}-{match['bashoId'][6:8]}"
 
         rikishi = get_json(f"/rikishi/{west_id}")
-        _save_to_s3(rikishi, S3_PREFIX + "rikishis", f"rikishi_{west_id}")
+        try:
+          if s3_hook and S3_BUCKET:
+            s3_key = f"{S3_PREFIX}rikishis/rikishi_{west_id}.json"
+            s3_hook.load_string(json.dumps(rikishi), key=s3_key, bucket_name=S3_BUCKET, replace=True)
+        except Exception as exc:
+          print(f"Failed to save rikishi {west_id} to S3: {exc}")
 
         rikishi_id = rikishi['id']
         shikona_en = rikishi.get('shikonaEn', '')
@@ -174,12 +192,10 @@ def process_new_matches(webhook: dict):
         # Log the individual match error but continue processing others
         print(f"Failed to insert match {match_id}:", ie)
 
-    conn.commit()
-    cur.close()
-    conn.close()
-    print("New matches recorded in database.")
-  except Exception as e:
-    print("Database error:", e)
+  conn.commit()
+  cur.close()
+  conn.close()
+  print("New matches recorded in database.")
 
 
 if __name__ == "__main__":
