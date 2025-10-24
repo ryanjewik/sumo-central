@@ -299,7 +299,7 @@ def process_basho_json(directory):
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        match = re.search(r'_basho_(\d+)\.json$', os.path.basename(json_path))
+        match = re.search(r'basho_(\d+)\.json$', os.path.basename(json_path))
         if not match:
             print(f"⚠️ Could not extract basho_id from filename: {json_path}")
             cursor.close(); conn.close(); return
@@ -602,7 +602,7 @@ def process_rikishi_json_and_stats(rikishis_json_path, rikishi_stats_dir, cursor
             last_match = last_match[:10]
 
         # Find and load stats file using glob pattern
-        pattern = os.path.join(rikishi_stats_dir, f"*_rikishi_{rikishi_id}.json")
+        pattern = os.path.join(rikishi_stats_dir, f"rikishi_{rikishi_id}.json")
         matches_files = glob.glob(pattern)
         if matches_files:
             stats_path = matches_files[0]
@@ -639,18 +639,23 @@ def populate_sumo_database(cursor):
     rikishi_stats_dir = os.path.join(base_dir, 'rikishi_stats')
     process_rikishi_json_and_stats(rikishi_dir, rikishi_stats_dir, cursor)
     conn.commit()
+    print("✅ Rikishi table populated.")
     # Parallelize the rest
     process_basho_json(os.path.join(base_dir, 'basho'))
     conn.commit()
+    print("✅ Basho table populated.")
     process_rikishi_shikona_json(os.path.join(base_dir, 'rikishi_shikonas'))
     conn.commit()
+    print("✅ Rikishi shikona table populated.")
     process_rikishi_ranks_json(os.path.join(base_dir, 'rikishi_ranks'))
     conn.commit()
+    print("✅ Rikishi ranks table populated.")
     process_rikishi_measurements_json(os.path.join(base_dir, 'rikishi_measurements'))
     conn.commit()
+    print("✅ Rikishi measurements table populated.")
     process_rikishi_matches_json(os.path.join(base_dir, 'rikishi_matches'))
     conn.commit()
-    
+    print("✅ Rikishi matches table populated.")
 
 
 populate_sumo_database(cursor)

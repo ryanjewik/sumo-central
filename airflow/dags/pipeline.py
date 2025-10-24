@@ -51,19 +51,19 @@ def _load_and_call(path: str, func_name: str, webhook: dict):
 
 # Helper callables for PythonOperator
 def call_new_basho(webhook: dict):
-    return _load_and_call("/opt/airflow/jobs/newBasho.py", "process_new_basho", webhook)
+    return _load_and_call("/opt/airflow/jobs/postgresNewBasho.py", "process_new_basho", webhook)
 
 
 def call_end_basho(webhook: dict):
-    return _load_and_call("/opt/airflow/jobs/endBasho.py", "process_end_basho", webhook)
+    return _load_and_call("/opt/airflow/jobs/postgresEndBasho.py", "process_end_basho", webhook)
 
 
 def call_new_matches(webhook: dict):
-    return _load_and_call("/opt/airflow/jobs/newMatches.py", "process_new_matches", webhook)
+    return _load_and_call("/opt/airflow/jobs/postgresNewMatches.py", "process_new_matches", webhook)
 
 
 def call_match_results(webhook: dict):
-    return _load_and_call("/opt/airflow/jobs/matchResults.py", "process_match_results", webhook)
+    return _load_and_call("/opt/airflow/jobs/postgresMatchResults.py", "process_match_results", webhook)
 
 
 def call_skip(webhook: dict):

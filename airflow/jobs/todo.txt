@@ -3,8 +3,9 @@
  - s3_bucket download
  - first two years
  - populate postgres
- - mongo / home page
  - headshots
+ - SAVE DUMP FILE JUST IN CASE
+ - mongo updates
 2. update postgres tables (basho, special prizes, rikishi, matches, ranks)
 3. update mongo tables for homepage and basho / rikishi pages
  - we only want to update the pages that are affected by the webhooks. we can write conditions depending on the webhook

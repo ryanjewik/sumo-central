@@ -443,7 +443,7 @@ def main():
     if not S3_BUCKET:
         raise SystemExit("S3_BUCKET is required (env).")
     # Start from 9055th row (0-based offset)
-    START_FROM = 9055
+    START_FROM = 0
     shikonas = load_shikona_list(BATCH_LIMIT, start_from=START_FROM)
     total = len(shikonas)
     print(f"Loaded {total} shikona rows (starting from {START_FROM})")
