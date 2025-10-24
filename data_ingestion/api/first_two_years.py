@@ -12,7 +12,7 @@ basho_ids = [
 BASE_URL = "https://sumo-api.com/api/basho/"
 
 # Output folder
-OUTPUT_DIR = "basho_json"
+OUTPUT_DIR = "../bucket_download/downloaded_s3/sumo-api-calls/basho/"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def fetch_and_save_basho(basho_id):

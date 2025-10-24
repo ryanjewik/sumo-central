@@ -13,7 +13,7 @@ import sys
 
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))  # so "common" is importable
-from common.kafka_utils import publish_event
+#from common.kafka_utils import publish_event
 
 load_dotenv()
 S3_BUCKET = os.getenv("S3_BUCKET")
@@ -71,21 +71,21 @@ def _save_to_s3(data, prefix, name):
     _s3_put_json(data, s3_key)
     
     
-    #publish to kafka
-    try:
-        publish_event(
-            {
-                "source": "api",
-                "received_at": stamp,
-                "name": name,       # identifier for the call (e.g., rikishi_123_stats)
-                "s3_key": s3_key,   # where it landed (if S3 enabled)
-                "data": data,       # full response (can trim if you want)
-            },
-            topic="sumo.api",
-            key=name,
-        )   
-    except Exception as e:
-        logging.exception("Kafka publish failed: %s", e)
+    # #publish to kafka
+    # try:
+    #     publish_event(
+    #         {
+    #             "source": "api",
+    #             "received_at": stamp,
+    #             "name": name,       # identifier for the call (e.g., rikishi_123_stats)
+    #             "s3_key": s3_key,   # where it landed (if S3 enabled)
+    #             "data": data,       # full response (can trim if you want)
+    #         },
+    #         topic="sumo.api",
+    #         key=name,
+    #     )   
+    # except Exception as e:
+    #     logging.exception("Kafka publish failed: %s", e)
 
 # -------- HTTP client with retries ----------
 base_url = "https://sumo-api.com/api"
@@ -136,18 +136,18 @@ def get_json(path):
 
 # ---------- Fetch rikishis ----------
 
-# Always stack IDs 1 to 9097, regardless of API response
-rikishi_id_stack = list(range(1, 9098))
+# Always stack IDs 1 to 9101, regardless of API response
+rikishi_id_stack = list(range(1, 9102))
 
 def upload_rikishi_files():
     for x in rikishi_id_stack:
-        rikishi_file = f"rikishi_{x}.json"
-        _s3_put_json(rikishi_file, S3_PREFIX + "rikishis", f"rikishi_{x}")
+        rikishi_file = get_json(f"/rikishi/{x}")
+        _save_to_s3(rikishi_file, S3_PREFIX + "rikishis", f"rikishi_{x}")
 
 upload_rikishi_files()
 
-# Generate all basho IDs from 195801 to 202507 (months 1,3,5,7,9,11), always 6 digits
-def generate_basho_ids(start_year=1958, end_year=2025, end_month=7):
+# Generate all basho IDs from 195801 to 202509 (months 1,3,5,7,9,11), always 6 digits
+def generate_basho_ids(start_year=1958, end_year=2025, end_month=9):
     months = [1, 3, 5, 7, 9, 11]
     basho_ids = []
     for year in range(start_year, end_year + 1):

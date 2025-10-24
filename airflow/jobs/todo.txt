@@ -1,4 +1,10 @@
 1. complete extra api calls from recent basho 202509 and push to s3
+ - api retrieval
+ - s3_bucket download
+ - first two years
+ - populate postgres
+ - mongo / home page
+ - headshots
 2. update postgres tables (basho, special prizes, rikishi, matches, ranks)
 3. update mongo tables for homepage and basho / rikishi pages
  - we only want to update the pages that are affected by the webhooks. we can write conditions depending on the webhook
