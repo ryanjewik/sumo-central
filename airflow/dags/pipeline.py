@@ -76,6 +76,11 @@ def call_homepage(webhook: dict):
   return _load_and_call("/opt/airflow/jobs/homepage.py", "run_homepage_job", webhook)
 
 
+def call_process_new_matches(webhook: dict):
+    # Calls the mongo job which attaches upcoming matches to rikishi_pages documents
+    return _load_and_call("/opt/airflow/jobs/mongoNewMatches.py", "process_new_matches", webhook)
+
+
 default_args = {"retries": 0, "retry_delay": timedelta(minutes=1)}
 
 with DAG(
@@ -508,6 +513,13 @@ with DAG(
   do_xcom_push=False,
   )
 
+  attach_upcoming_matches = PythonOperator(
+    task_id="attach_upcoming_matches",
+    python_callable=call_process_new_matches,
+    op_kwargs={"webhook": webhook},
+    do_xcom_push=False,
+  )
+
   join = EmptyOperator(task_id="join", trigger_rule="one_success")
 
   end_task = end_msg()
@@ -516,4 +528,4 @@ with DAG(
   start_task >> spark_smoke
   spark_smoke >> branch_task
   branch_task >> [new_basho, end_basho, new_matches, match_results, skip_task]
-  [new_basho, end_basho, new_matches, match_results, skip_task] >> join >> homepage_task >> end_task
+  [new_basho, end_basho, new_matches, match_results, skip_task] >> join >> homepage_task >> attach_upcoming_matches >> end_task
