@@ -538,6 +538,9 @@ with DAG(
   spark_smoke >> postgres_branch_task
   postgres_branch_task >> [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres]
   [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres] >> join_postgres
-  join_postgres >> homepage_task >> mongo_branch_task
+  # Run homepage and the mongo branch in parallel after postgres join
+  join_postgres >> [homepage_task, mongo_branch_task]
+  # Both homepage and the mongo branch must finish before finishing the DAG
+  homepage_task >> join_mongo
   mongo_branch_task >> [new_matches_mongo, skip_mongo] >> join_mongo
   join_mongo >> end_task
