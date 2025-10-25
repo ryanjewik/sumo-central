@@ -71,34 +71,38 @@ def call_skip(webhook: dict):
     return None
 
 
+def call_homepage(webhook: dict):
+  # ignore webhook payload here; homepage job reads DB directly
+  return _load_and_call("/opt/airflow/jobs/homepage.py", "run_homepage_job", webhook)
+
+
 default_args = {"retries": 0, "retry_delay": timedelta(minutes=1)}
 
 with DAG(
-    dag_id="spark_local_test",
-    start_date=datetime(2025, 9, 1),
-    schedule=None,
-    catchup=False,
-    default_args=default_args,
-    tags=["smoke"],
+  dag_id="spark_local_test",
+  start_date=datetime(2025, 9, 1),
+  schedule=None,
+  catchup=False,
+  default_args=default_args,
+  tags=["smoke"],
 ) as dag:
 
-
-    spark_smoke = SparkSubmitOperator(
-        task_id="spark_smoke",
-        application="/opt/airflow/jobs/spark_smoke.py",   # this path matches your compose mounts
-        conn_id="spark_default",                          # optional; keep if you want (binary is in PATH)
-        # optional tuning:
-        driver_memory="1g", executor_memory="2g", executor_cores=2,
-        # verbose=True,
-    )
+  spark_smoke = SparkSubmitOperator(
+    task_id="spark_smoke",
+    application="/opt/airflow/jobs/spark_smoke.py",   # this path matches your compose mounts
+    conn_id="spark_default",                          # optional; keep if you want (binary is in PATH)
+    # optional tuning:
+    driver_memory="1g", executor_memory="2g", executor_cores=2,
+    # verbose=True,
+  )
     
-    #2. mongo updates (can be done concurrently)
-    #3. bronze to silver
-    #4. silver to gold
-    #5. update ML training set
-    #6. trigger model retraining
+  #2. mongo updates (can be done concurrently)
+  #3. bronze to silver
+  #4. silver to gold
+  #5. update ML training set
+  #6. trigger model retraining
 
-    webhook = {
+  webhook = {
   "received_at": 1756357623,
   "type": "newMatches",
   "headers": {
@@ -458,50 +462,58 @@ with DAG(
       "winnerJp": ""
     }
   ]
-}
+  }
 
-    start_task = start_msg()
-    
-    spark_smoke #spark test
-    
-    branch_task = choose_job(webhook)
+  start_task = start_msg()
+  
+  spark_smoke #spark test
+  
+  branch_task = choose_job(webhook)
 
-    new_basho = PythonOperator(
-        task_id="run_new_basho",
-        python_callable=call_new_basho,
-        op_kwargs={"webhook": webhook},
-    )
+  new_basho = PythonOperator(
+      task_id="run_new_basho",
+      python_callable=call_new_basho,
+      op_kwargs={"webhook": webhook},
+  )
 
-    end_basho = PythonOperator(
-        task_id="run_end_basho",
-        python_callable=call_end_basho,
-        op_kwargs={"webhook": webhook},
-    )
+  end_basho = PythonOperator(
+      task_id="run_end_basho",
+      python_callable=call_end_basho,
+      op_kwargs={"webhook": webhook},
+  )
 
-    new_matches = PythonOperator(
-        task_id="run_new_matches",
-        python_callable=call_new_matches,
-        op_kwargs={"webhook": webhook},
-    )
+  new_matches = PythonOperator(
+      task_id="run_new_matches",
+      python_callable=call_new_matches,
+      op_kwargs={"webhook": webhook},
+  )
 
-    match_results = PythonOperator(
-        task_id="run_match_results",
-        python_callable=call_match_results,
-        op_kwargs={"webhook": webhook},
-    )
+  match_results = PythonOperator(
+      task_id="run_match_results",
+      python_callable=call_match_results,
+      op_kwargs={"webhook": webhook},
+  )
+  
+  skip_task = PythonOperator(
+  task_id="skip_jobs",
+  python_callable=call_skip,
+  op_kwargs={"webhook": webhook},
+  )
 
-    skip_task = PythonOperator(
-        task_id="skip_jobs",
-        python_callable=call_skip,
-        op_kwargs={"webhook": webhook},
-    )
-    
-    join = EmptyOperator(task_id="join", trigger_rule="one_success")
+  homepage_task = PythonOperator(
+  task_id="run_homepage",
+  python_callable=call_homepage,
+  op_kwargs={"webhook": webhook},
+  # Avoid pushing potentially-large or non-JSON-returnable payloads to XCom (ObjectId etc.)
+  do_xcom_push=False,
+  )
 
-    end_task = end_msg()
+  join = EmptyOperator(task_id="join", trigger_rule="one_success")
 
-    # Connect tasks/operators
-    start_task >> spark_smoke
-    spark_smoke >> branch_task
-    branch_task >> [new_basho, end_basho, new_matches, match_results, skip_task]
-    [new_basho, end_basho, new_matches, match_results, skip_task] >> join >> end_task
+  end_task = end_msg()
+
+  # Connect tasks/operators
+  start_task >> spark_smoke
+  spark_smoke >> branch_task
+  branch_task >> [new_basho, end_basho, new_matches, match_results, skip_task]
+  [new_basho, end_basho, new_matches, match_results, skip_task] >> join >> homepage_task >> end_task

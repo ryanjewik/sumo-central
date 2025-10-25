@@ -23,6 +23,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${AIRFLOW_PG_USER}:${AIRFLOW_PG_PASSWORD}@airflow-postgres:5432/${AIRFLOW_PG_DB}"
     AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
     AIRFLOW_CONN_MONGO_DEFAULT: "${MONGO_URI}"
+    MONGO_CONN_ID: "mongo_default"
     AIRFLOW_CONN_AWS_DEFAULT: "aws://@/?region_name=${AWS_REGION}&aws_access_key_id=${AWS_ACCESS_KEY_ID}&aws_secret_key=${AWS_SECRET_ACCESS_KEY}"
     # Connection to your Sumo Postgres database (dev service added below)
     AIRFLOW_CONN_SUMO_DB: "postgresql+psycopg2://${DB_USERNAME}:${DB_PASSWORD}@sumo-db:5432/${DB_NAME}"
