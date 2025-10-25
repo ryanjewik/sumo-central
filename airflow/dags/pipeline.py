@@ -21,14 +21,14 @@ def end_msg():
 
 
 @task.branch
-def choose_job(webhook: dict):
+def choose_job(webhook: dict, db_type: str):
     # For now, webhook will come from Kafka later. Use the provided webhook dict.
     webhook_type = (webhook.get("type") or "").strip()
     mapping = {
-        "newBasho": "run_new_basho",
-        "endBasho": "run_end_basho",
-        "newMatches": "run_new_matches",
-        "matchResults": "run_match_results",
+        "newBasho": f"run_new_basho_{db_type}",
+        "endBasho": f"run_end_basho_{db_type}",
+        "newMatches": f"run_new_matches_{db_type}",
+        "matchResults": f"run_match_results_{db_type}",
     }
     return mapping.get(webhook_type, "skip_jobs")
 
@@ -50,19 +50,19 @@ def _load_and_call(path: str, func_name: str, webhook: dict):
 
 
 # Helper callables for PythonOperator
-def call_new_basho(webhook: dict):
+def call_new_basho_postgres(webhook: dict):
     return _load_and_call("/opt/airflow/jobs/postgresNewBasho.py", "process_new_basho", webhook)
 
 
-def call_end_basho(webhook: dict):
+def call_end_basho_postgres(webhook: dict):
     return _load_and_call("/opt/airflow/jobs/postgresEndBasho.py", "process_end_basho", webhook)
 
 
-def call_new_matches(webhook: dict):
+def call_new_matches_postgres(webhook: dict):
     return _load_and_call("/opt/airflow/jobs/postgresNewMatches.py", "process_new_matches", webhook)
 
 
-def call_match_results(webhook: dict):
+def call_match_results_postgres(webhook: dict):
     return _load_and_call("/opt/airflow/jobs/postgresMatchResults.py", "process_match_results", webhook)
 
 
@@ -76,9 +76,8 @@ def call_homepage(webhook: dict):
   return _load_and_call("/opt/airflow/jobs/homepage.py", "run_homepage_job", webhook)
 
 
-def call_process_new_matches(webhook: dict):
-    # Calls the mongo job which attaches upcoming matches to rikishi_pages documents
-    return _load_and_call("/opt/airflow/jobs/mongoNewMatches.py", "process_new_matches", webhook)
+def call_new_matches_mongo(webhook: dict):
+  return _load_and_call("/opt/airflow/jobs/mongoNewMatches.py", "process_new_matches", webhook)
 
 
 default_args = {"retries": 0, "retry_delay": timedelta(minutes=1)}
@@ -472,37 +471,45 @@ with DAG(
   start_task = start_msg()
   
   spark_smoke #spark test
+
+  postgres_branch_task = choose_job(webhook, "postgres")
+
+  mongo_branch_task = choose_job(webhook, "mongo")
+
+  new_basho_postgres = PythonOperator(
+      task_id="run_new_basho_postgres",
+      python_callable=call_new_basho_postgres,
+      op_kwargs={"webhook": webhook},
+  )
+
+  end_basho_postgres = PythonOperator(
+      task_id="run_end_basho_postgres",
+      python_callable=call_end_basho_postgres,
+      op_kwargs={"webhook": webhook},
+  )
+
+  new_matches_postgres = PythonOperator(
+      task_id="run_new_matches_postgres",
+      python_callable=call_new_matches_postgres,
+      op_kwargs={"webhook": webhook},
+  )
+
+  match_results_postgres = PythonOperator(
+      task_id="run_match_results_postgres",
+      python_callable=call_match_results_postgres,
+      op_kwargs={"webhook": webhook},
+  )
   
-  branch_task = choose_job(webhook)
-
-  new_basho = PythonOperator(
-      task_id="run_new_basho",
-      python_callable=call_new_basho,
-      op_kwargs={"webhook": webhook},
+  skip_postgres = PythonOperator(
+    task_id="skip_jobs_postgres",
+    python_callable=call_skip,
+    op_kwargs={"webhook": webhook},
   )
 
-  end_basho = PythonOperator(
-      task_id="run_end_basho",
-      python_callable=call_end_basho,
-      op_kwargs={"webhook": webhook},
-  )
-
-  new_matches = PythonOperator(
-      task_id="run_new_matches",
-      python_callable=call_new_matches,
-      op_kwargs={"webhook": webhook},
-  )
-
-  match_results = PythonOperator(
-      task_id="run_match_results",
-      python_callable=call_match_results,
-      op_kwargs={"webhook": webhook},
-  )
-  
-  skip_task = PythonOperator(
-  task_id="skip_jobs",
-  python_callable=call_skip,
-  op_kwargs={"webhook": webhook},
+  skip_mongo = PythonOperator(
+    task_id="skip_jobs_mongo",
+    python_callable=call_skip,
+    op_kwargs={"webhook": webhook},
   )
 
   homepage_task = PythonOperator(
@@ -513,19 +520,24 @@ with DAG(
   do_xcom_push=False,
   )
 
-  attach_upcoming_matches = PythonOperator(
-    task_id="attach_upcoming_matches",
-    python_callable=call_process_new_matches,
+  new_matches_mongo = PythonOperator(
+    task_id="run_new_matches_mongo",
+    python_callable=call_new_matches_mongo,
     op_kwargs={"webhook": webhook},
     do_xcom_push=False,
   )
 
-  join = EmptyOperator(task_id="join", trigger_rule="one_success")
+  join_postgres = EmptyOperator(task_id="join_postgres", trigger_rule="one_success")
+
+  join_mongo = EmptyOperator(task_id="join_mongo", trigger_rule="one_success")
 
   end_task = end_msg()
 
   # Connect tasks/operators
   start_task >> spark_smoke
-  spark_smoke >> branch_task
-  branch_task >> [new_basho, end_basho, new_matches, match_results, skip_task]
-  [new_basho, end_basho, new_matches, match_results, skip_task] >> join >> homepage_task >> attach_upcoming_matches >> end_task
+  spark_smoke >> postgres_branch_task
+  postgres_branch_task >> [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres]
+  [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres] >> join_postgres
+  join_postgres >> homepage_task >> mongo_branch_task
+  mongo_branch_task >> [new_matches_mongo, skip_mongo] >> join_mongo
+  join_mongo >> end_task

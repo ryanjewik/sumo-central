@@ -1,19 +1,3 @@
-"""Process webhook newMatches events and attach upcoming matches to rikishi_pages documents.
-
-This module exposes `process_new_matches(webhook, mongo_client=None, mongo_conn_id=None, write=True)`
-which is suitable to call from an Airflow PythonOperator. It prefers Airflow's MongoHook when
-available (use env var MONGO_CONN_ID or pass mongo_conn_id), otherwise falls back to pymongo using
-MONGO_URI env var.
-
-Behavior:
-- Iterates webhook['payload_decoded'] (list of match dicts).
-- For each match, finds the east and west rikishi documents in the `rikishi_pages` collection and
-  appends the match dict to an `upcoming_matches` array using $push.
-- Returns a list of per-rikishi update results for visibility.
-
-The function is import-safe and uses lazy imports so it can be imported by Airflow without
-requiring pymongo to be present until execution.
-"""
 from __future__ import annotations
 
 import os
@@ -76,17 +60,6 @@ def _normalize_rikishi_id(rid: Any):
 
 
 def process_new_matches(webhook: Dict[str, Any], mongo_client: Optional[Any] = None, mongo_conn_id: Optional[str] = None, write: bool = True) -> List[Dict[str, Any]]:
-    """Process a webhook payload (dict) and attach upcoming matches to rikishi_pages documents.
-
-    Args:
-        webhook: The webhook dict (matching the sample `newMatches-*.json`). Must contain
-                 a key `payload_decoded` with a list of match objects.
-        mongo_client: Optional pymongo.MongoClient (or a DB client returned by Airflow MongoHook).
-        mongo_conn_id: Optional Airflow connection id to use with MongoHook if mongo_client not passed.
-        write: If False, do not perform writes; instead return the operations that would be performed.
-
-    Returns a list of result dicts describing updates made (or planned) per rikishi id.
-    """
     if not isinstance(webhook, dict):
         raise TypeError("webhook must be a dict")
 
@@ -132,9 +105,6 @@ def process_new_matches(webhook: Dict[str, Any], mongo_client: Optional[Any] = N
             except Exception:
                 basho_id_int = None
             if basho_id_str and day_num:
-                # First try to read the basho document to get its start_date. Try multiple
-                # query shapes/types because some documents store the id as an int and others
-                # as a string, or nested under `basho.id`.
                 basho_coll = db.get_collection("basho_pages")
                 basho_doc = None
                 found_basho_query = None
@@ -202,11 +172,6 @@ def process_new_matches(webhook: Dict[str, Any], mongo_client: Optional[Any] = N
                     dot_path = f"days.{division}.{date_key}"
 
                     try:
-                        # If we matched a basho doc using a particular query, prefer that
-                        # query when updating so we don't create a duplicate document with
-                        # a different id type. Otherwise prefer an integer id when the
-                        # basho id is numeric (to match existing docs that store id as int),
-                        # falling back to the string id if integer conversion fails.
                         if found_basho_query is not None:
                             update_filter = found_basho_query
                         else:
@@ -232,9 +197,6 @@ def process_new_matches(webhook: Dict[str, Any], mongo_client: Optional[Any] = N
             norm_id = _normalize_rikishi_id(rid)
             if norm_id is None:
                 continue
-
-            # Build queries to try to find the rikishi page document. We support docs that store
-            # the rikishi id in either an `id` field or the Mongo `_id` field (string or int).
             queries = [
                 {"id": norm_id},
                 {"_id": norm_id},

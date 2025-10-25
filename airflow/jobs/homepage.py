@@ -13,11 +13,6 @@ import decimal
 
 #user database connection with retry mechanism
 def connect_to_database(max_retries=30, delay=2, postgres_conn_id=None):
-    """
-    Attempt to connect to the database with retry logic.
-    Prefer Airflow's PostgresHook when available (use conn id via POSTGRES_CONN_ID env var),
-    otherwise fall back to psycopg2 using env vars.
-    """
     # Enforce using Airflow's PostgresHook (as in postgresNewBasho.py). Do not fallback to env-var-only connection.
     try:
         from airflow.providers.postgres.hooks.postgres import PostgresHook
