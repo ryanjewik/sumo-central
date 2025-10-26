@@ -1,13 +1,22 @@
 # docker-compose.yml
 
 x-spark-common: &spark-common
-  image: apache/spark:3.5.2-java17-python3
+  # Build a Spark image that includes Python 3.8 so workers match the
+  # Airflow container's Python minor version (3.8.x). This prevents
+  # PySpark driver/executor minor-version mismatch errors.
+  build:
+    context: .
+    dockerfile: spark.Dockerfile
   volumes:
     - ./jobs:/opt/spark/work-dir/jobs
   networks: [airflow]
   environment:
     - SPARK_HOME=/opt/spark
     - JAVA_HOME=/opt/java/openjdk
+    # Make Mongo connection info available to Spark containers so apps
+    # (or SparkSession.builder configs) can read MONGO_URI/MONGO_DB_NAME.
+    - MONGO_URI=${MONGO_URI}
+    - MONGO_DB_NAME=${MONGO_DB_NAME}
 
 x-airflow-common: &airflow-common
   build:

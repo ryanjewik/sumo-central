@@ -27,9 +27,13 @@ def choose_job(webhook: dict, db_type: str):
     mapping = {
         "newBasho": f"run_new_basho_{db_type}",
         "endBasho": f"run_end_basho_{db_type}",
-        "newMatches": f"run_new_matches_{db_type}",
+    # For mongo newMatches we want to run the XCom push first so the
+    # Spark operator has the webhook payload available. Return the
+    # push task id instead of the final run task when db_type is mongo.
+    "newMatches": ("push_webhook_xcom" if db_type == "mongo" else f"run_new_matches_{db_type}"),
         "matchResults": f"run_match_results_{db_type}",
     }
+
     return mapping.get(webhook_type, "skip_jobs")
 
 
@@ -78,6 +82,11 @@ def call_homepage(webhook: dict):
 
 def call_new_matches_mongo(webhook: dict):
   return _load_and_call("/opt/airflow/jobs/mongoNewMatches.py", "process_new_matches", webhook)
+
+
+def call_push_webhook_xcom(webhook: dict):
+  """Return webhook JSON string to be pushed to XCom for SparkSubmitOperator."""
+  return json.dumps(webhook)
 
 
 default_args = {"retries": 0, "retry_delay": timedelta(minutes=1)}
@@ -472,6 +481,14 @@ with DAG(
   
   spark_smoke #spark test
 
+  # Push webhook JSON into XCom early so any downstream branch tasks can access it.
+  push_webhook_xcom = PythonOperator(
+    task_id="push_webhook_xcom",
+    python_callable=call_push_webhook_xcom,
+    op_kwargs={"webhook": webhook},
+    # leave XCom enabled so the Spark operator can pull the JSON string
+  )
+
   postgres_branch_task = choose_job(webhook, "postgres")
 
   mongo_branch_task = choose_job(webhook, "mongo")
@@ -520,11 +537,30 @@ with DAG(
   do_xcom_push=False,
   )
 
-  new_matches_mongo = PythonOperator(
+  # replaced by a SparkSubmitOperator named the same so choose_job can remain unchanged
+  # Use client deploy mode (default) for spark-submit on standalone clusters.
+  # Standalone Spark does not support cluster deploy for python applications
+  # (see logs: "Cluster deploy mode is currently not supported for python
+  # applications on standalone clusters"). Keep the python3 prefs so Spark
+  # will prefer a python3 binary when available, but you must ensure the
+  # driver's Python minor version matches the executors' (otherwise
+  # PySpark errors with [PYTHON_VERSION_MISMATCH]). Typical fixes:
+  #  - upgrade the Airflow container to Python 3.10 to match workers, OR
+  #  - rebuild workers to use Python 3.8 to match the Airflow driver.
+  run_new_matches_mongo = SparkSubmitOperator(
     task_id="run_new_matches_mongo",
-    python_callable=call_new_matches_mongo,
-    op_kwargs={"webhook": webhook},
-    do_xcom_push=False,
+    application="/opt/airflow/jobs/spark_mongoNewMatches.py",
+    conn_id="spark_default",
+    packages="org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
+    application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') }}"],
+    driver_memory="1g",
+    executor_memory="2g",
+    # Leave deploy_mode unset (client) for standalone clusters.
+    conf={
+      "spark.pyspark.python": "python3",
+      "spark.executorEnv.PYSPARK_PYTHON": "python3",
+      "spark.pyspark.driver.python": "python3",
+    },
   )
 
   join_postgres = EmptyOperator(task_id="join_postgres", trigger_rule="one_success")
@@ -535,12 +571,26 @@ with DAG(
 
   # Connect tasks/operators
   start_task >> spark_smoke
+  # run the spark smoke test first, then continue to the postgres branch
   spark_smoke >> postgres_branch_task
   postgres_branch_task >> [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres]
   [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres] >> join_postgres
   # Run homepage and the mongo branch in parallel after postgres join
-  join_postgres >> [homepage_task, mongo_branch_task]
+  join_postgres >> homepage_task
+  # Decide whether the mongo branch should run. Place the branch operator
+  # immediately after the postgres join so it can pick between the two
+  # downstream paths:
+  #  - push_webhook_xcom -> run_new_matches_mongo -> join_mongo
+  #  - skip_jobs_mongo -> join_mongo
+  # This ensures only one of run_new_matches_mongo or skip_jobs_mongo runs.
+  join_postgres >> mongo_branch_task
+
+  # Branch downstream choices
+  mongo_branch_task >> [push_webhook_xcom, skip_mongo]
+
+  # When chosen, push webhook into XCom then run the Spark job, else skip.
+  push_webhook_xcom >> run_new_matches_mongo >> join_mongo
+
   # Both homepage and the mongo branch must finish before finishing the DAG
   homepage_task >> join_mongo
-  mongo_branch_task >> [new_matches_mongo, skip_mongo] >> join_mongo
   join_mongo >> end_task
