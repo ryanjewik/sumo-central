@@ -242,9 +242,67 @@ def main():
                             for (division_k, date_k), matches in groups.items():
                                 update_path = f"days.{division_k}.{date_k}"
                                 ops.append(UpdateOne({"id": numeric_id_inner}, {"$push": {update_path: {"$each": matches}}}))
+                            # Also prepare updates for rikishi_pages.upcoming__match
+                            rikishi_coll = db.get_collection("rikishi_pages")
+                            rikishi_ops = []
+                            # While we built grouped matches for basho_pages above, we also
+                            # need a per-row match object to set as upcoming__match for
+                            # the east and west rikishi. We'll iterate groups' matches
+                            # (they contain the compact match objects) and create set
+                            # operations keyed by rikishi id.
+                            for (division_k, date_k), matches in groups.items():
+                                for m in matches:
+                                    # prefer explicit integer rikishi ids if available
+                                    east_id = m.get("east_rikishi_id")
+                                    west_id = m.get("west_rikishi_id")
+                                    # Build the match object to store verbatim under upcoming__match
+                                    match_obj = {
+                                        "match_date": m.get("match_date"),
+                                        "match_number": m.get("match_number"),
+                                        "eastshikona": m.get("eastshikona"),
+                                        "westshikona": m.get("westshikona"),
+                                        "division": m.get("division"),
+                                        "winner": m.get("winner"),
+                                        "kimarite": m.get("kimarite"),
+                                        "east_rikishi_id": m.get("east_rikishi_id"),
+                                        "west_rikishi_id": m.get("west_rikishi_id"),
+                                    }
+                                    try:
+                                        if east_id not in (None, ""):
+                                            rikishi_ops.append(
+                                                UpdateOne({"id": int(east_id)}, {"$set": {"upcoming__match": match_obj}})
+                                            )
+                                    except Exception:
+                                        # fallback to string id if cannot cast
+                                        try:
+                                            rikishi_ops.append(
+                                                UpdateOne({"id": east_id}, {"$set": {"upcoming__match": match_obj}})
+                                            )
+                                        except Exception:
+                                            pass
+                                    try:
+                                        if west_id not in (None, "") and west_id != east_id:
+                                            rikishi_ops.append(
+                                                UpdateOne({"id": int(west_id)}, {"$set": {"upcoming__match": match_obj}})
+                                            )
+                                    except Exception:
+                                        try:
+                                            if west_id not in (None, "") and west_id != east_id:
+                                                rikishi_ops.append(
+                                                    UpdateOne({"id": west_id}, {"$set": {"upcoming__match": match_obj}})
+                                                )
+                                        except Exception:
+                                            pass
 
                             if ops:
                                 coll.bulk_write(ops, ordered=False)
+                            if rikishi_ops:
+                                try:
+                                    rikishi_coll.bulk_write(rikishi_ops, ordered=False)
+                                except Exception:
+                                    # If rikishi updates fail, don't block basho_pages updates;
+                                    # allow the exception to surface if needed upstream.
+                                    raise
                             client.close()
                         except Exception:
                             raise
