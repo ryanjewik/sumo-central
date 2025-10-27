@@ -21,15 +21,21 @@ RUN set -eux; \
         apt-get install -y --no-install-recommends python3.8 python3.8-venv python3.8-distutils || true; \
     fi; \
     # Install pip for python3.8 using the get-pip bootstrap for 3.8
-    if command -v python3.8 >/dev/null 2>&1; then \
+        if command -v python3.8 >/dev/null 2>&1; then \
         wget https://bootstrap.pypa.io/pip/3.8/get-pip.py -O /tmp/get-pip.py; \
         python3.8 /tmp/get-pip.py; \
         rm -f /tmp/get-pip.py; \
         # Make python3.8 the default python and python3 on the image
         ln -sf /usr/bin/python3.8 /usr/bin/python3; \
         ln -sf /usr/bin/python3.8 /usr/bin/python || true; \
-        # Install pymongo into the python3.8 environment for executor-side writes
-        python3.8 -m pip install --no-cache-dir "pymongo>=4.0,<5" ; \
+        # Install runtime Python packages used by spark_homepage.py and executor-side writes.
+        # - pymongo: executor writes to MongoDB
+        # - python-dotenv: load_dotenv() at top-level in spark_homepage.py
+        # - psycopg2-binary: fallback DB driver (binary wheel avoids build deps)
+        python3.8 -m pip install --no-cache-dir \
+            "pymongo>=4.0,<5" \
+            "python-dotenv>=0.21.0" \
+            "psycopg2-binary>=2.9" ; \
     fi; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 

@@ -6,6 +6,7 @@ import importlib.util
 from airflow.operators.empty import EmptyOperator
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator
+from airflow.hooks.base import BaseHook
 import json
 import os
 import sys
@@ -77,7 +78,11 @@ def call_skip(webhook: dict):
 
 def call_homepage(webhook: dict):
   # ignore webhook payload here; homepage job reads DB directly
-  return _load_and_call("/opt/airflow/jobs/homepage.py", "run_homepage_job", webhook)
+  # Use the Spark-first homepage implementation so Airflow can submit the
+  # job to the Spark cluster. The module `spark_homepage.py` exposes
+  # `run_homepage_job` which prefers Spark JDBC reads and supports
+  # executor-side Mongo writes.
+  return _load_and_call("/opt/airflow/jobs/spark_homepage.py", "run_homepage_job", webhook)
 
 
 def call_new_matches_mongo(webhook: dict):
@@ -529,12 +534,48 @@ with DAG(
     op_kwargs={"webhook": webhook},
   )
 
-  homepage_task = PythonOperator(
-  task_id="run_homepage",
-  python_callable=call_homepage,
-  op_kwargs={"webhook": webhook},
-  # Avoid pushing potentially-large or non-JSON-returnable payloads to XCom (ObjectId etc.)
-  do_xcom_push=False,
+  # Build JDBC URL from the Airflow connection `sumo_db` when possible so
+  # the Spark driver receives a correct host (e.g. `sumo-db`) instead of
+  # defaulting to localhost when env vars aren't forwarded into the driver.
+  try:
+    sumo_conn = BaseHook.get_connection("sumo_db")
+    conn_host = sumo_conn.host or os.getenv("DB_HOST", "sumo-db")
+    conn_port = sumo_conn.port or os.getenv("DB_PORT", "5432")
+    conn_db = sumo_conn.schema or os.getenv("DB_NAME", "sumo")
+    jdbc_url = f"jdbc:postgresql://{conn_host}:{conn_port}/{conn_db}"
+  except Exception:
+    # Fall back to environment/compose default
+    jdbc_url = os.environ.get("JDBC_URL") or f"jdbc:postgresql://sumo-db:{os.getenv('DB_PORT','5432')}/{os.getenv('DB_NAME','sumo')}"
+
+  # Run the Spark-first homepage job via SparkSubmit so the driver/executors
+  # run inside the Spark cluster. This avoids importing Airflow hooks inside
+  # the Spark runtime and lets executors perform the Mongo upsert.
+  homepage_task = SparkSubmitOperator(
+    task_id="run_homepage",
+    application="/opt/airflow/jobs/spark_homepage.py",
+    conn_id="spark_default",
+    # Ask Spark to fetch the Postgres JDBC driver from Maven if the client
+    # cannot access a local jar path. This is more reliable when spark-submit
+    # runs from a different container than the Spark nodes.
+    packages="org.postgresql:postgresql:42.6.0",
+    driver_memory="1g",
+    executor_memory="2g",
+    executor_cores=2,
+    name="spark_homepage_job",
+    conf={
+      "spark.pyspark.python": "python3",
+      "spark.executorEnv.PYSPARK_PYTHON": "python3",
+      "spark.pyspark.driver.python": "python3",
+      # Ensure the Postgres JDBC jar provided in the Spark image is
+      # explicitly added to spark-submit so the driver JVM can load
+      # org.postgresql.Driver when reading via JDBC.
+      "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
+    },
+    # Pass a JDBC URL into the Spark driver so it connects to the
+    # correct Postgres service inside the Docker Compose network.
+    application_args=["--jdbc-url", jdbc_url],
+    # Do not push large results to XCom
+    do_xcom_push=False,
   )
 
   # replaced by a SparkSubmitOperator named the same so choose_job can remain unchanged

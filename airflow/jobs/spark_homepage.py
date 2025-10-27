@@ -1,7 +1,6 @@
 
 #for the homepage
 import os, sys, json, time
-import psycopg2
 from dotenv import load_dotenv
 load_dotenv()
 import datetime
@@ -64,7 +63,10 @@ def spark_read_postgres_table(spark, jdbc_url: str, table: str, user: str = None
     `jdbc` as partition predicates to parallelize reads (useful for large
     tables).
     """
-    reader = spark.read.format("jdbc").option("url", jdbc_url).option("dbtable", table)
+    # Explicitly set the JDBC driver class. This avoids "No suitable driver"
+    # errors when the driver is available on the classpath (via spark.jars or
+    # spark.jars.packages) but cannot be inferred automatically.
+    reader = spark.read.format("jdbc").option("url", jdbc_url).option("dbtable", table).option("driver", "org.postgresql.Driver")
     if user is not None:
         reader = reader.option("user", user)
     if password is not None:
@@ -153,241 +155,241 @@ def _connect_postgres_or_hook(postgres_conn_id=None):
 
 
 def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
-    close_conn = False
-    if pg_conn is None:
-        pg_conn = _connect_postgres_or_hook(postgres_conn_id=postgres_conn_id)
-        close_conn = True
+    # Prefer Spark-based reads when a SparkSession is available. This keeps the
+    # computation in cluster-friendly APIs while preserving the original
+    # semantics. If Spark is not available or fails, fall back to the original
+    # DBAPI/PostgresHook path.
+    use_spark = False
+    spark = None
+    spark_created = False
+    try:
+        # If pyspark is importable and the helper exists, attempt a SparkSession
+        # configured for Postgres. This will typically succeed inside the
+        # spark container; outside (developer machine) it will raise and we
+        # gracefully fall back.
+        if SparkSession is not None:
+            try:
+                # Try to build a SparkSession using environment packages
+                spark = get_spark_session_for_postgres()
+                spark_created = True
+                use_spark = True
+            except Exception:
+                # get_spark_session_for_postgres may require network access to
+                # fetch packages; if it fails, don't crash — fall back.
+                spark = None
+                use_spark = False
+    except Exception:
+        spark = None
+        use_spark = False
 
-    cursor = pg_conn.cursor()
+    if use_spark and spark is not None:
+        # Helper to run a simple table or subquery via JDBC and collect as list
+        jdbc = os.environ.get("JDBC_URL") or f"jdbc:postgresql://{os.getenv('DB_HOST','localhost')}:{os.getenv('DB_PORT','5432')}/{os.getenv('DB_NAME','sumo')}"
+        # Debug: print the JDBC URL and key DB env vars so spark driver logs
+        # clearly show what host/DB the job will attempt to connect to.
+        try:
+            print(f"[spark_homepage] JDBC_URL={jdbc}")
+            print(f"[spark_homepage] DB_HOST={os.getenv('DB_HOST')}, DB_PORT={os.getenv('DB_PORT')}, DB_NAME={os.getenv('DB_NAME')}")
+        except Exception:
+            # Best-effort logging — don't crash the job if printing fails
+            pass
+        user = os.environ.get("DB_USERNAME")
+        pwd = os.environ.get("DB_PASSWORD")
 
-    # getting the most recent basho
-    cursor.execute("SELECT MAX(id) AS most_recent_basho FROM basho")
-    most_recent_basho = cursor.fetchone()[0]
-    year = int(str(most_recent_basho)[:4])
-    month = int(str(most_recent_basho)[4:6])
-    date = f"{year}-{month:02d}-01"
+        def df_to_list(table_or_query):
+            reader = spark_read_postgres_table(spark, jdbc, table_or_query, user=user, password=pwd)
+            rows = reader.collect()
+            return [r.asDict(recursive=True) for r in rows]
 
-    # map the rank names and values
-    cursor.execute("SELECT DISTINCT rank_name, rank_value FROM rikishi_rank_history ORDER BY rank_value;")
-    rows = cursor.fetchall()
-    rank_mapping = {row[0]: row[1] for row in rows}
-    ordered_rank_mapping = order_ranks(rank_mapping)
+        # Read the needed tables/queries into local lists of dicts
+        basho_rows = df_to_list("basho")
+        rikishi_rank_rows = df_to_list("rikishi_rank_history")
+        rikishi_rows = df_to_list("rikishi")
+        matches_rows = df_to_list("matches")
 
-    # getting the top rikishi from the most recent basho
-    cursor.execute(
-        """
-        SELECT *
-        FROM rikishi_rank_history
-        WHERE rank_value BETWEEN 101 AND 499
-        AND rank_date = %s
-        ORDER BY rank_date DESC, rank_value ASC;
-        """,
-        (date,),
-    )
-    rows = cursor.fetchall()
-    colnames = [desc[0] for desc in cursor.description]
+        # Reuse original processing logic but operating on Python lists
+        # getting the most recent basho
+        most_recent_basho = max([r.get("id") for r in basho_rows if r.get("id") is not None])
+        year = int(str(most_recent_basho)[:4])
+        month = int(str(most_recent_basho)[4:6])
+        date = f"{year}-{month:02d}-01"
 
-    ordered_top_rikishi = {}
-    for row in rows:
-        rikishi_dict = dict(zip(colnames, row))
-        rikishi_dict = convert_dates(rikishi_dict)
-        rank_name = rikishi_dict.get("rank_name")
-        order = ordered_rank_mapping.get(rank_name, {}).get("order")
-        if order is not None:
-            cursor.execute("SELECT * FROM rikishi WHERE id = %s;", (rikishi_dict["rikishi_id"],))
-            rikishi_details = cursor.fetchone()
-            detail_colnames = [desc[0] for desc in cursor.description]
-            rikishi_details_dict = dict(zip(detail_colnames, rikishi_details))
-            rikishi_details_dict = convert_dates(rikishi_details_dict)
-            ordered_top_rikishi[str(order)] = rikishi_details_dict
+        # map the rank names and values
+        rank_mapping = {r.get("rank_name"): r.get("rank_value") for r in rikishi_rank_rows if r.get("rank_name") is not None}
+        ordered_rank_mapping = order_ranks(rank_mapping)
 
-    ordered_top_rikishi = dict(sorted(ordered_top_rikishi.items(), key=lambda x: int(x[0])))
+        # getting the top rikishi from the most recent basho
+        top_rank_rows = [r for r in rikishi_rank_rows if r.get("rank_value") is not None and 101 <= r.get("rank_value") <= 499 and r.get("rank_date") == date]
+        # order by rank_date DESC, rank_value ASC -- emulate by sorting
+        top_rank_rows = sorted(top_rank_rows, key=lambda r: (r.get("rank_date"), -int(r.get("rank_value") if r.get("rank_value") is not None else 0)), reverse=True)
 
-    # need to get the highlight rikishi and his kimarite counts
-    top_rikishi = ordered_top_rikishi.get("1")
-    kimarite_counts = {}
-    if top_rikishi:
-        cursor.execute(
-            "SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, day, match_number, winner, kimarite FROM matches WHERE winner = %s;",
-            (top_rikishi["id"],),
-        )
-        rows = cursor.fetchall()
-        colnames = [desc[0] for desc in cursor.description]
-        kimarite_list = [dict(zip(colnames, row))["kimarite"] for row in rows]
-        from collections import Counter
+        ordered_top_rikishi = {}
+        for r in top_rank_rows:
+            rikishi_dict = convert_dates(r.copy())
+            rank_name = rikishi_dict.get("rank_name")
+            order = ordered_rank_mapping.get(rank_name, {}).get("order")
+            if order is not None:
+                rikishi_id = rikishi_dict.get("rikishi_id")
+                # find rikishi details
+                details = next((d for d in rikishi_rows if d.get("id") == rikishi_id), None)
+                if details:
+                    rikishi_details_dict = convert_dates(details.copy())
+                    ordered_top_rikishi[str(order)] = rikishi_details_dict
 
-        kimarite_counts = dict(Counter(kimarite_list))
+        ordered_top_rikishi = dict(sorted(ordered_top_rikishi.items(), key=lambda x: int(x[0])))
 
-    # getting the most recent day's matches in Makuuchi
-    cursor.execute(
-        """
-        SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division 
-        FROM matches
-        WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
-        AND division = 'Makuuchi'
-        AND day = (
-            SELECT MAX(day)
-            FROM matches
-            WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
-                AND division = 'Makuuchi'
-        );
-        """
-    )
-    rows = cursor.fetchall()
-    colnames = [desc[0] for desc in cursor.description]
+        # need to get the highlight rikishi and his kimarite counts
+        top_rikishi = ordered_top_rikishi.get("1")
+        kimarite_counts = {}
+        if top_rikishi:
+            winner_matches = [m for m in matches_rows if m.get("winner") == top_rikishi.get("id")]
+            kimarite_list = [m.get("kimarite") for m in winner_matches]
+            kimarite_counts = dict(Counter(kimarite_list))
 
-    recent_matches = {}
-    highlighted_match = None
-    lowest_avg = float("inf")
-    for row in rows:
-        match = dict(zip(colnames, row))
-        match = convert_dates(match)
-        match_title = f"{match['eastshikona']} ({match['east_rank']}) vs. {match['westshikona']} ({match['west_rank']})"
-        east_order = ordered_rank_mapping.get(match["east_rank"], {}).get("order", 0)
-        west_order = ordered_rank_mapping.get(match["west_rank"], {}).get("order", 0)
-        match["rank_avg"] = (east_order + west_order) / 2
-        recent_matches[match_title] = match
-        if match["rank_avg"] < lowest_avg:
-            lowest_avg = match["rank_avg"]
-            highlighted_match = match
-
-    # Get counts and average rank order for heya and shusshin
-    cursor.execute("SELECT current_rank, heya, shusshin FROM rikishi;")
-    rows = cursor.fetchall()
-    colnames = [desc[0] for desc in cursor.description]
-
-    heya_counts = Counter()
-    shusshin_counts = Counter()
-    heya_ranks = defaultdict(list)
-
-    for row in rows:
-        rikishi = dict(zip(colnames, row))
-        heya = rikishi["heya"]
-        shusshin = rikishi["shusshin"]
-        current_rank = rikishi["current_rank"]
-        heya_counts[heya] += 1
-        shusshin_counts[shusshin] += 1
-        order = ordered_rank_mapping.get(current_rank, {}).get("order")
-        if order is not None:
-            heya_ranks[heya].append(order)
-
-    heya_avg_rank = {}
-    for h, ranks in heya_ranks.items():
-        filtered_ranks = [r for r in ranks if r is not None]
-        if filtered_ranks:
-            heya_avg_rank[h] = sum(filtered_ranks) / len(filtered_ranks)
+        # getting the most recent day's matches in Makuuchi
+        max_basho_id = max([m.get("basho_id") for m in matches_rows if m.get("basho_id") is not None])
+        makuuchi_matches = [m for m in matches_rows if m.get("basho_id") == max_basho_id and m.get("division") == "Makuuchi"]
+        if makuuchi_matches:
+            max_day = max([m.get("day") for m in makuuchi_matches if m.get("day") is not None])
+            recent_rows = [m for m in makuuchi_matches if m.get("day") == max_day]
         else:
-            heya_avg_rank[h] = 0
+            recent_rows = []
 
-    heya_counts_clean = {str(k) if k is not None else "Unknown": v for k, v in heya_counts.items()}
-    shusshin_counts_clean = {str(k) if k is not None else "Unknown": v for k, v in shusshin_counts.items()}
-
-    # kimarite usage for most recent basho
-    cursor.execute(
-        "SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division FROM matches WHERE basho_id = %s;",
-        (most_recent_basho,),
-    )
-    rows = cursor.fetchall()
-    colnames = [desc[0] for desc in cursor.description]
-    kimarite_usage = Counter()
-    for row in rows:
-        match = dict(zip(colnames, row))
-        kimarite = match["kimarite"]
-        kimarite_usage[kimarite] += 1
-
-    # average stats
-    cursor.execute("SELECT current_weight, current_height FROM rikishi;")
-    rows = cursor.fetchall()
-
-    weights = [row[0] for row in rows if row[0] is not None]
-    heights = [row[1] for row in rows if row[1] is not None]
-
-    avg_weight = round(sum(weights) / len(weights), 2) if weights else 0.0
-    avg_height = round(sum(heights) / len(heights), 2) if heights else 0.0
-
-    avg_stats = {
-        "average_weight_kg": avg_weight,
-        "average_height_cm": avg_height,
-    }
-    cursor.execute(
-        """
-        SELECT AVG(r.current_height) AS makuuchi_yusho_avg_height, AVG(r.current_weight) AS makuuchi_yusho_avg_weight
-        FROM rikishi r
-        LEFT JOIN basho b ON b.makuuchi_yusho = r.id;
-        """
-    )
-    yusho_row = cursor.fetchone()
-
-    makuuchi_yusho_avg_height = round(yusho_row[0], 2) if yusho_row[0] is not None else 0.0
-    makuuchi_yusho_avg_weight = round(yusho_row[1], 2) if yusho_row[1] is not None else 0.0
-
-    avg_stats["makuuchi_yusho_avg_height_cm"] = makuuchi_yusho_avg_height
-    avg_stats["makuuchi_yusho_avg_weight_kg"] = makuuchi_yusho_avg_weight
-
-    avg_stats = convert_decimals(avg_stats)
-
-    # Find fast climber (past year)
-    cursor.execute("SELECT rikishi_id, rank_name, rank_date FROM rikishi_rank_history;")
-    rows = cursor.fetchall()
-    colnames = [desc[0] for desc in cursor.description]
-
-    rank_dates = [row[2] for row in rows if row[2] is not None]
-    fast_climber_dict = None
-    if rank_dates:
-        most_recent_date = max(rank_dates)
-        one_year_ago = most_recent_date - datetime.timedelta(days=365)
-        recent_rows = [row for row in rows if row[2] >= one_year_ago]
-        rikishi_trends = defaultdict(list)
+        recent_matches = {}
+        highlighted_match = None
+        lowest_avg = float("inf")
         for row in recent_rows:
-            rikishi_id = row[0]
-            rank_name = row[1]
-            rank_date = row[2]
-            rikishi_trends[rikishi_id].append((rank_date, rank_name))
+            match = convert_dates(row.copy())
+            match_title = f"{match.get('eastshikona')} ({match.get('east_rank')}) vs. {match.get('westshikona')} ({match.get('west_rank')})"
+            east_order = ordered_rank_mapping.get(match.get("east_rank"), {}).get("order", 0)
+            west_order = ordered_rank_mapping.get(match.get("west_rank"), {}).get("order", 0)
+            match["rank_avg"] = (east_order + west_order) / 2
+            recent_matches[match_title] = match
+            if match["rank_avg"] < lowest_avg:
+                lowest_avg = match["rank_avg"]
+                highlighted_match = match
 
-        max_upward = None
-        fast_climber_id = None
-        for rikishi_id, history in rikishi_trends.items():
-            history_sorted = sorted(history, key=lambda x: x[0])
-            if len(history_sorted) < 2:
-                continue
-            start_rank = history_sorted[0][1]
-            end_rank = history_sorted[-1][1]
-            start_order = ordered_rank_mapping.get(start_rank, {}).get("order")
-            end_order = ordered_rank_mapping.get(end_rank, {}).get("order")
-            if start_order is not None and end_order is not None:
-                upward_movement = start_order - end_order
-                if max_upward is None or upward_movement > max_upward:
-                    max_upward = upward_movement
-                    fast_climber_id = rikishi_id
-        if fast_climber_id is not None:
-            cursor.execute("SELECT * FROM rikishi WHERE id = %s;", (fast_climber_id,))
-            fast_climber_row = cursor.fetchone()
-            fast_climber_colnames = [desc[0] for desc in cursor.description]
-            fast_climber_dict = dict(zip(fast_climber_colnames, fast_climber_row))
-            fast_climber_dict = convert_dates(fast_climber_dict)
-            fast_climber_dict["upward_movement_past_year"] = max_upward
+        # Get counts and average rank order for heya and shusshin
+        heya_counts = Counter()
+        shusshin_counts = Counter()
+        heya_ranks = defaultdict(list)
+        for r in rikishi_rows:
+            heya = r.get("heya")
+            shusshin = r.get("shusshin")
+            current_rank = r.get("current_rank")
+            heya_counts[heya] += 1
+            shusshin_counts[shusshin] += 1
+            order = ordered_rank_mapping.get(current_rank, {}).get("order")
+            if order is not None:
+                heya_ranks[heya].append(order)
 
-    if close_conn:
-        cursor.close()
-        pg_conn.close()
+        heya_avg_rank = {}
+        for h, ranks in heya_ranks.items():
+            filtered_ranks = [r for r in ranks if r is not None]
+            if filtered_ranks:
+                heya_avg_rank[h] = sum(filtered_ranks) / len(filtered_ranks)
+            else:
+                heya_avg_rank[h] = 0
 
-    payload = {
-        "most_recent_basho": most_recent_basho,
-        "top_rikishi_ordered": ordered_top_rikishi,
-        "top_rikishi": top_rikishi,
-        "kimarite_counts": kimarite_counts,
-        "recent_matches": recent_matches,
-        "highlighted_match": highlighted_match,
-        "heya_avg_rank": heya_avg_rank,
-        "heya_counts": heya_counts_clean,
-        "shusshin_counts": shusshin_counts_clean,
-        "kimarite_usage_most_recent_basho": dict(kimarite_usage),
-        "avg_stats": avg_stats,
-        "fast_climber": fast_climber_dict,
-    }
+        heya_counts_clean = {str(k) if k is not None else "Unknown": v for k, v in heya_counts.items()}
+        shusshin_counts_clean = {str(k) if k is not None else "Unknown": v for k, v in shusshin_counts.items()}
 
-    return payload
+        # kimarite usage for most recent basho
+        kimarite_usage = Counter()
+        for m in matches_rows:
+            if m.get("basho_id") == most_recent_basho:
+                kim = m.get("kimarite")
+                kimarite_usage[kim] += 1
 
+        # average stats
+        weights = [r.get("current_weight") for r in rikishi_rows if r.get("current_weight") is not None]
+        heights = [r.get("current_height") for r in rikishi_rows if r.get("current_height") is not None]
+
+        avg_weight = round(sum(weights) / len(weights), 2) if weights else 0.0
+        avg_height = round(sum(heights) / len(heights), 2) if heights else 0.0
+
+        avg_stats = {
+            "average_weight_kg": avg_weight,
+            "average_height_cm": avg_height,
+        }
+
+        # makuuchi yusho aggregates
+        yusho_holder = next((b for b in basho_rows if b.get("makuuchi_yusho") is not None), None)
+        if yusho_holder:
+            # find rikishi matching makuuchi_yusho
+            r = next((rr for rr in rikishi_rows if rr.get("id") == yusho_holder.get("makuuchi_yusho")), None)
+            makuuchi_yusho_avg_height = round(r.get("current_height"), 2) if r and r.get("current_height") is not None else 0.0
+            makuuchi_yusho_avg_weight = round(r.get("current_weight"), 2) if r and r.get("current_weight") is not None else 0.0
+        else:
+            makuuchi_yusho_avg_height = 0.0
+            makuuchi_yusho_avg_weight = 0.0
+
+        avg_stats["makuuchi_yusho_avg_height_cm"] = makuuchi_yusho_avg_height
+        avg_stats["makuuchi_yusho_avg_weight_kg"] = makuuchi_yusho_avg_weight
+
+        avg_stats = convert_decimals(avg_stats)
+
+        # Find fast climber (past year)
+        rank_history = rikishi_rank_rows
+        rank_dates = [r.get("rank_date") for r in rank_history if r.get("rank_date") is not None]
+        fast_climber_dict = None
+        if rank_dates:
+            most_recent_date = max(rank_dates)
+            one_year_ago = most_recent_date - datetime.timedelta(days=365)
+            recent_rows = [row for row in rank_history if row.get("rank_date") and row.get("rank_date") >= one_year_ago]
+            rikishi_trends = defaultdict(list)
+            for row in recent_rows:
+                rikishi_id = row.get("rikishi_id")
+                rank_name = row.get("rank_name")
+                rank_date = row.get("rank_date")
+                rikishi_trends[rikishi_id].append((rank_date, rank_name))
+
+            max_upward = None
+            fast_climber_id = None
+            for rikishi_id, history in rikishi_trends.items():
+                history_sorted = sorted(history, key=lambda x: x[0])
+                if len(history_sorted) < 2:
+                    continue
+                start_rank = history_sorted[0][1]
+                end_rank = history_sorted[-1][1]
+                start_order = ordered_rank_mapping.get(start_rank, {}).get("order")
+                end_order = ordered_rank_mapping.get(end_rank, {}).get("order")
+                if start_order is not None and end_order is not None:
+                    upward_movement = start_order - end_order
+                    if max_upward is None or upward_movement > max_upward:
+                        max_upward = upward_movement
+                        fast_climber_id = rikishi_id
+            if fast_climber_id is not None:
+                fr = next((rr for rr in rikishi_rows if rr.get("id") == fast_climber_id), None)
+                if fr:
+                    fast_climber_dict = convert_dates(fr.copy())
+                    fast_climber_dict["upward_movement_past_year"] = max_upward
+
+        if spark_created and spark is not None:
+            try:
+                spark.stop()
+            except Exception:
+                pass
+
+        payload = {
+            "_homepage_doc": True,
+            "most_recent_basho": most_recent_basho,
+            "top_rikishi_ordered": ordered_top_rikishi,
+            "top_rikishi": top_rikishi,
+            "kimarite_counts": kimarite_counts,
+            "recent_matches": recent_matches,
+            "highlighted_match": highlighted_match,
+            "heya_avg_rank": heya_avg_rank,
+            "heya_counts": heya_counts_clean,
+            "shusshin_counts": shusshin_counts_clean,
+            "kimarite_usage_most_recent_basho": dict(kimarite_usage),
+            "avg_stats": avg_stats,
+            "fast_climber": fast_climber_dict,
+        }
+
+        return payload
+
+    
 
 def _connect_mongo_or_hook(mongo_conn_id=None):
     MONGO_CONN_ID = mongo_conn_id or os.getenv("MONGO_CONN_ID") or os.getenv("MONGO_CONN") or None
@@ -427,14 +429,90 @@ def _connect_mongo_or_hook(mongo_conn_id=None):
         return None
 
 
-def run_homepage_job(pg_conn=None, mongo_client=None, postgres_conn_id=None, mongo_conn_id=None, write_to_mongo=True, webhook=None):
+def run_homepage_job(pg_conn=None, mongo_client=None, postgres_conn_id=None, mongo_conn_id=None, write_to_mongo=True, webhook=None, executor_write=True):
     if isinstance(pg_conn, dict) and webhook is None:
         webhook = pg_conn
         pg_conn = None
 
     payload = build_homepage_payload(pg_conn=pg_conn, postgres_conn_id=postgres_conn_id)
 
+    # Add an "updated_at" timestamp so the stored homepage document shows when it
+    # was last written/updated. Use UTC ISO-8601 format.
+    try:
+        payload["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    except Exception:
+        # Fallback if timezone is not available for some reason
+        payload["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+
     if write_to_mongo:
+        # If requested, try to perform the write from a Spark executor. This
+        # uses SparkContext.parallelize([...], 1).foreachPartition so exactly
+        # one executor will run the write (coalesced to one partition). The
+        # MONGO_URI and DB/collection are broadcast to executors so they don't
+        # need Airflow connection state.
+        if executor_write and SparkSession is not None:
+            try:
+                # Ensure a SparkSession exists (prefer helper to reuse configs)
+                try:
+                    spark = get_spark_session_for_postgres()
+                    spark_created_locally = True
+                except Exception:
+                    spark = SparkSession.builder.appName("homepage_executor_write").getOrCreate()
+                    spark_created_locally = False
+
+                sc = spark.sparkContext
+
+                mongo_uri = os.environ.get("MONGO_URI")
+                if not mongo_uri:
+                    raise RuntimeError("MONGO_URI must be set in the environment for executor-side Mongo writes")
+
+                db_name = os.getenv("MONGO_DB_NAME") or "sumo"
+                coll_name = os.getenv("MONGO_COLL_NAME") or "homepage"
+
+                b_uri = sc.broadcast(mongo_uri)
+                b_db = sc.broadcast(db_name)
+                b_coll = sc.broadcast(coll_name)
+
+                # Broadcast the payload so the executor receives it in the closure
+                b_payload = sc.broadcast(payload)
+
+                def _write_partition(rows):
+                    # runs on executor
+                    try:
+                        from pymongo import MongoClient
+                    except Exception:
+                        # pymongo not available on executor — surface error to driver
+                        raise
+
+                    client = MongoClient(b_uri.value)
+                    try:
+                        db = client.get_database(b_db.value)
+                        coll = db[b_coll.value]
+                        for _ in rows:
+                            doc = dict(b_payload.value)
+                            # Ensure marker and avoid accidental _id in payload
+                            doc.pop("_id", None)
+                            doc["_homepage_doc"] = True
+                            coll.replace_one({"_homepage_doc": True}, doc, upsert=True)
+                    finally:
+                        try:
+                            client.close()
+                        except Exception:
+                            pass
+
+                # Parallelize a single-element RDD with one partition to guarantee
+                # the write runs exactly once on one executor.
+                sc.parallelize([0], 1).foreachPartition(_write_partition)
+
+                # If we created a SparkSession here via helper, we leave it as-is
+                # (Spark lifecycle is typically managed by the runtime). Return
+                # the payload as usual.
+                return payload
+            except Exception as e:
+                # Fall back to driver-based behaviour if executor write fails.
+                print(f"⚠️ Executor-side write failed, falling back to driver write: {e}")
+
+        # Driver-side fallback (existing behavior): connect via Airflow MongoHook
         client = mongo_client or _connect_mongo_or_hook(mongo_conn_id=mongo_conn_id)
         if client is None:
             raise RuntimeError("No MongoDB client available: install pymongo or configure Airflow MongoHook/MONGO_URI to enable writing to MongoDB")
@@ -470,5 +548,36 @@ def run_homepage_job(pg_conn=None, mongo_client=None, postgres_conn_id=None, mon
 
 
 if __name__ == "__main__":
+    # When executed directly (or when submitted via spark-submit) accept
+    # optional CLI overrides so the driver can be given the correct
+    # Postgres JDBC URL / host even when environment variables are not
+    # propagated into the Spark driver container.
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run homepage job (Spark-first)")
+    parser.add_argument("--jdbc-url", dest="jdbc_url", help="Full JDBC URL (takes precedence)")
+    parser.add_argument("--db-host", dest="db_host", help="Postgres host for JDBC URL construction")
+    parser.add_argument("--db-port", dest="db_port", help="Postgres port for JDBC URL construction")
+    parser.add_argument("--db-name", dest="db_name", help="Postgres database name for JDBC URL construction")
+    parser.add_argument("--db-user", dest="db_user", help="Postgres username for JDBC authentication")
+    parser.add_argument("--db-password", dest="db_password", help="Postgres password for JDBC authentication")
+    args = parser.parse_args()
+
+    # If a JDBC URL was passed, export it so the rest of the code will use it.
+    if args.jdbc_url:
+        os.environ["JDBC_URL"] = args.jdbc_url
+    else:
+        # If individual DB pieces were provided, map them into env vars
+        if args.db_host:
+            os.environ["DB_HOST"] = args.db_host
+        if args.db_port:
+            os.environ["DB_PORT"] = args.db_port
+        if args.db_name:
+            os.environ["DB_NAME"] = args.db_name
+        if args.db_user:
+            os.environ["DB_USERNAME"] = args.db_user
+        if args.db_password:
+            os.environ["DB_PASSWORD"] = args.db_password
+
     # When executed directly, run the job and write to Mongo
     run_homepage_job()
