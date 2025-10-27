@@ -36,3 +36,16 @@ RUN set -eux; \
 USER root
 
 ENV PYTHONUNBUFFERED=1
+
+# Install PostgreSQL JDBC driver into Spark's jars directory so Spark jobs
+# can use the driver without needing spark.jars.packages at runtime.
+ENV POSTGRES_JDBC_VERSION=42.6.0
+RUN set -eux; \
+    JDBC_JAR_URL="https://repo1.maven.org/maven2/org/postgresql/postgresql/${POSTGRES_JDBC_VERSION}/postgresql-${POSTGRES_JDBC_VERSION}.jar"; \
+    mkdir -p /opt/spark/jars; \
+    if [ ! -f /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar ]; then \
+        echo "Downloading Postgres JDBC ${POSTGRES_JDBC_VERSION} to /opt/spark/jars"; \
+        wget -q -O /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar "$JDBC_JAR_URL"; \
+    else \
+        echo "Postgres JDBC already present"; \
+    fi

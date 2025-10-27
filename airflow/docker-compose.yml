@@ -17,6 +17,14 @@ x-spark-common: &spark-common
     # (or SparkSession.builder configs) can read MONGO_URI/MONGO_DB_NAME.
     - MONGO_URI=${MONGO_URI}
     - MONGO_DB_NAME=${MONGO_DB_NAME}
+    # Make Postgres connection info available to Spark containers so
+    # Spark jobs can construct JDBC URLs from environment variables.
+    - DB_HOST=${DB_HOST}
+    - DB_PORT=${DB_PORT}
+    - DB_NAME=${DB_NAME}
+    - DB_USERNAME=${DB_USERNAME}
+    - DB_PASSWORD=${DB_PASSWORD}
+    - JDBC_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
 
 x-airflow-common: &airflow-common
   build:
