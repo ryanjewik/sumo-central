@@ -28,6 +28,8 @@ RUN set -eux; \
         # Make python3.8 the default python and python3 on the image
         ln -sf /usr/bin/python3.8 /usr/bin/python3; \
         ln -sf /usr/bin/python3.8 /usr/bin/python || true; \
+        # Install pymongo into the python3.8 environment for executor-side writes
+        python3.8 -m pip install --no-cache-dir "pymongo>=4.0,<5" ; \
     fi; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 

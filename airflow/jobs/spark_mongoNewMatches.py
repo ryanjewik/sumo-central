@@ -16,8 +16,20 @@ If no path is provided the job will attempt to read
 `/opt/airflow/jobs/latest_webhook.json`.
 """
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import explode, col
-from pyspark.sql.types import StringType
+from pyspark.sql.functions import (
+    explode,
+    col,
+    when,
+    to_date,
+    to_timestamp,
+    date_add,
+    concat,
+    substring,
+    lpad,
+    lit,
+    date_format,
+)
+from pyspark.sql.types import StringType, LongType
 import os
 import sys
 from datetime import datetime, timedelta
@@ -84,35 +96,176 @@ def main():
         matches = []
 
     df = spark.createDataFrame(matches)
+    print(f"Loaded {df.count()} matches from webhook payload.")
 
-    # Add computed match_date column (use pandas UDF or simple map on rdd)
-    def row_to_dict(row):
-        d = row.asDict()
-        basho_id = str(d.get("bashoId")) if d.get("bashoId") is not None else ""
-        day = d.get("day") or 0
-        start_date = None
-        # We don't fetch nested basho.start_date here; that's a follow-up optimization.
-        match_date_iso = compute_match_date(basho_id, day, start_date)
-        d["match_date_iso"] = match_date_iso
-        return d
 
-    rdd = df.rdd.map(row_to_dict)
-
-    # Convert back to dataframe
-    df2 = spark.createDataFrame(rdd)
-
-    # Write out to a staging collection via the Mongo Spark Connector
     if mongo_uri:
-        df2.write.format("mongo") \
-            .option("uri", mongo_uri) \
-            .option("database", mongo_db) \
-            .option("collection", "basho_matches_staging") \
-            .mode("append") \
-            .save()
-        print("Wrote matches to staging collection 'basho_matches_staging'")
+        try:
+            first_basho = None
+            try:
+                first_row = df.select("bashoId").where(col("bashoId").isNotNull()).limit(1).collect()
+                if first_row:
+                    first_basho = first_row[0][0]
+            except Exception:
+                # If anything goes wrong collecting the first id, fall back
+                # to None and the code below will produce an empty selection.
+                first_basho = None
+
+            numeric_id = None
+            if first_basho is not None:
+                print(f"passing basho id for join: {first_basho}")
+                try:
+                    numeric_id = int(first_basho)
+                except Exception:
+                    numeric_id = None
+
+            reader = (
+                spark.read.format("mongo")
+                .option("uri", mongo_uri)
+                .option("database", mongo_db)
+                .option("collection", "basho_pages")
+            )
+
+            pipeline_clauses = []
+            if numeric_id is not None:
+                pipeline_clauses = [{"$match": {"id": numeric_id}}]
+                pipeline_json = _json.dumps(pipeline_clauses)
+                reader = reader.option("pipeline", pipeline_json).option("allowDiskUse", "true")
+
+            try:
+                if pipeline_clauses:
+                    basho_pages = reader.load()
+                    print("successfully loaded basho_pages for join")
+                    print(basho_pages.show(1))
+                else:
+                    # No numeric bashoId available in payload — create empty DataFrame
+                    # and skip hitting the remote collection.
+                    basho_pages = spark.createDataFrame([], schema=None)
+                    print("no numeric bashoId; skipping basho_pages read")
+            except Exception as e:
+                # Connector read failed (e.g., server sort memory limit). Try a
+                # small pymongo driver fetch as a last-resort fallback.
+                msg = str(e)
+                print(f"Mongo connector read failed: {msg}")
+
+            # Normalize possible locations for basho id and start_date and coalesce them
+            from pyspark.sql.functions import coalesce, trim
+
+            basho_df = basho_pages.select(
+                col("basho.start_date").alias("basho_start_date"),
+                col("id").cast(LongType()).alias("basho_id_int"),
+                col("id").cast(StringType()).alias("basho_id_str"),
+            )
+
+            # Trim whitespace from string ids and select only necessary columns
+            basho_df = basho_df.withColumn("basho_id_str", trim(col("basho_id_str"))).select("basho_id_str", "basho_start_date", "basho_id_int")
+            df = df.join(basho_df, df.bashoId == basho_df.basho_id_str, how="left").select(df["*"], basho_df["basho_start_date"])
+        except Exception as e:
+            print(f"failed to join basho start dates: {e}")
+            pass
+
+    try:
+        from pyspark.sql import functions as F
+        df = df.withColumn("basho_start_date", F.to_date(F.col("basho_start_date")))
+
+        df = df.withColumn(
+            "match_date_dt",
+            F.when(
+                F.col("day").isNotNull() & F.col("basho_start_date").isNotNull(),
+                F.expr("date_add(basho_start_date, cast(day as int) - 1)"),
+            )
+        )
+
+        df = df.withColumn(
+            "match_date",
+            F.expr("concat(date_format(match_date_dt, 'yyyy-MM-dd'), 'T00:00:00')"),
+        )
+
+        cols_to_remove = []
+        for col_name in [
+            "match_date_dt",
+            "basho_id_int",
+            "basho_id_str",
+            "basho_start_date",
+            "match_date_iso",
+            ]:
+            if col_name in df.columns:
+                cols_to_remove.append(col_name)
+
+        if cols_to_remove:
+            df = df.drop(*cols_to_remove)
+    except Exception as e:
+        print(f"failed to compute match_date: {e}")
+
+    # stage for upload and upload
+    if mongo_uri:
+        numeric_id_for_update = None
+        try:
+            numeric_id_for_update = locals().get("numeric_id", None)
+        except Exception:
+            numeric_id_for_update = None
+        if numeric_id_for_update is not None:
+            try:
+                from pymongo import MongoClient, UpdateOne
+
+                def make_upsert_partition(mongo_uri_inner, mongo_db_inner, numeric_id_inner):
+                    def upsert_partition(rows_iter):
+                        # This function runs inside executors/partitions
+                        try:
+                            client = MongoClient(mongo_uri_inner)
+                            db = client.get_database(mongo_db_inner)
+                            coll = db["basho_pages"]
+
+                            groups = {}
+                            for r in rows_iter:
+                                d = r.asDict()
+                                match_date_iso = d.get("match_date")
+                                if not match_date_iso:
+                                    continue
+                                date_key = match_date_iso[:10]
+                                division = d.get("division") or "Unknown"
+                                match_doc = {
+                                    "match_date": match_date_iso,
+                                    "match_number": int(d.get("matchNo")) if d.get("matchNo") not in (None, "") else None,
+                                    "eastshikona": d.get("eastShikona"),
+                                    "westshikona": d.get("westShikona"),
+                                    "division": division,
+                                    "winner": int(d.get("winnerId")) if d.get("winnerId") not in (None, "") else None,
+                                    "kimarite": d.get("kimarite"),
+                                    "east_rikishi_id": int(d.get("eastId")) if d.get("eastId") not in (None, "") else None,
+                                    "west_rikishi_id": int(d.get("westId")) if d.get("westId") not in (None, "") else None,
+                                }
+                                key = (division, date_key)
+                                groups.setdefault(key, []).append(match_doc)
+
+                            ops = []
+                            for (division_k, date_k), matches in groups.items():
+                                update_path = f"days.{division_k}.{date_k}"
+                                ops.append(UpdateOne({"id": numeric_id_inner}, {"$push": {update_path: {"$each": matches}}}))
+
+                            if ops:
+                                coll.bulk_write(ops, ordered=False)
+                            client.close()
+                        except Exception:
+                            raise
+
+                    return upsert_partition
+                
+                if "division" in df.columns:
+                    try:
+                        df = df.repartition(col("division"))
+                    except Exception as e:
+                        print(f"Repartition by division failed, continuing: {e}")
+
+                # Trigger foreachPartition; this will execute on executors
+                df.rdd.foreachPartition(make_upsert_partition(mongo_uri, mongo_db, numeric_id_for_update))
+                print(f"Executor-side pymongo: scheduled partitioned updates for basho_pages.id={numeric_id_for_update}")
+            except Exception as e:
+                print(f"Executor-side pymongo write failed to schedule/execute: {e}")
+
     else:
         print("MONGO_URI not set; skipping write to MongoDB. Sample output:")
-        for r in df2.take(20):
+        for r in df.take(20):
             print(r)
 
     spark.stop()
