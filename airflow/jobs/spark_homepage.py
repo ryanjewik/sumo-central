@@ -8,11 +8,6 @@ from collections import defaultdict
 from collections import Counter
 import decimal
 
-# Spark-related helper (optional) -------------------------------------------------
-# These helpers let you obtain a SparkSession pre-configured to download the
-# PostgreSQL JDBC driver at runtime via Maven coordinates. When you refactor the
-# homepage job to run under Spark, call `get_spark_session_for_postgres()` and
-# use `spark.read.format("jdbc")...` to read tables.
 try:
     from pyspark.sql import SparkSession
 except Exception:
@@ -20,60 +15,23 @@ except Exception:
 
 
 def get_spark_session_for_postgres(app_name: str = "spark_homepage", postgres_jdbc_package: str = "org.postgresql:postgresql:42.6.0"):
-    """
-    Return a SparkSession configured to load the PostgreSQL JDBC driver via
-    spark.jars.packages. This keeps the job portable and avoids baking the
-    driver into the image. If the environment already supplies the jar (for
-    example by placing it in /opt/spark/jars), the package download will be a
-    no-op.
-
-    Usage:
-      spark = get_spark_session_for_postgres()
-      df = spark.read.format("jdbc")\
-        .option("url", jdbc_url)\
-        .option("dbtable", table_or_query)\
-        .option("user", user)\
-        .option("password", password)\
-        .load()
-
-    Note: When running under Docker Compose in this repo the Spark services
-    already live on the same network as the Postgres services (see
-    `docker-compose.yml`), so use hostnames `sumo-db` or `airflow-postgres` as
-    appropriate in the JDBC URL.
-    """
     if SparkSession is None:
         raise RuntimeError("pyspark not available in this environment")
 
     builder = SparkSession.builder.appName(app_name)
-    # Ask Spark to download the JDBC driver from Maven Central at runtime.
-    # This is convenient for development; for air-gapped environments bake the
-    # jar into the image and set spark.jars accordingly.
     builder = builder.config("spark.jars.packages", postgres_jdbc_package)
-    # Recommended: run Python 3 for driver & executors consistent with images
     builder = builder.config("spark.pyspark.python", "python3").config("spark.pyspark.driver.python", "python3")
     spark = builder.getOrCreate()
     return spark
 
 
 def spark_read_postgres_table(spark, jdbc_url: str, table: str, user: str = None, password: str = None, predicates: list = None):
-    """
-    Read a Postgres table (or query) into a Spark DataFrame using the JDBC
-    connector. Set `table` to either a table name or a subquery like
-    "(SELECT ... ) AS tmp". If `predicates` is provided it will be passed to
-    `jdbc` as partition predicates to parallelize reads (useful for large
-    tables).
-    """
-    # Explicitly set the JDBC driver class. This avoids "No suitable driver"
-    # errors when the driver is available on the classpath (via spark.jars or
-    # spark.jars.packages) but cannot be inferred automatically.
     reader = spark.read.format("jdbc").option("url", jdbc_url).option("dbtable", table).option("driver", "org.postgresql.Driver")
     if user is not None:
         reader = reader.option("user", user)
     if password is not None:
         reader = reader.option("password", password)
     if predicates:
-        # predicates should be a list of SQL expressions that each form a
-        # partition predicate; Spark will issue multiple parallel queries.
         reader = reader.option("partitionColumn", predicates[0])
     return reader.load()
 
@@ -149,33 +107,19 @@ def order_ranks(rank_mapping):
         }
     return ordered_mapping
     
-def _connect_postgres_or_hook(postgres_conn_id=None):
-    """Return a psycopg2 connection object, preferring Airflow PostgresHook if available."""
-    return connect_to_database(postgres_conn_id=postgres_conn_id)
 
 
 def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
-    # Prefer Spark-based reads when a SparkSession is available. This keeps the
-    # computation in cluster-friendly APIs while preserving the original
-    # semantics. If Spark is not available or fails, fall back to the original
-    # DBAPI/PostgresHook path.
     use_spark = False
     spark = None
     spark_created = False
     try:
-        # If pyspark is importable and the helper exists, attempt a SparkSession
-        # configured for Postgres. This will typically succeed inside the
-        # spark container; outside (developer machine) it will raise and we
-        # gracefully fall back.
         if SparkSession is not None:
             try:
-                # Try to build a SparkSession using environment packages
                 spark = get_spark_session_for_postgres()
                 spark_created = True
                 use_spark = True
             except Exception:
-                # get_spark_session_for_postgres may require network access to
-                # fetch packages; if it fails, don't crash — fall back.
                 spark = None
                 use_spark = False
     except Exception:
@@ -183,15 +127,11 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
         use_spark = False
 
     if use_spark and spark is not None:
-        # Helper to run a simple table or subquery via JDBC and collect as list
         jdbc = os.environ.get("JDBC_URL") or f"jdbc:postgresql://{os.getenv('DB_HOST','localhost')}:{os.getenv('DB_PORT','5432')}/{os.getenv('DB_NAME','sumo')}"
-        # Debug: print the JDBC URL and key DB env vars so spark driver logs
-        # clearly show what host/DB the job will attempt to connect to.
         try:
             print(f"[spark_homepage] JDBC_URL={jdbc}")
             print(f"[spark_homepage] DB_HOST={os.getenv('DB_HOST')}, DB_PORT={os.getenv('DB_PORT')}, DB_NAME={os.getenv('DB_NAME')}")
         except Exception:
-            # Best-effort logging — don't crash the job if printing fails
             pass
         user = os.environ.get("DB_USERNAME")
         pwd = os.environ.get("DB_PASSWORD")
@@ -435,21 +375,12 @@ def run_homepage_job(pg_conn=None, mongo_client=None, postgres_conn_id=None, mon
         pg_conn = None
 
     payload = build_homepage_payload(pg_conn=pg_conn, postgres_conn_id=postgres_conn_id)
-
-    # Add an "updated_at" timestamp so the stored homepage document shows when it
-    # was last written/updated. Use UTC ISO-8601 format.
     try:
         payload["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     except Exception:
-        # Fallback if timezone is not available for some reason
         payload["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
 
     if write_to_mongo:
-        # If requested, try to perform the write from a Spark executor. This
-        # uses SparkContext.parallelize([...], 1).foreachPartition so exactly
-        # one executor will run the write (coalesced to one partition). The
-        # MONGO_URI and DB/collection are broadcast to executors so they don't
-        # need Airflow connection state.
         if executor_write and SparkSession is not None:
             try:
                 # Ensure a SparkSession exists (prefer helper to reuse configs)
@@ -500,16 +431,9 @@ def run_homepage_job(pg_conn=None, mongo_client=None, postgres_conn_id=None, mon
                         except Exception:
                             pass
 
-                # Parallelize a single-element RDD with one partition to guarantee
-                # the write runs exactly once on one executor.
                 sc.parallelize([0], 1).foreachPartition(_write_partition)
-
-                # If we created a SparkSession here via helper, we leave it as-is
-                # (Spark lifecycle is typically managed by the runtime). Return
-                # the payload as usual.
                 return payload
             except Exception as e:
-                # Fall back to driver-based behaviour if executor write fails.
                 print(f"⚠️ Executor-side write failed, falling back to driver write: {e}")
 
         # Driver-side fallback (existing behavior): connect via Airflow MongoHook
@@ -520,19 +444,15 @@ def run_homepage_job(pg_conn=None, mongo_client=None, postgres_conn_id=None, mon
         collection = db["homepage"]
 
         marker_field = "_homepage_doc"
-
-        # Remove any accidental '_id' carried in the payload to avoid conflicts when inserting.
         payload.pop("_id", None)
         
         existing = collection.find_one({marker_field: True})
         if existing:
             existing_id = existing["_id"]
             replacement = dict(payload)
-            # keep the marker and ensure the replacement has the same _id so replace_one updates the same doc
             replacement[marker_field] = True
             replacement["_id"] = existing_id
             collection.replace_one({"_id": existing_id}, replacement)
-            # return the ObjectId as a string
             try:
                 payload["_id"] = str(existing_id)
             except Exception:
@@ -548,10 +468,6 @@ def run_homepage_job(pg_conn=None, mongo_client=None, postgres_conn_id=None, mon
 
 
 if __name__ == "__main__":
-    # When executed directly (or when submitted via spark-submit) accept
-    # optional CLI overrides so the driver can be given the correct
-    # Postgres JDBC URL / host even when environment variables are not
-    # propagated into the Spark driver container.
     import argparse
 
     parser = argparse.ArgumentParser(description="Run homepage job (Spark-first)")

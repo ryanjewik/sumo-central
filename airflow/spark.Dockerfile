@@ -11,6 +11,7 @@ RUN set -eux; \
         wget \
         gnupg2 \
         software-properties-common \
+        procps \
         ; \
     # Install python3.8 (some distros may already have it); try apt first
     apt-get install -y --no-install-recommends python3.8 python3.8-venv python3.8-distutils || true; \
@@ -43,6 +44,14 @@ USER root
 
 ENV PYTHONUNBUFFERED=1
 
+# Ensure Spark uses the system python3 (installed above) for driver and
+# executor processes. This avoids PYTHON_VERSION_MISMATCH errors when the
+# Airflow submitter and the executors run slightly different python
+# binaries.
+ENV PYSPARK_PYTHON=/usr/bin/python3
+ENV PYSPARK_DRIVER_PYTHON=/usr/bin/python3
+ENV SPARK_PYTHON=/usr/bin/python3
+
 # Install PostgreSQL JDBC driver into Spark's jars directory so Spark jobs
 # can use the driver without needing spark.jars.packages at runtime.
 ENV POSTGRES_JDBC_VERSION=42.6.0
@@ -52,6 +61,8 @@ RUN set -eux; \
     if [ ! -f /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar ]; then \
         echo "Downloading Postgres JDBC ${POSTGRES_JDBC_VERSION} to /opt/spark/jars"; \
         wget -q -O /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar "$JDBC_JAR_URL"; \
+        # set permissive permissions so Spark (non-root user) can read the jar
+        chmod 0644 /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar; \
     else \
         echo "Postgres JDBC already present"; \
     fi

@@ -1,23 +1,14 @@
 import os
 from pathlib import Path
 
-# Read .env file for MONGO_URI if present
-env_file = Path(__file__).resolve().parents[0] / '.env'
-env = {}
-if env_file.exists():
-    for line in env_file.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith('#'):
-            continue
-        if '=' in line:
-            k, v = line.split('=', 1)
-            env[k.strip()] = v.strip().strip('"')
-
-MONGO_URI = os.environ.get('MONGO_URI') or env.get('MONGO_URI')
-MONGO_DB = os.environ.get('MONGO_DB_NAME') or env.get('MONGO_DB_NAME') or 'sumo'
+MONGO_URI = os.environ.get('MONGO_URI')
+MONGO_DB = os.environ.get('MONGO_DB_NAME')
 
 if not MONGO_URI:
-    print('No MONGO_URI found in environment or .env')
+    print('No MONGO_URI found in environment')
+    raise SystemExit(1)
+if not MONGO_DB:
+    print('No MONGO_DB_NAME found in environment')
     raise SystemExit(1)
 
 try:

@@ -7,6 +7,8 @@ from airflow.operators.empty import EmptyOperator
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator
 from airflow.hooks.base import BaseHook
+# Local helper to keep the DAG small and reusable
+from mongo_utils import sanitize_mongo_uri
 import json
 import os
 import sys
@@ -23,15 +25,11 @@ def end_msg():
 
 @task.branch
 def choose_job(webhook: dict, db_type: str):
-    # For now, webhook will come from Kafka later. Use the provided webhook dict.
     webhook_type = (webhook.get("type") or "").strip()
     mapping = {
         "newBasho": f"run_new_basho_{db_type}",
         "endBasho": f"run_end_basho_{db_type}",
-    # For mongo newMatches we want to run the XCom push first so the
-    # Spark operator has the webhook payload available. Return the
-    # push task id instead of the final run task when db_type is mongo.
-    "newMatches": ("push_webhook_xcom" if db_type == "mongo" else f"run_new_matches_{db_type}"),
+        "newMatches": ("push_webhook_xcom" if db_type == "mongo" else f"run_new_matches_{db_type}"),
         "matchResults": f"run_match_results_{db_type}",
     }
 
@@ -39,8 +37,6 @@ def choose_job(webhook: dict, db_type: str):
 
 
 def _load_and_call(path: str, func_name: str, webhook: dict):
-    """Dynamically load a module from `path` and call `func_name(webhook)` if present."""
-    # Ensure the jobs directory is on sys.path so imports like `from utils...` work
     jobs_dir = os.path.dirname(path)
     if jobs_dir and jobs_dir not in sys.path:
         sys.path.insert(0, jobs_dir)
@@ -77,11 +73,6 @@ def call_skip(webhook: dict):
 
 
 def call_homepage(webhook: dict):
-  # ignore webhook payload here; homepage job reads DB directly
-  # Use the Spark-first homepage implementation so Airflow can submit the
-  # job to the Spark cluster. The module `spark_homepage.py` exposes
-  # `run_homepage_job` which prefers Spark JDBC reads and supports
-  # executor-side Mongo writes.
   return _load_and_call("/opt/airflow/jobs/spark_homepage.py", "run_homepage_job", webhook)
 
 
@@ -104,14 +95,101 @@ with DAG(
   default_args=default_args,
   tags=["smoke"],
 ) as dag:
+  
+  
+  @task
+  def spark_conf():
+    # Resolve Postgres connection (minimal validation)
+    try:
+      sumo_conn = BaseHook.get_connection("sumo_db")
+      conn_host = sumo_conn.host
+      conn_port = sumo_conn.port or 5432
+      conn_db = sumo_conn.schema
+      if not conn_host or not conn_db:
+        raise RuntimeError("Airflow connection 'sumo_db' must include host and schema (database name)")
+      jdbc_url = f"jdbc:postgresql://{conn_host}:{conn_port}/{conn_db}"
+      db_username = sumo_conn.login
+      db_password = sumo_conn.password
+    except Exception as e:
+      raise RuntimeError("Failed to build JDBC URL from Airflow connection 'sumo_db'. Ensure the connection exists and has host/schema set") from e
+
+    # Resolve Mongo connection and produce a sanitized URI using helper
+    try:
+      mconn = BaseHook.get_connection("mongo_default")
+      try:
+        mongo_uri = mconn.get_uri()
+      except Exception:
+        if not mconn.host:
+          raise RuntimeError("Airflow connection 'mongo_default' must include a host or URI")
+        if mconn.login and mconn.password:
+          mongo_uri = f"mongodb://{mconn.login}:{mconn.password}@{mconn.host}:{mconn.port or 27017}/{mconn.schema or ''}"
+        else:
+          mongo_uri = f"mongodb://{mconn.host}:{mconn.port or 27017}/{mconn.schema or ''}"
+
+      extras = {}
+      try:
+        extras = mconn.extra_dejson or {}
+      except Exception:
+        extras = {}
+
+      safe_uri = sanitize_mongo_uri(mongo_uri, host=mconn.host, extras=extras)
+      if not mconn.schema:
+        raise RuntimeError("Airflow connection 'mongo_default' must include the database name in the 'schema' field (MONGO_DB_NAME)")
+    except Exception as e:
+      raise RuntimeError("Failed to obtain MongoDB URI from Airflow connection 'mongo_default'. Configure the connection in Airflow.") from e
+
+    # Minimal homepage_conf with only the keys Spark needs for executors and driver
+    homepage_conf = {
+      "spark.pyspark.python": "python3",
+      "spark.executorEnv.PYSPARK_PYTHON": "python3",
+      "spark.pyspark.driver.python": "python3",
+      "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
+      "spark.executorEnv.MONGO_URI": safe_uri,
+      "spark.executorEnv.MONGO_DB_NAME": mconn.schema,
+      "spark.executorEnv.MONGO_COLL_NAME": "homepage",
+      # Mirror into driver env so the driver can build broadcasts
+      "spark.driverEnv.MONGO_URI": safe_uri,
+      "spark.driverEnv.MONGO_DB_NAME": mconn.schema,
+      "spark.driverEnv.MONGO_COLL_NAME": "homepage",
+      # Postgres connection details for executors if they need them
+      "spark.executorEnv.DB_HOST": conn_host,
+      "spark.executorEnv.DB_PORT": str(conn_port),
+      "spark.executorEnv.DB_NAME": conn_db,
+      "spark.driverEnv.DB_HOST": conn_host,
+      "spark.driverEnv.DB_PORT": str(conn_port),
+      "spark.driverEnv.DB_NAME": conn_db,
+    }
+    if db_username:
+      homepage_conf["spark.executorEnv.DB_USERNAME"] = db_username
+    if db_password:
+      homepage_conf["spark.executorEnv.DB_PASSWORD"] = db_password
+    homepage_conf.setdefault("spark.executorEnv.DB_USERNAME", db_username or "")
+    homepage_conf.setdefault("spark.executorEnv.DB_PASSWORD", db_password or "")
+
+    return {"conf": homepage_conf, "jdbc_url": jdbc_url, "mongo_uri": safe_uri, "mongo_db": mconn.schema, "mongo_coll": "homepage"}
+
+  # Build the spark config at runtime and push it to XCom
+  spark_conf = spark_conf()
 
   spark_smoke = SparkSubmitOperator(
     task_id="spark_smoke",
     application="/opt/airflow/jobs/spark_smoke.py",   # this path matches your compose mounts
     conn_id="spark_default",                          # optional; keep if you want (binary is in PATH)
-    # optional tuning:
     driver_memory="1g", executor_memory="2g", executor_cores=2,
-    # verbose=True,
+    conf={
+      "spark.pyspark.python": "python3",
+      "spark.executorEnv.PYSPARK_PYTHON": "python3",
+      "spark.pyspark.driver.python": "python3",
+      "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
+      "spark.executorEnv.MONGO_URI": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.MONGO_URI'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+      "spark.executorEnv.MONGO_DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.MONGO_DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+      "spark.executorEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.MONGO_COLL_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+      "spark.executorEnv.DB_HOST": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_HOST'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+      "spark.executorEnv.DB_PORT": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_PORT'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+      "spark.executorEnv.DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+      "spark.executorEnv.DB_USERNAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_USERNAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+      "spark.executorEnv.DB_PASSWORD": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_PASSWORD'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+    },
   )
     
   #2. mongo updates (can be done concurrently)
@@ -483,8 +561,7 @@ with DAG(
   }
 
   start_task = start_msg()
-  
-  spark_smoke #spark test
+
 
   # Push webhook JSON into XCom early so any downstream branch tasks can access it.
   push_webhook_xcom = PythonOperator(
@@ -533,61 +610,41 @@ with DAG(
     python_callable=call_skip,
     op_kwargs={"webhook": webhook},
   )
+  
 
-  # Build JDBC URL from the Airflow connection `sumo_db` when possible so
-  # the Spark driver receives a correct host (e.g. `sumo-db`) instead of
-  # defaulting to localhost when env vars aren't forwarded into the driver.
-  try:
-    sumo_conn = BaseHook.get_connection("sumo_db")
-    conn_host = sumo_conn.host or os.getenv("DB_HOST", "sumo-db")
-    conn_port = sumo_conn.port or os.getenv("DB_PORT", "5432")
-    conn_db = sumo_conn.schema or os.getenv("DB_NAME", "sumo")
-    jdbc_url = f"jdbc:postgresql://{conn_host}:{conn_port}/{conn_db}"
-  except Exception:
-    # Fall back to environment/compose default
-    jdbc_url = os.environ.get("JDBC_URL") or f"jdbc:postgresql://sumo-db:{os.getenv('DB_PORT','5432')}/{os.getenv('DB_NAME','sumo')}"
-
-  # Run the Spark-first homepage job via SparkSubmit so the driver/executors
-  # run inside the Spark cluster. This avoids importing Airflow hooks inside
-  # the Spark runtime and lets executors perform the Mongo upsert.
   homepage_task = SparkSubmitOperator(
     task_id="run_homepage",
     application="/opt/airflow/jobs/spark_homepage.py",
     conn_id="spark_default",
-    # Ask Spark to fetch the Postgres JDBC driver from Maven if the client
-    # cannot access a local jar path. This is more reliable when spark-submit
-    # runs from a different container than the Spark nodes.
     packages="org.postgresql:postgresql:42.6.0",
     driver_memory="1g",
     executor_memory="2g",
     executor_cores=2,
     name="spark_homepage_job",
     conf={
-      "spark.pyspark.python": "python3",
-      "spark.executorEnv.PYSPARK_PYTHON": "python3",
-      "spark.pyspark.driver.python": "python3",
-      # Ensure the Postgres JDBC jar provided in the Spark image is
-      # explicitly added to spark-submit so the driver JVM can load
-      # org.postgresql.Driver when reading via JDBC.
-      "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
+        "spark.pyspark.python": "python3",
+        "spark.executorEnv.PYSPARK_PYTHON": "python3",
+        "spark.pyspark.driver.python": "python3",
+        "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
+        "spark.executorEnv.MONGO_URI": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.MONGO_URI'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.MONGO_DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.MONGO_DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.MONGO_COLL_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.driverEnv.MONGO_URI": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.driverEnv.MONGO_URI'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.driverEnv.MONGO_DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.driverEnv.MONGO_DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.driverEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.driverEnv.MONGO_COLL_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.DB_HOST": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_HOST'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.DB_PORT": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_PORT'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.DB_USERNAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_USERNAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.DB_PASSWORD": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_PASSWORD'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
     },
-    # Pass a JDBC URL into the Spark driver so it connects to the
-    # correct Postgres service inside the Docker Compose network.
-    application_args=["--jdbc-url", jdbc_url],
-    # Do not push large results to XCom
-    do_xcom_push=False,
+      application_args=[
+    "--jdbc-url", spark_conf['jdbc_url'],
+      ],
+      # Do not push large results to XCom
+      do_xcom_push=False,
   )
 
-  # replaced by a SparkSubmitOperator named the same so choose_job can remain unchanged
-  # Use client deploy mode (default) for spark-submit on standalone clusters.
-  # Standalone Spark does not support cluster deploy for python applications
-  # (see logs: "Cluster deploy mode is currently not supported for python
-  # applications on standalone clusters"). Keep the python3 prefs so Spark
-  # will prefer a python3 binary when available, but you must ensure the
-  # driver's Python minor version matches the executors' (otherwise
-  # PySpark errors with [PYTHON_VERSION_MISMATCH]). Typical fixes:
-  #  - upgrade the Airflow container to Python 3.10 to match workers, OR
-  #  - rebuild workers to use Python 3.8 to match the Airflow driver.
   run_new_matches_mongo = SparkSubmitOperator(
     task_id="run_new_matches_mongo",
     application="/opt/airflow/jobs/spark_mongoNewMatches.py",
@@ -596,13 +653,25 @@ with DAG(
     application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') }}"],
     driver_memory="1g",
     executor_memory="2g",
-    # Leave deploy_mode unset (client) for standalone clusters.
     conf={
-      "spark.pyspark.python": "python3",
-      "spark.executorEnv.PYSPARK_PYTHON": "python3",
-      "spark.pyspark.driver.python": "python3",
+        "spark.pyspark.python": "python3",
+        "spark.executorEnv.PYSPARK_PYTHON": "python3",
+        "spark.pyspark.driver.python": "python3",
+        "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
+        "spark.executorEnv.MONGO_URI": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.MONGO_URI'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.MONGO_DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.MONGO_DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.MONGO_COLL_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.DB_HOST": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_HOST'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.DB_PORT": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_PORT'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.DB_USERNAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_USERNAME'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
+        "spark.executorEnv.DB_PASSWORD": "{{ ti.xcom_pull(task_ids='spark_conf', key='conf')['spark.executorEnv.DB_PASSWORD'] if ti.xcom_pull(task_ids='spark_conf', key='conf') else '' }}",
     },
   )
+
+  # Ensure spark_conf runs before tasks that depend on its XComs
+  spark_conf >> homepage_task
+  spark_conf >> run_new_matches_mongo
 
   join_postgres = EmptyOperator(task_id="join_postgres", trigger_rule="one_success")
 
@@ -611,19 +680,15 @@ with DAG(
   end_task = end_msg()
 
   # Connect tasks/operators
-  start_task >> spark_smoke
   # run the spark smoke test first, then continue to the postgres branch
+  start_task >> spark_conf
+  spark_conf >> spark_smoke
   spark_smoke >> postgres_branch_task
   postgres_branch_task >> [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres]
   [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres] >> join_postgres
   # Run homepage and the mongo branch in parallel after postgres join
   join_postgres >> homepage_task
-  # Decide whether the mongo branch should run. Place the branch operator
-  # immediately after the postgres join so it can pick between the two
-  # downstream paths:
-  #  - push_webhook_xcom -> run_new_matches_mongo -> join_mongo
-  #  - skip_jobs_mongo -> join_mongo
-  # This ensures only one of run_new_matches_mongo or skip_jobs_mongo runs.
+
   join_postgres >> mongo_branch_task
 
   # Branch downstream choices

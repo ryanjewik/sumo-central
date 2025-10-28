@@ -59,8 +59,12 @@ def main():
         # We haven't created a SparkSession yet, so just exit.
         sys.exit(2)
 
-    mongo_uri = os.getenv("MONGO_URI")
-    mongo_db = os.getenv("MONGO_DB_NAME", "sumo")
+    mongo_uri = os.environ.get("MONGO_URI")
+    mongo_db = os.environ.get("MONGO_DB_NAME")
+    if not mongo_uri:
+        raise RuntimeError("MONGO_URI must be provided in the executor environment (spark.executorEnv.MONGO_URI)")
+    if not mongo_db:
+        raise RuntimeError("MONGO_DB_NAME must be provided in the executor environment (spark.executorEnv.MONGO_DB_NAME)")
 
     # Create SparkSession and instruct Spark to pull the Mongo Spark Connector
     # at runtime via the jars packages setting. We also set the default
