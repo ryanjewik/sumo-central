@@ -159,22 +159,57 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
         ordered_rank_mapping = order_ranks(rank_mapping)
 
         # getting the top rikishi from the most recent basho
-        top_rank_rows = [r for r in rikishi_rank_rows if r.get("rank_value") is not None and 101 <= r.get("rank_value") <= 499 and r.get("rank_date") == date]
+        # Normalize comparisons: rank_value may be string/decimal and rank_date may be date object
+        date_obj = datetime.date(year, month, 1)
+        def _rank_date_matches(rd):
+            if rd is None:
+                return False
+            if isinstance(rd, str):
+                return rd == date
+            try:
+                # rd is likely a datetime.date/datetime
+                return rd.year == date_obj.year and rd.month == date_obj.month and rd.day == date_obj.day
+            except Exception:
+                return False
+
+        top_rank_rows = []
+        for r in rikishi_rank_rows:
+            rv = r.get("rank_value")
+            if rv is None:
+                continue
+            try:
+                rv_int = int(rv)
+            except Exception:
+                # skip if cannot interpret rank_value as int
+                continue
+            if not (101 <= rv_int <= 499):
+                continue
+            if not _rank_date_matches(r.get("rank_date")):
+                continue
+            top_rank_rows.append(r)
+
         # order by rank_date DESC, rank_value ASC -- emulate by sorting
-        top_rank_rows = sorted(top_rank_rows, key=lambda r: (r.get("rank_date"), -int(r.get("rank_value") if r.get("rank_value") is not None else 0)), reverse=True)
+        top_rank_rows = sorted(top_rank_rows, key=lambda r: (r.get("rank_date") or date_obj, -int(r.get("rank_value") if r.get("rank_value") is not None else 0)), reverse=True)
 
         ordered_top_rikishi = {}
+        # Create lookup by id (ids may be int or str)
+        rikishi_by_id = {d.get("id"): d for d in rikishi_rows if d.get("id") is not None}
         for r in top_rank_rows:
-            rikishi_dict = convert_dates(r.copy())
-            rank_name = rikishi_dict.get("rank_name")
+            rikishi_rank_row = convert_dates(r.copy())
+            rank_name = rikishi_rank_row.get("rank_name")
             order = ordered_rank_mapping.get(rank_name, {}).get("order")
-            if order is not None:
-                rikishi_id = rikishi_dict.get("rikishi_id")
-                # find rikishi details
-                details = next((d for d in rikishi_rows if d.get("id") == rikishi_id), None)
-                if details:
-                    rikishi_details_dict = convert_dates(details.copy())
-                    ordered_top_rikishi[str(order)] = rikishi_details_dict
+            if order is None:
+                continue
+            # prefer explicit rikishi_id column, fall back to id fields
+            rikishi_id = r.get("rikishi_id") or r.get("rikishi") or r.get("id")
+            details = None
+            if rikishi_id is not None:
+                details = rikishi_by_id.get(rikishi_id)
+            if details:
+                ordered_top_rikishi[str(order)] = convert_dates(details.copy())
+            else:
+                # fallback: include minimal rank row info so document isn't empty
+                ordered_top_rikishi[str(order)] = {"rank_row": rikishi_rank_row}
 
         ordered_top_rikishi = dict(sorted(ordered_top_rikishi.items(), key=lambda x: int(x[0])))
 
@@ -375,9 +410,23 @@ def run_homepage_job(pg_conn=None, mongo_client=None, postgres_conn_id=None, mon
         pg_conn = None
 
     payload = build_homepage_payload(pg_conn=pg_conn, postgres_conn_id=postgres_conn_id)
+    # Set updated_at in Pacific Time (PST/PDT). Try zoneinfo, fall back to pytz, else use fixed -08:00 offset.
     try:
-        payload["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo("America/Los_Angeles")
+            payload["updated_at"] = datetime.datetime.now(tz).isoformat()
+        except Exception:
+            try:
+                import pytz
+                tz = pytz.timezone("America/Los_Angeles")
+                payload["updated_at"] = datetime.datetime.now(tz).isoformat()
+            except Exception:
+                # Fallback: fixed -08:00 offset (PST without DST)
+                pst = datetime.timezone(datetime.timedelta(hours=-8))
+                payload["updated_at"] = datetime.datetime.now(pst).isoformat()
     except Exception:
+        # As a last resort, use UTC ISO with Z
         payload["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
 
     if write_to_mongo:
