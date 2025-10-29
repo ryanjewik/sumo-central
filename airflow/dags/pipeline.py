@@ -12,6 +12,7 @@ from mongo_utils import sanitize_mongo_uri
 import json
 import os
 import sys
+import logging
 
 @task
 def start_msg():
@@ -29,7 +30,7 @@ def choose_job(webhook: dict, db_type: str):
     mapping = {
         "newBasho": f"run_new_basho_{db_type}",
         "endBasho": f"run_end_basho_{db_type}",
-        "newMatches": ("push_webhook_xcom" if db_type == "mongo" else f"run_new_matches_{db_type}"),
+        "newMatches": f"run_new_matches_{db_type}",
         "matchResults": f"run_match_results_{db_type}",
     }
 
@@ -79,6 +80,9 @@ def call_homepage(webhook: dict):
 def call_new_matches_mongo(webhook: dict):
   return _load_and_call("/opt/airflow/jobs/mongoNewMatches.py", "process_new_matches", webhook)
 
+def call_new_basho_mongo(webhook: dict):
+  return _load_and_call("/opt/airflow/jobs/mongoNewBasho.py", "process_new_basho", webhook)
+
 
 def call_push_webhook_xcom(webhook: dict):
   """Return webhook JSON string to be pushed to XCom for SparkSubmitOperator."""
@@ -113,7 +117,11 @@ with DAG(
     except Exception as e:
       raise RuntimeError("Failed to build JDBC URL from Airflow connection 'sumo_db'. Ensure the connection exists and has host/schema set") from e
 
-    # Resolve Mongo connection and produce a sanitized URI using helper
+    logger = logging.getLogger("pipeline.spark_conf")
+    mongo_uri = None
+    mongo_db_name = None
+    extras = {}
+    host = None
     try:
       mconn = BaseHook.get_connection("mongo_default")
       try:
@@ -125,18 +133,27 @@ with DAG(
           mongo_uri = f"mongodb://{mconn.login}:{mconn.password}@{mconn.host}:{mconn.port or 27017}/{mconn.schema or ''}"
         else:
           mongo_uri = f"mongodb://{mconn.host}:{mconn.port or 27017}/{mconn.schema or ''}"
-
-      extras = {}
+      host = mconn.host
       try:
         extras = mconn.extra_dejson or {}
       except Exception:
         extras = {}
+      mongo_db_name = mconn.schema
+      logger.info("Using Airflow connection 'mongo_default' for Mongo URI and DB name")
+    except Exception:
+      # Fallback to environment variables (useful in local/rebuilt containers)
+      mongo_uri = os.environ.get("MONGO_URI")
+      mongo_db_name = os.environ.get("MONGO_DB_NAME")
+      extras = {}
+      host = None
+      logger.info("Airflow connection 'mongo_default' not found; falling back to MONGO_URI/MONGO_DB_NAME env vars")
 
-      safe_uri = sanitize_mongo_uri(mongo_uri, host=mconn.host, extras=extras)
-      if not mconn.schema:
-        raise RuntimeError("Airflow connection 'mongo_default' must include the database name in the 'schema' field (MONGO_DB_NAME)")
-    except Exception as e:
-      raise RuntimeError("Failed to obtain MongoDB URI from Airflow connection 'mongo_default'. Configure the connection in Airflow.") from e
+    if not mongo_uri:
+      raise RuntimeError("MongoDB URI not available: set Airflow connection 'mongo_default' or MONGO_URI env var")
+
+    safe_uri = sanitize_mongo_uri(mongo_uri, host=host, extras=extras)
+    if not mongo_db_name:
+      raise RuntimeError("MongoDB name not found: set Airflow connection 'mongo_default' schema or MONGO_DB_NAME env var")
 
     # Minimal homepage_conf with only the keys Spark needs for executors and driver
     homepage_conf = {
@@ -145,11 +162,11 @@ with DAG(
       "spark.pyspark.driver.python": "python3",
       "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
       "spark.executorEnv.MONGO_URI": safe_uri,
-      "spark.executorEnv.MONGO_DB_NAME": mconn.schema,
+      "spark.executorEnv.MONGO_DB_NAME": mongo_db_name,
       "spark.executorEnv.MONGO_COLL_NAME": "homepage",
       # Mirror into driver env so the driver can build broadcasts
       "spark.driverEnv.MONGO_URI": safe_uri,
-      "spark.driverEnv.MONGO_DB_NAME": mconn.schema,
+      "spark.driverEnv.MONGO_DB_NAME": mongo_db_name,
       "spark.driverEnv.MONGO_COLL_NAME": "homepage",
       # Postgres connection details for executors if they need them
       "spark.executorEnv.DB_HOST": conn_host,
@@ -166,7 +183,7 @@ with DAG(
     homepage_conf.setdefault("spark.executorEnv.DB_USERNAME", db_username or "")
     homepage_conf.setdefault("spark.executorEnv.DB_PASSWORD", db_password or "")
 
-    return {"conf": homepage_conf, "jdbc_url": jdbc_url, "mongo_uri": safe_uri, "mongo_db": mconn.schema, "mongo_coll": "homepage"}
+    return {"conf": homepage_conf, "jdbc_url": jdbc_url, "mongo_uri": safe_uri, "mongo_db": mongo_db_name, "mongo_coll": "homepage"}
 
   # Build the spark config at runtime and push it to XCom
   spark_conf = spark_conf()
@@ -199,367 +216,31 @@ with DAG(
   #6. trigger model retraining
 
   webhook = {
-  "received_at": 1756357623,
-  "type": "newMatches",
-  "headers": {
-    "Host": "74de6cbafcff.ngrok-free.app",
-    "User-Agent": "Go-http-client/2.0",
-    "Content-Length": "7470",
-    "Accept-Encoding": "gzip",
-    "Content-Type": "application/json",
-    "X-Forwarded-For": "5.78.73.189",
-    "X-Forwarded-Host": "74de6cbafcff.ngrok-free.app",
-    "X-Forwarded-Proto": "https",
-    "X-Webhook-Signature": "82b3a91f97f1dad97463ac00907b9914adcd80aec013498e5b14c3b339f23c6e"
-  },
-  "raw": {
-    "type": "newMatches",
-    "payload": "W3siaWQiOiIyMDIzMTEtMS0xLTY2LTQwIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjEsImVhc3RJZCI6NjYsImVhc3RTaGlrb25hIjoiS2l0YW5vd2FrYSIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSAxNyBFYXN0Iiwid2VzdElkIjo0MCwid2VzdFNoaWtvbmEiOiJOaXNoaWtpZnVqaSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSAxNiBXZXN0Iiwia2ltYXJpdGUiOiIiLCJ3aW5uZXJJZCI6MCwid2lubmVyRW4iOiIiLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS0yLTU1LTcxIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjIsImVhc3RJZCI6NTUsImVhc3RTaGlrb25hIjoiUm9nYSIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSAxNiBFYXN0Iiwid2VzdElkIjo3MSwid2VzdFNoaWtvbmEiOiJDaHVyYW5vdW1pIiwid2VzdFJhbmsiOiJNYWVnYXNoaXJhIDE1IFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTMtNTQtMTEiLCJiYXNob0lkIjoiMjAyMzExIiwiZGl2aXNpb24iOiJNYWt1dWNoaSIsImRheSI6MSwibWF0Y2hObyI6MywiZWFzdElkIjo1NCwiZWFzdFNoaWtvbmEiOiJUb2hha3VyeXUiLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgMTUgRWFzdCIsIndlc3RJZCI6MTEsIndlc3RTaGlrb25hIjoiSWNoaXlhbWFtb3RvIiwid2VzdFJhbmsiOiJNYWVnYXNoaXJhIDE0IFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTQtMTAyLTMxIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjQsImVhc3RJZCI6MTAyLCJlYXN0U2hpa29uYSI6IlRvbW9rYXplIiwiZWFzdFJhbmsiOiJNYWVnYXNoaXJhIDE0IEVhc3QiLCJ3ZXN0SWQiOjMxLCJ3ZXN0U2hpa29uYSI6IlRzdXJ1Z2lzaG8iLCJ3ZXN0UmFuayI6Ik1hZWdhc2hpcmEgMTMgV2VzdCIsImtpbWFyaXRlIjoiIiwid2lubmVySWQiOjAsIndpbm5lckVuIjoiIiwid2lubmVySnAiOiIifSx7ImlkIjoiMjAyMzExLTEtNS0yNS0xNCIsImJhc2hvSWQiOiIyMDIzMTEiLCJkaXZpc2lvbiI6Ik1ha3V1Y2hpIiwiZGF5IjoxLCJtYXRjaE5vIjo1LCJlYXN0SWQiOjI1LCJlYXN0U2hpa29uYSI6IlRha2FyYWZ1amkiLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgMTMgRWFzdCIsIndlc3RJZCI6MTQsIndlc3RTaGlrb25hIjoiVGFtYXdhc2hpIiwid2VzdFJhbmsiOiJNYWVnYXNoaXJhIDEyIFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTYtNDEtMjQiLCJiYXNob0lkIjoiMjAyMzExIiwiZGl2aXNpb24iOiJNYWt1dWNoaSIsImRheSI6MSwibWF0Y2hObyI6NiwiZWFzdElkIjo0MSwiZWFzdFNoaWtvbmEiOiJPaG8iLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgMTIgRWFzdCIsIndlc3RJZCI6MjQsIndlc3RTaGlrb25hIjoiSGlyYWRvdW1pIiwid2VzdFJhbmsiOiJNYWVnYXNoaXJhIDExIFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTctMzUtMzAiLCJiYXNob0lkIjoiMjAyMzExIiwiZGl2aXNpb24iOiJNYWt1dWNoaSIsImRheSI6MSwibWF0Y2hObyI6NywiZWFzdElkIjozNSwiZWFzdFNoaWtvbmEiOiJTYWRhbm91bWkiLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgMTEgRWFzdCIsIndlc3RJZCI6MzAsIndlc3RTaGlrb25hIjoiS290b2VrbyIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSAxMCBXZXN0Iiwia2ltYXJpdGUiOiIiLCJ3aW5uZXJJZCI6MCwid2lubmVyRW4iOiIiLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS04LTE1LTI2IiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjgsImVhc3RJZCI6MTUsImVhc3RTaGlrb25hIjoiUnl1ZGVuIiwiZWFzdFJhbmsiOiJNYWVnYXNoaXJhIDEwIEVhc3QiLCJ3ZXN0SWQiOjI2LCJ3ZXN0U2hpa29uYSI6Ik1pdGFrZXVtaSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA5IFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTktMzYtNzQiLCJiYXNob0lkIjoiMjAyMzExIiwiZGl2aXNpb24iOiJNYWt1dWNoaSIsImRheSI6MSwibWF0Y2hObyI6OSwiZWFzdElkIjozNiwiZWFzdFNoaWtvbmEiOiJNeW9naXJ5dSIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSA5IEVhc3QiLCJ3ZXN0SWQiOjc0LCJ3ZXN0U2hpa29uYSI6IkF0YW1pZnVqaSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA4IFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTEwLTE3LTUwIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjEwLCJlYXN0SWQiOjE3LCJlYXN0U2hpa29uYSI6IkVuZG8iLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgOCBFYXN0Iiwid2VzdElkIjo1MCwid2VzdFNoaWtvbmEiOiJLaW5ib3phbiIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA3IFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTExLTUzLTM3IiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjExLCJlYXN0SWQiOjUzLCJlYXN0U2hpa29uYSI6Ikhva3VzZWlobyIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSA3IEVhc3QiLCJ3ZXN0SWQiOjM3LCJ3ZXN0U2hpa29uYSI6IlRha2Fub3NobyIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA2IFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTEyLTQ5LTM0IiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjEyLCJlYXN0SWQiOjQ5LCJlYXN0U2hpa29uYSI6IlNob25hbm5vdW1pIiwiZWFzdFJhbmsiOiJNYWVnYXNoaXJhIDYgRWFzdCIsIndlc3RJZCI6MzQsIndlc3RTaGlrb25hIjoiTWlkb3JpZnVqaSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA1IFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTEzLTEwLTE2IiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjEzLCJlYXN0SWQiOjEwLCJlYXN0U2hpa29uYSI6Ik9ub3NobyIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSA1IEVhc3QiLCJ3ZXN0SWQiOjE2LCJ3ZXN0U2hpa29uYSI6Ik5pc2hpa2lnaSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA0IFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTE0LTIyLTU2IiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjE0LCJlYXN0SWQiOjIyLCJlYXN0U2hpa29uYSI6IkFiaSIsImVhc3RSYW5rIjoiS29tdXN1YmkgMSBFYXN0Iiwid2VzdElkIjo1Niwid2VzdFNoaWtvbmEiOiJHb25veWFtYSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA0IEVhc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTE1LTIwLTIxIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjE1LCJlYXN0SWQiOjIwLCJlYXN0U2hpa29uYSI6IktvdG9ub3dha2EiLCJlYXN0UmFuayI6IlNla2l3YWtlIDIgRWFzdCIsIndlc3RJZCI6MjEsIndlc3RTaGlrb25hIjoiVG9iaXphcnUiLCJ3ZXN0UmFuayI6Ik1hZWdhc2hpcmEgMyBXZXN0Iiwia2ltYXJpdGUiOiIiLCJ3aW5uZXJJZCI6MCwid2lubmVyRW4iOiIiLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS0xNi00NC0xMyIsImJhc2hvSWQiOiIyMDIzMTEiLCJkaXZpc2lvbiI6Ik1ha3V1Y2hpIiwiZGF5IjoxLCJtYXRjaE5vIjoxNiwiZWFzdElkIjo0NCwiZWFzdFNoaWtvbmEiOiJUYWtheWFzdSIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSAzIEVhc3QiLCJ3ZXN0SWQiOjEzLCJ3ZXN0U2hpa29uYSI6Ildha2Ftb3RvaGFydSIsIndlc3RSYW5rIjoiU2VraXdha2UgMSBXZXN0Iiwia2ltYXJpdGUiOiIiLCJ3aW5uZXJJZCI6MCwid2lubmVyRW4iOiIiLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS0xNy05LTM4IiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjE3LCJlYXN0SWQiOjksImVhc3RTaGlrb25hIjoiRGFpZWlzaG8iLCJlYXN0UmFuayI6IlNla2l3YWtlIDEgRWFzdCIsIndlc3RJZCI6MzgsIndlc3RTaGlrb25hIjoiTWVpc2VpIiwid2VzdFJhbmsiOiJNYWVnYXNoaXJhIDIgV2VzdCIsImtpbWFyaXRlIjoiIiwid2lubmVySWQiOjAsIndpbm5lckVuIjoiIiwid2lubmVySnAiOiIifSx7ImlkIjoiMjAyMzExLTEtMTgtMzMtMTkiLCJiYXNob0lkIjoiMjAyMzExIiwiZGl2aXNpb24iOiJNYWt1dWNoaSIsImRheSI6MSwibWF0Y2hObyI6MTgsImVhc3RJZCI6MzMsImVhc3RTaGlrb25hIjoiU2hvZGFpIiwiZWFzdFJhbmsiOiJNYWVnYXNoaXJhIDIgRWFzdCIsIndlc3RJZCI6MTksIndlc3RTaGlrb25hIjoiSG9zaG9yeXUiLCJ3ZXN0UmFuayI6Ik96ZWtpIDIgV2VzdCIsImtpbWFyaXRlIjoiIiwid2lubmVySWQiOjAsIndpbm5lckVuIjoiIiwid2lubmVySnAiOiIifSx7ImlkIjoiMjAyMzExLTEtMTktMjgtNyIsImJhc2hvSWQiOiIyMDIzMTEiLCJkaXZpc2lvbiI6Ik1ha3V1Y2hpIiwiZGF5IjoxLCJtYXRjaE5vIjoxOSwiZWFzdElkIjoyOCwiZWFzdFNoaWtvbmEiOiJVcmEiLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgMSBXZXN0Iiwid2VzdElkIjo3LCJ3ZXN0U2hpa29uYSI6IktpcmlzaGltYSIsIndlc3RSYW5rIjoiT3pla2kgMSBXZXN0Iiwia2ltYXJpdGUiOiIiLCJ3aW5uZXJJZCI6MCwid2lubmVyRW4iOiIiLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS0yMC0xLTI3IiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjIwLCJlYXN0SWQiOjEsImVhc3RTaGlrb25hIjoiVGFrYWtlaXNobyIsImVhc3RSYW5rIjoiT3pla2kgMSBFYXN0Iiwid2VzdElkIjoyNywid2VzdFNoaWtvbmEiOiJIb2t1dG9mdWppIiwid2VzdFJhbmsiOiJLb211c3ViaSAxIFdlc3QiLCJraW1hcml0ZSI6IiIsIndpbm5lcklkIjowLCJ3aW5uZXJFbiI6IiIsIndpbm5lckpwIjoiIn1d"
-  },
-  "payload_decoded": [
-    {
-      "id": "202311-1-1-66-40",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 1,
-      "eastId": 66,
-      "eastShikona": "Kitanowaka",
-      "eastRank": "Maegashira 17 East",
-      "westId": 40,
-      "westShikona": "Nishikifuji",
-      "westRank": "Maegashira 16 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
+    "received_at": 1756357624,
+    "type": "newBasho",
+    "headers": {
+      "Host": "74de6cbafcff.ngrok-free.app",
+      "User-Agent": "Go-http-client/2.0",
+      "Content-Length": "216",
+      "Accept-Encoding": "gzip",
+      "Content-Type": "application/json",
+      "X-Forwarded-For": "5.78.73.189",
+      "X-Forwarded-Host": "74de6cbafcff.ngrok-free.app",
+      "X-Forwarded-Proto": "https",
+      "X-Webhook-Signature": "51d5e8f38a6624f8ff413419328855ad419c79f4d183c0544f2441a592895533"
     },
-    {
-      "id": "202311-1-2-55-71",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 2,
-      "eastId": 55,
-      "eastShikona": "Roga",
-      "eastRank": "Maegashira 16 East",
-      "westId": 71,
-      "westShikona": "Churanoumi",
-      "westRank": "Maegashira 15 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
+    "raw": {
+      "type": "newBasho",
+      "payload": "eyJkYXRlIjoiMjAyMzExIiwibG9jYXRpb24iOiJGdWt1b2thLCBGdWt1b2thIEludGVybmF0aW9uYWwgQ2VudGVyIiwic3RhcnREYXRlIjoiMjAyMy0xMS0xMlQwMDowMDowMFoiLCJlbmREYXRlIjoiMjAyMy0xMS0yNlQwMDowMDowMFoifQ=="
     },
-    {
-      "id": "202311-1-3-54-11",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 3,
-      "eastId": 54,
-      "eastShikona": "Tohakuryu",
-      "eastRank": "Maegashira 15 East",
-      "westId": 11,
-      "westShikona": "Ichiyamamoto",
-      "westRank": "Maegashira 14 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-4-102-31",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 4,
-      "eastId": 102,
-      "eastShikona": "Tomokaze",
-      "eastRank": "Maegashira 14 East",
-      "westId": 31,
-      "westShikona": "Tsurugisho",
-      "westRank": "Maegashira 13 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-5-25-14",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 5,
-      "eastId": 25,
-      "eastShikona": "Takarafuji",
-      "eastRank": "Maegashira 13 East",
-      "westId": 14,
-      "westShikona": "Tamawashi",
-      "westRank": "Maegashira 12 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-6-41-24",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 6,
-      "eastId": 41,
-      "eastShikona": "Oho",
-      "eastRank": "Maegashira 12 East",
-      "westId": 24,
-      "westShikona": "Hiradoumi",
-      "westRank": "Maegashira 11 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-7-35-30",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 7,
-      "eastId": 35,
-      "eastShikona": "Sadanoumi",
-      "eastRank": "Maegashira 11 East",
-      "westId": 30,
-      "westShikona": "Kotoeko",
-      "westRank": "Maegashira 10 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-8-15-26",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 8,
-      "eastId": 15,
-      "eastShikona": "Ryuden",
-      "eastRank": "Maegashira 10 East",
-      "westId": 26,
-      "westShikona": "Mitakeumi",
-      "westRank": "Maegashira 9 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-9-36-74",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 9,
-      "eastId": 36,
-      "eastShikona": "Myogiryu",
-      "eastRank": "Maegashira 9 East",
-      "westId": 74,
-      "westShikona": "Atamifuji",
-      "westRank": "Maegashira 8 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-10-17-50",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 10,
-      "eastId": 17,
-      "eastShikona": "Endo",
-      "eastRank": "Maegashira 8 East",
-      "westId": 50,
-      "westShikona": "Kinbozan",
-      "westRank": "Maegashira 7 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-11-53-37",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 11,
-      "eastId": 53,
-      "eastShikona": "Hokuseiho",
-      "eastRank": "Maegashira 7 East",
-      "westId": 37,
-      "westShikona": "Takanosho",
-      "westRank": "Maegashira 6 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-12-49-34",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 12,
-      "eastId": 49,
-      "eastShikona": "Shonannoumi",
-      "eastRank": "Maegashira 6 East",
-      "westId": 34,
-      "westShikona": "Midorifuji",
-      "westRank": "Maegashira 5 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-13-10-16",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 13,
-      "eastId": 10,
-      "eastShikona": "Onosho",
-      "eastRank": "Maegashira 5 East",
-      "westId": 16,
-      "westShikona": "Nishikigi",
-      "westRank": "Maegashira 4 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-14-22-56",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 14,
-      "eastId": 22,
-      "eastShikona": "Abi",
-      "eastRank": "Komusubi 1 East",
-      "westId": 56,
-      "westShikona": "Gonoyama",
-      "westRank": "Maegashira 4 East",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-15-20-21",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 15,
-      "eastId": 20,
-      "eastShikona": "Kotonowaka",
-      "eastRank": "Sekiwake 2 East",
-      "westId": 21,
-      "westShikona": "Tobizaru",
-      "westRank": "Maegashira 3 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-16-44-13",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 16,
-      "eastId": 44,
-      "eastShikona": "Takayasu",
-      "eastRank": "Maegashira 3 East",
-      "westId": 13,
-      "westShikona": "Wakamotoharu",
-      "westRank": "Sekiwake 1 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-17-9-38",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 17,
-      "eastId": 9,
-      "eastShikona": "Daieisho",
-      "eastRank": "Sekiwake 1 East",
-      "westId": 38,
-      "westShikona": "Meisei",
-      "westRank": "Maegashira 2 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-18-33-19",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 18,
-      "eastId": 33,
-      "eastShikona": "Shodai",
-      "eastRank": "Maegashira 2 East",
-      "westId": 19,
-      "westShikona": "Hoshoryu",
-      "westRank": "Ozeki 2 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-19-28-7",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 19,
-      "eastId": 28,
-      "eastShikona": "Ura",
-      "eastRank": "Maegashira 1 West",
-      "westId": 7,
-      "westShikona": "Kirishima",
-      "westRank": "Ozeki 1 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-20-1-27",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 20,
-      "eastId": 1,
-      "eastShikona": "Takakeisho",
-      "eastRank": "Ozeki 1 East",
-      "westId": 27,
-      "westShikona": "Hokutofuji",
-      "westRank": "Komusubi 1 West",
-      "kimarite": "",
-      "winnerId": 0,
-      "winnerEn": "",
-      "winnerJp": ""
+    "payload_decoded": {
+      "date": "202311",
+      "location": "Fukuoka, Fukuoka International Center",
+      "startDate": "2023-11-12T00:00:00Z",
+      "endDate": "2023-11-26T00:00:00Z"
     }
-  ]
   }
-
+  
   start_task = start_msg()
 
 
@@ -681,6 +362,12 @@ with DAG(
         "spark.executorEnv.DB_PASSWORD": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_PASSWORD'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
     },
   )
+  
+  run_new_basho_mongo = PythonOperator(
+    task_id="run_new_basho_mongo",
+    python_callable=call_new_basho_mongo,
+    op_kwargs={"webhook": webhook},
+  )
 
   # Ensure spark_conf runs before tasks that depend on its XComs
   spark_conf >> homepage_task
@@ -702,13 +389,10 @@ with DAG(
   # Run homepage and the mongo branch in parallel after postgres join
   join_postgres >> homepage_task
 
-  join_postgres >> mongo_branch_task
+  join_postgres >> push_webhook_xcom
 
   # Branch downstream choices
-  mongo_branch_task >> [push_webhook_xcom, skip_mongo]
-
-  # When chosen, push webhook into XCom then run the Spark job, else skip.
-  push_webhook_xcom >> run_new_matches_mongo >> join_mongo
+  push_webhook_xcom >> mongo_branch_task >> [run_new_basho_mongo, run_new_matches_mongo, skip_mongo] >> join_mongo
 
   # Both homepage and the mongo branch must finish before finishing the DAG
   homepage_task >> join_mongo

@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""
-Spark job to process webhook matches and write them to a Mongo staging collection
-using the Mongo Spark Connector.
-
-This job writes each match as a document to `basho_matches_staging` so a later
-merge/aggregation step (or a small Mongo script) can perform the $push updates
-into the existing `basho_pages.days.<division>.<date>` arrays and update
-`rikishi_pages.upcoming_matches`.
-
-Usage:
-  spark-submit --packages org.mongodb.spark:mongo-spark-connector_2.12:3.0.1 \
-      spark_mongoNewMatches.py [/path/to/webhook.json]
-
-If no path is provided the job will attempt to read
-`/opt/airflow/jobs/latest_webhook.json`.
-"""
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     explode,
@@ -65,15 +49,9 @@ def main():
         raise RuntimeError("MONGO_URI must be provided in the executor environment (spark.executorEnv.MONGO_URI)")
     if not mongo_db:
         raise RuntimeError("MONGO_DB_NAME must be provided in the executor environment (spark.executorEnv.MONGO_DB_NAME)")
-
-    # Create SparkSession and instruct Spark to pull the Mongo Spark Connector
-    # at runtime via the jars packages setting. We also set the default
-    # mongo input/output URI so that the connector uses them by default.
+    
     builder = SparkSession.builder.appName(app_name)
     if mongo_uri:
-        # Note: this will cause Spark to download the connector from Maven
-        # when the session starts. Ensure the container can reach Maven Central
-        # or pre-bundle the jar into the image (see docker-compose notes).
         builder = builder.config(
             "spark.jars.packages",
             "org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
@@ -249,11 +227,6 @@ def main():
                             # Also prepare updates for rikishi_pages.upcoming__match
                             rikishi_coll = db.get_collection("rikishi_pages")
                             rikishi_ops = []
-                            # While we built grouped matches for basho_pages above, we also
-                            # need a per-row match object to set as upcoming__match for
-                            # the east and west rikishi. We'll iterate groups' matches
-                            # (they contain the compact match objects) and create set
-                            # operations keyed by rikishi id.
                             for (division_k, date_k), matches in groups.items():
                                 for m in matches:
                                     # prefer explicit integer rikishi ids if available

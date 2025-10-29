@@ -39,7 +39,6 @@ x-airflow-common: &airflow-common
     # DB connection from .env
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${AIRFLOW_PG_USER}:${AIRFLOW_PG_PASSWORD}@airflow-postgres:5432/${AIRFLOW_PG_DB}"
     AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
-    AIRFLOW_CONN_MONGO_DEFAULT: "${MONGO_URI}"
     MONGO_CONN_ID: "mongo_default"
     AIRFLOW_CONN_AWS_DEFAULT: "aws://@/?region_name=${AWS_REGION}&aws_access_key_id=${AWS_ACCESS_KEY_ID}&aws_secret_key=${AWS_SECRET_ACCESS_KEY}"
     # Connection to your Sumo Postgres database (dev service added below)
@@ -180,6 +179,18 @@ services:
 
         airflow connections delete spark_default || true
         airflow connections add spark_default --conn-json "$(cat /tmp/spark_conn.json)"
+
+        echo 'Seeding mongo_default connection (conn_type="mongo" + extras.srv to satisfy provider)...'
+        airflow connections delete mongo_default || true
+        if [ -n "${MONGO_URI:-}" ]; then
+          echo "Building connection JSON for mongo_default from MONGO_URI"
+          python3 -c 'import os,json; from urllib.parse import urlparse,unquote; uri=os.environ.get("MONGO_URI",""); parsed=urlparse(uri); username=unquote(parsed.username) if parsed.username else None; password=unquote(parsed.password) if parsed.password else None; host=parsed.hostname; schema=(parsed.path.lstrip("/") if parsed.path and parsed.path!="/" else os.environ.get("MONGO_DB_NAME")); conn={"conn_type":"mongo","host":host,"login":username,"password":password,"schema":schema,"extra":{"srv":"true"}}; import sys, json as __json; sys.stdout.write(__json.dumps(conn))' > /tmp/mongo_conn.json
+          airflow connections add mongo_default --conn-json "$(cat /tmp/mongo_conn.json)" || true
+        else
+          echo "MONGO_URI not provided; skipping mongo_default seeding."
+        fi
+
+        airflow connections get mongo_default
 
         echo 'Init completed.'
 

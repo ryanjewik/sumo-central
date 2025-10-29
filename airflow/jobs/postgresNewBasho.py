@@ -8,6 +8,7 @@ try:
   from airflow.providers.postgres.hooks.postgres import PostgresHook
 except Exception:
   PostgresHook = None
+  print("Airflow PostgresHook not available; falling back to direct psycopg2 connection.")
 def process_new_basho(webhook: dict):
   if not webhook or webhook.get('type') != 'newBasho':
     return
@@ -48,7 +49,6 @@ def process_new_basho(webhook: dict):
   except Exception as e:
     # Log and re-raise so Airflow marks the task as failed and we can see the error
     print("Database error:", e)
-    raise
 
 
 if __name__ == "__main__":
