@@ -83,6 +83,9 @@ def call_new_matches_mongo(webhook: dict):
 def call_new_basho_mongo(webhook: dict):
   return _load_and_call("/opt/airflow/jobs/mongoNewBasho.py", "process_new_basho", webhook)
 
+def call_end_basho_mongo(webhook: dict):
+  return _load_and_call("/opt/airflow/jobs/mongoEndBasho.py", "process_end_basho", webhook)
+
 
 def call_push_webhook_xcom(webhook: dict):
   """Return webhook JSON string to be pushed to XCom for SparkSubmitOperator."""
@@ -216,30 +219,88 @@ with DAG(
   #6. trigger model retraining
 
   webhook = {
-    "received_at": 1756357624,
-    "type": "newBasho",
-    "headers": {
-      "Host": "74de6cbafcff.ngrok-free.app",
-      "User-Agent": "Go-http-client/2.0",
-      "Content-Length": "216",
-      "Accept-Encoding": "gzip",
-      "Content-Type": "application/json",
-      "X-Forwarded-For": "5.78.73.189",
-      "X-Forwarded-Host": "74de6cbafcff.ngrok-free.app",
-      "X-Forwarded-Proto": "https",
-      "X-Webhook-Signature": "51d5e8f38a6624f8ff413419328855ad419c79f4d183c0544f2441a592895533"
-    },
-    "raw": {
-      "type": "newBasho",
-      "payload": "eyJkYXRlIjoiMjAyMzExIiwibG9jYXRpb24iOiJGdWt1b2thLCBGdWt1b2thIEludGVybmF0aW9uYWwgQ2VudGVyIiwic3RhcnREYXRlIjoiMjAyMy0xMS0xMlQwMDowMDowMFoiLCJlbmREYXRlIjoiMjAyMy0xMS0yNlQwMDowMDowMFoifQ=="
-    },
-    "payload_decoded": {
-      "date": "202311",
-      "location": "Fukuoka, Fukuoka International Center",
-      "startDate": "2023-11-12T00:00:00Z",
-      "endDate": "2023-11-26T00:00:00Z"
-    }
+  "received_at": 1756357625,
+  "type": "endBasho",
+  "headers": {
+    "Host": "74de6cbafcff.ngrok-free.app",
+    "User-Agent": "Go-http-client/2.0",
+    "Content-Length": "1508",
+    "Accept-Encoding": "gzip",
+    "Content-Type": "application/json",
+    "X-Forwarded-For": "5.78.73.189",
+    "X-Forwarded-Host": "74de6cbafcff.ngrok-free.app",
+    "X-Forwarded-Proto": "https",
+    "X-Webhook-Signature": "da0c5ab394ec7ccc1966b464a010091b05a10320c845cc80b48760c023f12f7c"
+  },
+  "raw": {
+    "type": "endBasho",
+    "payload": "eyJkYXRlIjoiMjAyMzExIiwibG9jYXRpb24iOiJGdWt1b2thLCBGdWt1b2thIEludGVybmF0aW9uYWwgQ2VudGVyIiwic3RhcnREYXRlIjoiMjAyMy0xMS0xMlQwMDowMDowMFoiLCJlbmREYXRlIjoiMjAyMy0xMS0yNlQwMDowMDowMFoiLCJ5dXNobyI6W3sidHlwZSI6Ik1ha3V1Y2hpIiwicmlraXNoaUlkIjo3LCJzaGlrb25hRW4iOiJLaXJpc2hpbWEgVGV0c3VvIiwic2hpa29uYUpwIjoi6Zyn5bO244CA6ZC15YqbIn0seyJ0eXBlIjoiSnVyeW8iLCJyaWtpc2hpSWQiOjgsInNoaWtvbmFFbiI6IktvdG9zaG9obyBZb3NoaW5hcmkiLCJzaGlrb25hSnAiOiLnkLTli53ls7DjgIDlkInmiJAifSx7InR5cGUiOiJNYWt1c2hpdGEiLCJyaWtpc2hpSWQiOjYwOSwic2hpa29uYUVuIjoiU2F0b3J1ZnVqaSBUZXBwZWkiLCJzaGlrb25hSnAiOiLogZblr4zlo6so44GV44Go44KL44G144GYKSJ9LHsidHlwZSI6IlNhbmRhbm1lIiwicmlraXNoaUlkIjoyMzYsInNoaWtvbmFFbiI6IkRhaXNob3J5dSBIYXJ1Y2hpa2EiLCJzaGlrb25hSnAiOiLlpKfmmIfpvo0o44Gg44GE44GX44KH44GG44KK44KF44GGKSJ9LHsidHlwZSI6IkpvbmlkYW4iLCJyaWtpc2hpSWQiOjQ5OCwic2hpa29uYUVuIjoiRGFpcmluemFuIFJpbiIsInNoaWtvbmFKcCI6IuWkp+WHnOWxsSjjgaDjgYTjgorjgpPjgZbjgpMpIn0seyJ0eXBlIjoiSm9ub2t1Y2hpIiwicmlraXNoaUlkIjo4ODU0LCJzaGlrb25hRW4iOiJBb25pc2hpa2kgQXJhdGEiLCJzaGlrb25hSnAiOiLlronpnZLpjKbjgIDmlrDlpKcifV0sInNwZWNpYWxQcml6ZXMiOlt7InR5cGUiOiJLYW50by1zaG8iLCJyaWtpc2hpSWQiOjExLCJzaGlrb25hRW4iOiJJY2hpeWFtYW1vdG8gRGFpa2kiLCJzaGlrb25hSnAiOiLkuIDlsbHmnKzjgIDlpKfnlJ8ifSx7InR5cGUiOiJLYW50by1zaG8iLCJyaWtpc2hpSWQiOjIwLCJzaGlrb25hRW4iOiJLb3RvemFrdXJhIE1hc2FrYXRzdSIsInNoaWtvbmFKcCI6IueQtOaru+OAgOWwhuWCkSJ9LHsidHlwZSI6IkthbnRvLXNobyIsInJpa2lzaGlJZCI6NzQsInNoaWtvbmFFbiI6IkF0YW1pZnVqaSBTYWt1dGFybyIsInNoaWtvbmFKcCI6IueGsea1t+WvjOWjq+OAgOaclOWkqumDjiJ9XX0="
+  },
+  "payload_decoded": {
+    "date": "202311",
+    "location": "Fukuoka, Fukuoka International Center",
+    "startDate": "2023-11-12T00:00:00Z",
+    "endDate": "2023-11-26T00:00:00Z",
+    "yusho": [
+      {
+        "type": "Makuuchi",
+        "rikishiId": 7,
+        "shikonaEn": "Kirishima Tetsuo",
+        "shikonaJp": "霧島　鐵力"
+      },
+      {
+        "type": "Juryo",
+        "rikishiId": 8,
+        "shikonaEn": "Kotoshoho Yoshinari",
+        "shikonaJp": "琴勝峰　吉成"
+      },
+      {
+        "type": "Makushita",
+        "rikishiId": 609,
+        "shikonaEn": "Satorufuji Teppei",
+        "shikonaJp": "聖富士(さとるふじ)"
+      },
+      {
+        "type": "Sandanme",
+        "rikishiId": 236,
+        "shikonaEn": "Daishoryu Haruchika",
+        "shikonaJp": "大昇龍(だいしょうりゅう)"
+      },
+      {
+        "type": "Jonidan",
+        "rikishiId": 498,
+        "shikonaEn": "Dairinzan Rin",
+        "shikonaJp": "大凜山(だいりんざん)"
+      },
+      {
+        "type": "Jonokuchi",
+        "rikishiId": 8854,
+        "shikonaEn": "Aonishiki Arata",
+        "shikonaJp": "安青錦　新大"
+      }
+    ],
+    "specialPrizes": [
+      {
+        "type": "Kanto-sho",
+        "rikishiId": 11,
+        "shikonaEn": "Ichiyamamoto Daiki",
+        "shikonaJp": "一山本　大生"
+      },
+      {
+        "type": "Kanto-sho",
+        "rikishiId": 20,
+        "shikonaEn": "Kotozakura Masakatsu",
+        "shikonaJp": "琴櫻　将傑"
+      },
+      {
+        "type": "Kanto-sho",
+        "rikishiId": 74,
+        "shikonaEn": "Atamifuji Sakutaro",
+        "shikonaJp": "熱海富士　朔太郎"
+      }
+    ]
   }
+}
   
   start_task = start_msg()
 
@@ -368,6 +429,12 @@ with DAG(
     python_callable=call_new_basho_mongo,
     op_kwargs={"webhook": webhook},
   )
+  
+  run_end_basho_mongo = PythonOperator(
+    task_id="run_end_basho_mongo",
+    python_callable=call_end_basho_mongo,
+    op_kwargs={"webhook": webhook},
+  )
 
   # Ensure spark_conf runs before tasks that depend on its XComs
   spark_conf >> homepage_task
@@ -392,7 +459,7 @@ with DAG(
   join_postgres >> push_webhook_xcom
 
   # Branch downstream choices
-  push_webhook_xcom >> mongo_branch_task >> [run_new_basho_mongo, run_new_matches_mongo, skip_mongo] >> join_mongo
+  push_webhook_xcom >> mongo_branch_task >> [run_new_basho_mongo, run_new_matches_mongo, run_end_basho_mongo, skip_mongo] >> join_mongo
 
   # Both homepage and the mongo branch must finish before finishing the DAG
   homepage_task >> join_mongo

@@ -12,8 +12,8 @@
  - we can use spark to read from postgres, perform the aggregations we want and push them to mongo for the homepage
      - for new match we just need to check if there's a new rikishi and maybe add to their match history / rerun the upsert
      - new basho we can add an empty page
-     - basho end another postgres read and run for the basho and the rikishi yushos
-     - match result we just updated the rikishi match histories
+     - basho end update basho page and add wins to winning rikishi
+     - match result we remove "upcoming matches", update match win/loss, add to match history, update basho page match winners
  - homepage updates should be run on every webhook
  - can use the "update_one" mongo call to update a specific field
 4. perform cleaning from bronze to silver data
