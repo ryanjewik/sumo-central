@@ -21,6 +21,7 @@ def process_end_basho(webhook_payload):
         return None
     print(raw)
     yushos = raw.get('yusho') or []
+    rikishi_pages = {}
 
     # Initialize outputs so they are always defined
     makuuchi_yusho = ""
@@ -29,7 +30,7 @@ def process_end_basho(webhook_payload):
     makushita_yusho = ""
     jonidan_yusho = ""
     jonokuchi_yusho = ""
-
+    match_date = raw['endDate'][:10] if raw.get('endDate') else None
     for yusho in yushos:
         print("Processing yusho:", yusho)
         # Some payloads use 'division', others use 'type' (case-insensitive)
@@ -51,16 +52,31 @@ def process_end_basho(webhook_payload):
         elif 'Jonokuchi' in division_raw:
             jonokuchi_yusho = combined
             
-    payload = {
-        "basho_id": bashoId,
-        "makuuchi_yusho": makuuchi_yusho,
-        "juryo_yusho": juryo_yusho,
-        "sandanme_yusho": sandanme_yusho,
-        "makushita_yusho": makushita_yusho,
-        "jonidan_yusho": jonidan_yusho,
-        "jonokuchi_yusho": jonokuchi_yusho
+        rikishi_pages[int(yusho.get('rikishiId'))] = {
+            "yusho": {
+                match_date: {
+                    "bashoId": bashoId,
+                    "location": raw.get("location"),
+                    "end_date": match_date,
+                    "division_won": f"{division_raw.lower()}_yusho",
+                }
+            }
         }
-    
+    special_prizes = raw.get('specialPrizes') or []
+    for prize in special_prizes:
+        rikishi_pages[int(prize.get('rikishiId'))] = {
+            "special_prize": {
+                match_date: {
+                    "bashoId": bashoId,
+                    "location": raw.get("location"),
+                    "end_date": match_date,
+                    "prize_name": prize.get('type'),
+                }
+            }
+        }
+
+    print("rikishi_pages:", rikishi_pages)
+
     #mongo connection
     db_name = os.environ.get("MONGO_DB_NAME")
 
@@ -88,7 +104,6 @@ def process_end_basho(webhook_payload):
                 db_obj = client.get_default_database()
             except Exception:
                 db_obj = client
-        print(payload)
         collection = db_obj.get_collection("basho_pages")
         inserted_obj = collection.find_one_and_update(
             {"id": bashoId},
@@ -103,8 +118,43 @@ def process_end_basho(webhook_payload):
             upsert=False
         )
         print("updated basho page:", inserted_obj)
+        collection = db_obj.get_collection("rikishi_pages")
+        # split up the rikishis into groups based on awards
+        for rikishi_id, rikishi_data in rikishi_pages.items():
+            # build update payloads ($set and $inc) then call find_one_and_update once
+            set_fields = {}
+            inc_fields = {}
+
+            if 'yusho' in rikishi_data:
+                # rikishi_data['yusho'][match_date] is a dict with the win info
+                set_fields[f"division wins.{match_date}"] = rikishi_data['yusho'][match_date]
+                inc_fields["rikishi.yusho_count"] = inc_fields.get("rikishi.yusho_count", 0) + 1
+                inc_fields["rikishi.basho_count"] = inc_fields.get("rikishi.basho_count", 0) + 1
+
+            if 'special_prize' in rikishi_data:
+                set_fields[f"special_prizes.{match_date}"] = rikishi_data['special_prize'][match_date]
+                inc_fields["rikishi.sansho_count"] = inc_fields.get("rikishi.sansho_count", 0) + 1
+                inc_fields["rikishi.basho_count"] = inc_fields.get("rikishi.basho_count", 0) + 1
+
+            update_payload = {}
+            if set_fields:
+                update_payload["$set"] = set_fields
+            if inc_fields:
+                update_payload["$inc"] = inc_fields
+
+            if update_payload:
+                try:
+                    updated_obj = collection.find_one_and_update(
+                        {"id": rikishi_id},
+                        update_payload,
+                        upsert=True
+                    )
+                    print("updated rikishi page:", updated_obj)
+                except Exception as e:
+                    print(f"Failed to update rikishi {rikishi_id}: {e}")
+        print("Successfully updated basho_pages and rikishi_pages in MongoDB")
     except Exception as e:
-        print("Failed to update basho_pages in MongoDB:", e)
+        print("Failed to update rikishi and basho_pages in MongoDB:", e)
         raise
     
 
