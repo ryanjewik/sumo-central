@@ -191,8 +191,6 @@ with DAG(
 
     return {"conf": homepage_conf, "jdbc_url": jdbc_url, "mongo_uri": safe_uri, "mongo_db": mongo_db_name, "mongo_coll": "homepage"}
 
-  # Build the spark config at runtime and push it to XCom
-  spark_conf = spark_conf()
 
   spark_smoke = SparkSubmitOperator(
     task_id="spark_smoke",
@@ -582,7 +580,12 @@ with DAG(
     }
   ]
 }
+  
+  
+  
   start_task = start_msg()
+  
+  spark_conf = spark_conf()
 
 
   # Push webhook JSON into XCom early so any downstream branch tasks can access it.
@@ -590,7 +593,6 @@ with DAG(
     task_id="push_webhook_xcom",
     python_callable=call_push_webhook_xcom,
     op_kwargs={"webhook": webhook},
-    # leave XCom enabled so the Spark operator can pull the JSON string
   )
 
   postgres_branch_task = choose_job(webhook, "postgres")
@@ -668,7 +670,6 @@ with DAG(
       application_args=[
     "--jdbc-url", "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['jdbc_url'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
       ],
-      # Do not push large results to XCom
       do_xcom_push=False,
   )
 
@@ -704,10 +705,10 @@ with DAG(
     python_callable=call_end_basho_mongo,
     op_kwargs={"webhook": webhook},
   )
-  
-  run_new_matches_mongo = SparkSubmitOperator(
-    task_id="run_new_matches_mongo",
-    application="/opt/airflow/jobs/spark_mongoNewMatches.py",
+
+  run_match_results_mongo = SparkSubmitOperator(
+    task_id="run_match_results_mongo",
+    application="/opt/airflow/jobs/spark_mongoMatchResults.py",
     conn_id="spark_default",
     packages="org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
     application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') }}"],
@@ -727,9 +728,6 @@ with DAG(
         "spark.driverEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.MONGO_COLL_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
     },
   )
-  # Ensure spark_conf runs before tasks that depend on its XComs
-  spark_conf >> homepage_task
-  spark_conf >> run_new_matches_mongo
 
   join_postgres = EmptyOperator(task_id="join_postgres", trigger_rule="one_success")
 
@@ -737,6 +735,11 @@ with DAG(
 
   end_task = end_msg()
 
+
+
+  spark_conf >> homepage_task
+  spark_conf >> run_new_matches_mongo
+  spark_conf >> run_match_results_mongo
   # Connect tasks/operators
   # run the spark smoke test first, then continue to the postgres branch
   start_task >> spark_conf
@@ -750,7 +753,7 @@ with DAG(
   join_postgres >> push_webhook_xcom
 
   # Branch downstream choices
-  push_webhook_xcom >> mongo_branch_task >> [run_new_basho_mongo, run_new_matches_mongo, run_end_basho_mongo, skip_mongo] >> join_mongo
+  push_webhook_xcom >> mongo_branch_task >> [run_new_basho_mongo, run_new_matches_mongo, run_end_basho_mongo, run_match_results_mongo, skip_mongo] >> join_mongo
 
   # Both homepage and the mongo branch must finish before finishing the DAG
   homepage_task >> join_mongo
