@@ -42,7 +42,8 @@ def process_match_results(webhook_payload):
         df = df.withColumn("east_rikishi_id", F.col("eastId").cast("int"))
         df = df.withColumn("west_rikishi_id", F.col("westId").cast("int"))
         df = df.withColumn("winner", F.col("winnerId").cast("int"))
-        
+        df = df.withColumnRenamed("westRank", "west_rank")
+        df = df.withColumnRenamed("eastRank", "east_rank")
 
     # We'll print schema / rows after we compute match_date (below)
 
@@ -122,9 +123,96 @@ def process_match_results(webhook_payload):
         except Exception as e:
             print("Failed to compute match_date column:", e)
             
-            
+        location = basho_obj.get("location")
+        start_date = basho_obj.get("start_date")
+        df = df.withColumn("location", F.lit(location))
+        df = df.withColumn("start_date", F.lit(start_date))
+        df = df.withColumn("bashoId", F.col("bashoId").cast("int"))
+        df = df.drop("matchNo", "eastId", "westId", "winnerId", "winnerJp", "winnerEn", "eastRank", "westRank")
         
-        df = df.drop("matchNo", "eastId", "westId", "winnerId", "winnerJp", "winnerEn", "eastRank", "westRank", "bashoId", "day")
+            
+        # rikishi insert here because we need these columns
+        # --- Insert per-rikishi match entries into `rikishi_pages` ---
+        if mongo_uri:
+            try:
+                from pymongo import MongoClient
+                client = MongoClient(mongo_uri)
+                db = client[db_name] if db_name else client.get_default_database()
+
+                # Collect rows to the driver (acceptable for typical webhook sizes)
+                rows = df.collect()
+                py_rows = [r.asDict(recursive=True) for r in rows]
+
+                rikishi_coll = db.get_collection("rikishi_pages")
+                for row in py_rows:
+                    match_date = row.get("match_date")
+                    match_number = row.get("match_number")
+                    if not match_date or match_number is None:
+                        continue
+                    match_key = f"{match_date[:10]}:match_number:{match_number}"
+
+                    # Insert into east rikishi page
+                    east_id = row.get("east_rikishi_id")
+                    if east_id:
+                        try:
+                            payload = dict(row)
+                            # remove upcoming_match if present
+                            payload.pop("upcoming_match", None)
+                            payload["rikishi-shikona"] = payload.get("eastshikona") or payload.get("east_shikona") or payload.get("eastShikona")
+                            # choose increment keys
+                            inc = {"rikishi.matches": 1}
+                            try:
+                                winner_val = int(row.get("winner")) if row.get("winner") is not None else None
+                            except Exception:
+                                winner_val = row.get("winner")
+                            if winner_val == int(east_id):
+                                inc["rikishi.wins"] = 1
+                            else:
+                                inc["rikishi.losses"] = 1
+
+                            rikishi_coll.update_one(
+                                {"id": int(east_id)},
+                                {"$set": {f"matches.{match_key}": payload}, "$inc": inc},
+                                upsert=True,
+                            )
+                            print(f"Upserted match {match_key} into rikishi_pages id={east_id} (east)")
+                        except Exception as e:
+                            print(f"Failed to upsert east rikishi id={east_id}:", e)
+
+                    # Insert into west rikishi page
+                    west_id = row.get("west_rikishi_id")
+                    if west_id:
+                        try:
+                            payload = dict(row)
+                            # remove upcoming_match if present
+                            payload.pop("upcoming_match", None)
+                            payload["rikishi-shikona"] = payload.get("westshikona") or payload.get("west_shikona") or payload.get("westShikona")
+                            # choose increment keys
+                            inc = {"rikishi.matches": 1}
+                            try:
+                                winner_val = int(row.get("winner")) if row.get("winner") is not None else None
+                            except Exception:
+                                winner_val = row.get("winner")
+                            if winner_val == int(west_id):
+                                inc["rikishi.wins"] = 1
+                            else:
+                                inc["rikishi.losses"] = 1
+
+                            rikishi_coll.update_one(
+                                {"id": int(west_id)},
+                                {"$set": {f"matches.{match_key}": payload}, "$inc": inc},
+                                upsert=True,
+                            )
+                            print(f"Upserted match {match_key} into rikishi_pages id={west_id} (west)")
+                        except Exception as e:
+                            print(f"Failed to upsert west rikishi id={west_id}:", e)
+            except Exception as e:
+                print("Failed to insert into rikishi_pages:", e)
+        else:
+            print("MONGO_URI not set; skipping rikishi_pages upserts")
+        
+        
+        df = df.drop("bashoId", "day")
         df.printSchema()
         df.show(5, truncate=False)
 
@@ -185,17 +273,9 @@ def process_match_results(webhook_payload):
                             print(f"Replaced {field_path} with {len(entries)} rows in basho_pages")
                         except Exception as e:
                             print(f"Failed to set into {field_path}:", e)
+
         else:
             print("MONGO_URI not set; skipping driver-side basho_pages upserts")
-
-        # If connector jar is present and spark is configured for it, this will write to Mongo as well.
-        # if mongo_uri:
-        #     df.write.format("mongo") \
-        #         .mode("append") \
-        #         .option("uri", mongo_uri) \
-        #         .option("database", db_name) \
-        #         .option("collection", coll_name) \
-        #         .save()
 
         # Show schema and a few rows — useful during development
         df.printSchema()
