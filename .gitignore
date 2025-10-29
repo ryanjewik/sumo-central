@@ -5,4 +5,3 @@ node_modules
 secerts.txt
 **/.ipynb_checkpoints/
 logs/
-__pycache__/
