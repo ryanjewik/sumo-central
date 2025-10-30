@@ -26,7 +26,9 @@ RUN set -eux; \
             "pymongo>=4.0,<5" \
             "python-dotenv>=0.21.0" \
             "psycopg2-binary>=2.9" \
-            "boto3>=1.26,<2" ; \
+            "boto3>=1.26,<2" \
+            "xgboost>=2.0.0" \
+            "scikit-learn>=1.2.2" ; \
     fi; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 

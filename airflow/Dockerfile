@@ -5,6 +5,7 @@ FROM apache/airflow:2.8.1-python3.8
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates openjdk-17-jdk tini \
+    cmake build-essential libgomp1 python3-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # Java env

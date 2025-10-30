@@ -3,7 +3,7 @@ first retrieve the model from s3, load it into memory, then prepare the data as 
 
 will need to, get the rikishi ids from the webhook, then find the rows from the pyspark dataframe to construct a row built with the two (westId and eastId)
 
-if the rikishi id doesn't exist then vote for the other. if neither exist 50-50 it
+if the rikishi id doesn't exist then vote for the other. if neither exist 50-50 it OR we can create a dataframe row using averages of division and height/weight etc
 
 return the predictions back to the sparkNewMatches job to then be stored as a key value in mongo
 

@@ -13,10 +13,6 @@ from pyspark.sql.types import *
 
 from pyspark.ml.feature import Imputer
 from pyspark.sql.types import NumericType
-import matplotlib.pyplot as plt
-import seaborn as sns
-import pandas as pd
-
 from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.tuning import ParamGridBuilder, CrossValidator
 from pyspark.ml.evaluation import BinaryClassificationEvaluator
