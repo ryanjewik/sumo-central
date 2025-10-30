@@ -8,7 +8,6 @@ from airflow.models import Variable
 from airflow.operators.python import PythonOperator
 from airflow.hooks.base import BaseHook
 # Local helper to keep the DAG small and reusable
-from mongo_utils import sanitize_mongo_uri
 import json
 import os
 import sys
@@ -32,6 +31,15 @@ def choose_job(webhook: dict, db_type: str):
         "endBasho": f"run_end_basho_{db_type}",
         "newMatches": f"run_new_matches_{db_type}",
         "matchResults": f"run_match_results_{db_type}",
+    }
+
+    return mapping.get(webhook_type, "skip_jobs")
+  
+@task.branch
+def ml_train_branch(webhook: dict):
+    webhook_type = (webhook.get("type") or "").strip()
+    mapping = {
+        "endBasho": "run_ml_dataset",
     }
 
     return mapping.get(webhook_type, "skip_jobs")
@@ -662,6 +670,8 @@ with DAG(
   postgres_branch_task = choose_job(webhook, "postgres")
 
   mongo_branch_task = choose_job(webhook, "mongo")
+  
+  ml_train_branch_task = ml_train_branch(webhook)
 
   new_basho_postgres = PythonOperator(
       task_id="run_new_basho_postgres",
@@ -695,6 +705,12 @@ with DAG(
 
   skip_mongo = PythonOperator(
     task_id="skip_jobs_mongo",
+    python_callable=call_skip,
+    op_kwargs={"webhook": webhook},
+  )
+  
+  skip_train = PythonOperator(
+    task_id="skip_ml_train",
     python_callable=call_skip,
     op_kwargs={"webhook": webhook},
   )
@@ -928,4 +944,6 @@ with DAG(
 
   # Both homepage and the mongo branch must finish before finishing the DAG
   homepage_task >> join_mongo
-  join_mongo >> run_spark_data_cleaning >> run_spark_ml_dataset >> run_spark_ml_training >> end_task
+  join_mongo >> ml_train_branch_task
+  ml_train_branch_task >> run_spark_data_cleaning >> run_spark_ml_dataset >> run_spark_ml_training >> end_task
+  ml_train_branch_task  >> skip_train >> end_task
