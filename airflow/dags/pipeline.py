@@ -8,6 +8,7 @@ from airflow.models import Variable
 from airflow.operators.python import PythonOperator
 from airflow.hooks.base import BaseHook
 # Local helper to keep the DAG small and reusable
+from mongo_utils import sanitize_mongo_uri
 import json
 import os
 import sys
@@ -39,7 +40,11 @@ def choose_job(webhook: dict, db_type: str):
 def ml_train_branch(webhook: dict):
     webhook_type = (webhook.get("type") or "").strip()
     mapping = {
-        "endBasho": "run_ml_dataset",
+    # Branch must return the task_id of an immediate downstream task.
+    # The ML branch starts with `run_data_cleaning` (task_id="run_data_cleaning").
+    # Returning `run_ml_dataset` (a downstream-of-downstream) caused the branch
+    # to skip its immediate children and therefore skip the whole branch.
+    "endBasho": "run_data_cleaning",
     }
 
     return mapping.get(webhook_type, "skip_jobs")
@@ -115,7 +120,7 @@ def call_ml_training_spark(webhook: dict):
 default_args = {"retries": 0, "retry_delay": timedelta(minutes=1)}
 
 with DAG(
-  dag_id="spark_local_test",
+  dag_id="sumo_data_pipeline",
   start_date=datetime(2025, 9, 1),
   schedule=None,
   catchup=False,
@@ -232,10 +237,6 @@ with DAG(
           homepage_conf["spark.executorEnv.DB_PASSWORD"] = db_password
           homepage_conf["spark.driverEnv.DB_PASSWORD"] = db_password
 
-      # NOTE: we deliberately DO NOT inject AWS creds or AWS region here.
-      # containers (docker-compose) already export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION=us-west-2
-      # and spark_smoke was failing because Jinja was overriding those with literal template strings.
-
       return {
           "conf": homepage_conf,
           "jdbc_url": jdbc_url,
@@ -284,376 +285,90 @@ with DAG(
         # no need to push xcom from spark job
         do_xcom_push=False,
     )
-    
-  #2. mongo updates (can be done concurrently)
-  #3. bronze to silver
-  #4. silver to gold
-  #5. update ML training set
-  #6. trigger model retraining
 
   webhook = {
-  "received_at": 1756357624,
-  "type": "matchResults",
+  "received_at": 1756357625,
+  "type": "endBasho",
   "headers": {
     "Host": "74de6cbafcff.ngrok-free.app",
     "User-Agent": "Go-http-client/2.0",
-    "Content-Length": "7964",
+    "Content-Length": "1508",
     "Accept-Encoding": "gzip",
     "Content-Type": "application/json",
     "X-Forwarded-For": "5.78.73.189",
     "X-Forwarded-Host": "74de6cbafcff.ngrok-free.app",
     "X-Forwarded-Proto": "https",
-    "X-Webhook-Signature": "e403034d3416e132e15b4f91e43e0578a20becee061f6f81b6385acebbb7a36b"
+    "X-Webhook-Signature": "da0c5ab394ec7ccc1966b464a010091b05a10320c845cc80b48760c023f12f7c"
   },
   "raw": {
-    "type": "matchResults",
-    "payload": "W3siaWQiOiIyMDIzMTEtMS0xLTY2LTQwIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjEsImVhc3RJZCI6NjYsImVhc3RTaGlrb25hIjoiS2l0YW5vd2FrYSIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSAxNyBFYXN0Iiwid2VzdElkIjo0MCwid2VzdFNoaWtvbmEiOiJOaXNoaWtpZnVqaSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSAxNiBXZXN0Iiwia2ltYXJpdGUiOiJ5b3JpdGFvc2hpIiwid2lubmVySWQiOjY2LCJ3aW5uZXJFbiI6IktpdGFub3dha2EiLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS0yLTU1LTcxIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjIsImVhc3RJZCI6NTUsImVhc3RTaGlrb25hIjoiUm9nYSIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSAxNiBFYXN0Iiwid2VzdElkIjo3MSwid2VzdFNoaWtvbmEiOiJDaHVyYW5vdW1pIiwid2VzdFJhbmsiOiJNYWVnYXNoaXJhIDE1IFdlc3QiLCJraW1hcml0ZSI6InlvcmlraXJpIiwid2lubmVySWQiOjcxLCJ3aW5uZXJFbiI6IkNodXJhbm91bWkiLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS0zLTU0LTExIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjMsImVhc3RJZCI6NTQsImVhc3RTaGlrb25hIjoiVG9oYWt1cnl1IiwiZWFzdFJhbmsiOiJNYWVnYXNoaXJhIDE1IEVhc3QiLCJ3ZXN0SWQiOjExLCJ3ZXN0U2hpa29uYSI6IkljaGl5YW1hbW90byIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSAxNCBXZXN0Iiwia2ltYXJpdGUiOiJvc2hpZGFzaGkiLCJ3aW5uZXJJZCI6MTEsIndpbm5lckVuIjoiSWNoaXlhbWFtb3RvIiwid2lubmVySnAiOiIifSx7ImlkIjoiMjAyMzExLTEtNC0xMDItMzEiLCJiYXNob0lkIjoiMjAyMzExIiwiZGl2aXNpb24iOiJNYWt1dWNoaSIsImRheSI6MSwibWF0Y2hObyI6NCwiZWFzdElkIjoxMDIsImVhc3RTaGlrb25hIjoiVG9tb2themUiLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgMTQgRWFzdCIsIndlc3RJZCI6MzEsIndlc3RTaGlrb25hIjoiVHN1cnVnaXNobyIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSAxMyBXZXN0Iiwia2ltYXJpdGUiOiJ1d2F0ZW5hZ2UiLCJ3aW5uZXJJZCI6MzEsIndpbm5lckVuIjoiVHN1cnVnaXNobyIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTUtMjUtMTQiLCJiYXNob0lkIjoiMjAyMzExIiwiZGl2aXNpb24iOiJNYWt1dWNoaSIsImRheSI6MSwibWF0Y2hObyI6NSwiZWFzdElkIjoyNSwiZWFzdFNoaWtvbmEiOiJUYWthcmFmdWppIiwiZWFzdFJhbmsiOiJNYWVnYXNoaXJhIDEzIEVhc3QiLCJ3ZXN0SWQiOjE0LCJ3ZXN0U2hpa29uYSI6IlRhbWF3YXNoaSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSAxMiBXZXN0Iiwia2ltYXJpdGUiOiJvc2hpZGFzaGkiLCJ3aW5uZXJJZCI6MTQsIndpbm5lckVuIjoiVGFtYXdhc2hpIiwid2lubmVySnAiOiIifSx7ImlkIjoiMjAyMzExLTEtNi00MS0yNCIsImJhc2hvSWQiOiIyMDIzMTEiLCJkaXZpc2lvbiI6Ik1ha3V1Y2hpIiwiZGF5IjoxLCJtYXRjaE5vIjo2LCJlYXN0SWQiOjQxLCJlYXN0U2hpa29uYSI6Ik9obyIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSAxMiBFYXN0Iiwid2VzdElkIjoyNCwid2VzdFNoaWtvbmEiOiJIaXJhZG91bWkiLCJ3ZXN0UmFuayI6Ik1hZWdhc2hpcmEgMTEgV2VzdCIsImtpbWFyaXRlIjoidHN1a2lkYXNoaSIsIndpbm5lcklkIjo0MSwid2lubmVyRW4iOiJPaG8iLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS03LTM1LTMwIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjcsImVhc3RJZCI6MzUsImVhc3RTaGlrb25hIjoiU2FkYW5vdW1pIiwiZWFzdFJhbmsiOiJNYWVnYXNoaXJhIDExIEVhc3QiLCJ3ZXN0SWQiOjMwLCJ3ZXN0U2hpa29uYSI6IktvdG9la28iLCJ3ZXN0UmFuayI6Ik1hZWdhc2hpcmEgMTAgV2VzdCIsImtpbWFyaXRlIjoieW9yaXRhb3NoaSIsIndpbm5lcklkIjozNSwid2lubmVyRW4iOiJTYWRhbm91bWkiLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS04LTE1LTI2IiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjgsImVhc3RJZCI6MTUsImVhc3RTaGlrb25hIjoiUnl1ZGVuIiwiZWFzdFJhbmsiOiJNYWVnYXNoaXJhIDEwIEVhc3QiLCJ3ZXN0SWQiOjI2LCJ3ZXN0U2hpa29uYSI6Ik1pdGFrZXVtaSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA5IFdlc3QiLCJraW1hcml0ZSI6InlvcmlraXJpIiwid2lubmVySWQiOjE1LCJ3aW5uZXJFbiI6IlJ5dWRlbiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTktMzYtNzQiLCJiYXNob0lkIjoiMjAyMzExIiwiZGl2aXNpb24iOiJNYWt1dWNoaSIsImRheSI6MSwibWF0Y2hObyI6OSwiZWFzdElkIjozNiwiZWFzdFNoaWtvbmEiOiJNeW9naXJ5dSIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSA5IEVhc3QiLCJ3ZXN0SWQiOjc0LCJ3ZXN0U2hpa29uYSI6IkF0YW1pZnVqaSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA4IFdlc3QiLCJraW1hcml0ZSI6ImtvdGVuYWdlIiwid2lubmVySWQiOjc0LCJ3aW5uZXJFbiI6IkF0YW1pZnVqaSIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTEwLTE3LTUwIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjEwLCJlYXN0SWQiOjE3LCJlYXN0U2hpa29uYSI6IkVuZG8iLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgOCBFYXN0Iiwid2VzdElkIjo1MCwid2VzdFNoaWtvbmEiOiJLaW5ib3phbiIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA3IFdlc3QiLCJraW1hcml0ZSI6Im9zaGlkYXNoaSIsIndpbm5lcklkIjo1MCwid2lubmVyRW4iOiJLaW5ib3phbiIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTExLTUzLTM3IiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjExLCJlYXN0SWQiOjUzLCJlYXN0U2hpa29uYSI6Ikhva3VzZWlobyIsImVhc3RSYW5rIjoiTWFlZ2FzaGlyYSA3IEVhc3QiLCJ3ZXN0SWQiOjM3LCJ3ZXN0U2hpa29uYSI6IlRha2Fub3NobyIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA2IFdlc3QiLCJraW1hcml0ZSI6InlvcmlraXJpIiwid2lubmVySWQiOjUzLCJ3aW5uZXJFbiI6Ikhva3VzZWlobyIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTEyLTQ5LTM0IiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjEyLCJlYXN0SWQiOjQ5LCJlYXN0U2hpa29uYSI6IlNob25hbm5vdW1pIiwiZWFzdFJhbmsiOiJNYWVnYXNoaXJhIDYgRWFzdCIsIndlc3RJZCI6MzQsIndlc3RTaGlrb25hIjoiTWlkb3JpZnVqaSIsIndlc3RSYW5rIjoiTWFlZ2FzaGlyYSA1IFdlc3QiLCJraW1hcml0ZSI6ImhhdGFraWtvbWkiLCJ3aW5uZXJJZCI6NDksIndpbm5lckVuIjoiU2hvbmFubm91bWkiLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS0xMy0xMC0xNiIsImJhc2hvSWQiOiIyMDIzMTEiLCJkaXZpc2lvbiI6Ik1ha3V1Y2hpIiwiZGF5IjoxLCJtYXRjaE5vIjoxMywiZWFzdElkIjoxMCwiZWFzdFNoaWtvbmEiOiJPbm9zaG8iLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgNSBFYXN0Iiwid2VzdElkIjoxNiwid2VzdFNoaWtvbmEiOiJOaXNoaWtpZ2kiLCJ3ZXN0UmFuayI6Ik1hZWdhc2hpcmEgNCBXZXN0Iiwia2ltYXJpdGUiOiJvc2hpZGFzaGkiLCJ3aW5uZXJJZCI6MTAsIndpbm5lckVuIjoiT25vc2hvIiwid2lubmVySnAiOiIifSx7ImlkIjoiMjAyMzExLTEtMTQtMjItNTYiLCJiYXNob0lkIjoiMjAyMzExIiwiZGl2aXNpb24iOiJNYWt1dWNoaSIsImRheSI6MSwibWF0Y2hObyI6MTQsImVhc3RJZCI6MjIsImVhc3RTaGlrb25hIjoiQWJpIiwiZWFzdFJhbmsiOiJLb211c3ViaSAxIEVhc3QiLCJ3ZXN0SWQiOjU2LCJ3ZXN0U2hpa29uYSI6Ikdvbm95YW1hIiwid2VzdFJhbmsiOiJNYWVnYXNoaXJhIDQgRWFzdCIsImtpbWFyaXRlIjoib3NoaWRhc2hpIiwid2lubmVySWQiOjIyLCJ3aW5uZXJFbiI6IkFiaSIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTE1LTIwLTIxIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjE1LCJlYXN0SWQiOjIwLCJlYXN0U2hpa29uYSI6IktvdG9ub3dha2EiLCJlYXN0UmFuayI6IlNla2l3YWtlIDIgRWFzdCIsIndlc3RJZCI6MjEsIndlc3RTaGlrb25hIjoiVG9iaXphcnUiLCJ3ZXN0UmFuayI6Ik1hZWdhc2hpcmEgMyBXZXN0Iiwia2ltYXJpdGUiOiJvc2hpZGFzaGkiLCJ3aW5uZXJJZCI6MjAsIndpbm5lckVuIjoiS290b25vd2FrYSIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTE2LTQ0LTEzIiwiYmFzaG9JZCI6IjIwMjMxMSIsImRpdmlzaW9uIjoiTWFrdXVjaGkiLCJkYXkiOjEsIm1hdGNoTm8iOjE2LCJlYXN0SWQiOjQ0LCJlYXN0U2hpa29uYSI6IlRha2F5YXN1IiwiZWFzdFJhbmsiOiJNYWVnYXNoaXJhIDMgRWFzdCIsIndlc3RJZCI6MTMsIndlc3RTaGlrb25hIjoiV2FrYW1vdG9oYXJ1Iiwid2VzdFJhbmsiOiJTZWtpd2FrZSAxIFdlc3QiLCJraW1hcml0ZSI6InV3YXRlbmFnZSIsIndpbm5lcklkIjo0NCwid2lubmVyRW4iOiJUYWtheWFzdSIsIndpbm5lckpwIjoiIn0seyJpZCI6IjIwMjMxMS0xLTE3LTktMzgiLCJiYXNob0lkIjoiMjAyMzExIiwiZGl2aXNpb24iOiJNYWt1dWNoaSIsImRheSI6MSwibWF0Y2hObyI6MTcsImVhc3RJZCI6OSwiZWFzdFNoaWtvbmEiOiJEYWllaXNobyIsImVhc3RSYW5rIjoiU2VraXdha2UgMSBFYXN0Iiwid2VzdElkIjozOCwid2VzdFNoaWtvbmEiOiJNZWlzZWkiLCJ3ZXN0UmFuayI6Ik1hZWdhc2hpcmEgMiBXZXN0Iiwia2ltYXJpdGUiOiJ0c3VraWRhc2hpIiwid2lubmVySWQiOjksIndpbm5lckVuIjoiRGFpZWlzaG8iLCJ3aW5uZXJKcCI6IiJ9LHsiaWQiOiIyMDIzMTEtMS0xOC0zMy0xOSIsImJhc2hvSWQiOiIyMDIzMTEiLCJkaXZpc2lvbiI6Ik1ha3V1Y2hpIiwiZGF5IjoxLCJtYXRjaE5vIjoxOCwiZWFzdElkIjozMywiZWFzdFNoaWtvbmEiOiJTaG9kYWkiLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgMiBFYXN0Iiwid2VzdElkIjoxOSwid2VzdFNoaWtvbmEiOiJIb3Nob3J5dSIsIndlc3RSYW5rIjoiT3pla2kgMiBXZXN0Iiwia2ltYXJpdGUiOiJ0c3VraWRhc2hpIiwid2lubmVySWQiOjE5LCJ3aW5uZXJFbiI6Ikhvc2hvcnl1Iiwid2lubmVySnAiOiIifSx7ImlkIjoiMjAyMzExLTEtMTktMjgtNyIsImJhc2hvSWQiOiIyMDIzMTEiLCJkaXZpc2lvbiI6Ik1ha3V1Y2hpIiwiZGF5IjoxLCJtYXRjaE5vIjoxOSwiZWFzdElkIjoyOCwiZWFzdFNoaWtvbmEiOiJVcmEiLCJlYXN0UmFuayI6Ik1hZWdhc2hpcmEgMSBXZXN0Iiwid2VzdElkIjo3LCJ3ZXN0U2hpa29uYSI6IktpcmlzaGltYSIsIndlc3RSYW5rIjoiT3pla2kgMSBXZXN0Iiwia2ltYXJpdGUiOiJ5b3JpdGFvc2hpIiwid2lubmVySWQiOjcsIndpbm5lckVuIjoiS2lyaXNoaW1hIiwid2lubmVySnAiOiIifSx7ImlkIjoiMjAyMzExLTEtMjAtMS0yNyIsImJhc2hvSWQiOiIyMDIzMTEiLCJkaXZpc2lvbiI6Ik1ha3V1Y2hpIiwiZGF5IjoxLCJtYXRjaE5vIjoyMCwiZWFzdElkIjoxLCJlYXN0U2hpa29uYSI6IlRha2FrZWlzaG8iLCJlYXN0UmFuayI6Ik96ZWtpIDEgRWFzdCIsIndlc3RJZCI6MjcsIndlc3RTaGlrb25hIjoiSG9rdXRvZnVqaSIsIndlc3RSYW5rIjoiS29tdXN1YmkgMSBXZXN0Iiwia2ltYXJpdGUiOiJvc2hpZGFzaGkiLCJ3aW5uZXJJZCI6MSwid2lubmVyRW4iOiJUYWtha2Vpc2hvIiwid2lubmVySnAiOiIifV0="
+    "type": "endBasho",
+    "payload": "eyJkYXRlIjoiMjAyMzExIiwibG9jYXRpb24iOiJGdWt1b2thLCBGdWt1b2thIEludGVybmF0aW9uYWwgQ2VudGVyIiwic3RhcnREYXRlIjoiMjAyMy0xMS0xMlQwMDowMDowMFoiLCJlbmREYXRlIjoiMjAyMy0xMS0yNlQwMDowMDowMFoiLCJ5dXNobyI6W3sidHlwZSI6Ik1ha3V1Y2hpIiwicmlraXNoaUlkIjo3LCJzaGlrb25hRW4iOiJLaXJpc2hpbWEgVGV0c3VvIiwic2hpa29uYUpwIjoi6Zyn5bO244CA6ZC15YqbIn0seyJ0eXBlIjoiSnVyeW8iLCJyaWtpc2hpSWQiOjgsInNoaWtvbmFFbiI6IktvdG9zaG9obyBZb3NoaW5hcmkiLCJzaGlrb25hSnAiOiLnkLTli53ls7DjgIDlkInmiJAifSx7InR5cGUiOiJNYWt1c2hpdGEiLCJyaWtpc2hpSWQiOjYwOSwic2hpa29uYUVuIjoiU2F0b3J1ZnVqaSBUZXBwZWkiLCJzaGlrb25hSnAiOiLogZblr4zlo6so44GV44Go44KL44G144GYKSJ9LHsidHlwZSI6IlNhbmRhbm1lIiwicmlraXNoaUlkIjoyMzYsInNoaWtvbmFFbiI6IkRhaXNob3J5dSBIYXJ1Y2hpa2EiLCJzaGlrb25hSnAiOiLlpKfmmIfpvo0o44Gg44GE44GX44KH44GG44KK44KF44GGKSJ9LHsidHlwZSI6IkpvbmlkYW4iLCJyaWtpc2hpSWQiOjQ5OCwic2hpa29uYUVuIjoiRGFpcmluemFuIFJpbiIsInNoaWtvbmFKcCI6IuWkp+WHnOWxsSjjgaDjgYTjgorjgpPjgZbjgpMpIn0seyJ0eXBlIjoiSm9ub2t1Y2hpIiwicmlraXNoaUlkIjo4ODU0LCJzaGlrb25hRW4iOiJBb25pc2hpa2kgQXJhdGEiLCJzaGlrb25hSnAiOiLlronpnZLpjKbjgIDmlrDlpKcifV0sInNwZWNpYWxQcml6ZXMiOlt7InR5cGUiOiJLYW50by1zaG8iLCJyaWtpc2hpSWQiOjExLCJzaGlrb25hRW4iOiJJY2hpeWFtYW1vdG8gRGFpa2kiLCJzaGlrb25hSnAiOiLkuIDlsbHmnKzjgIDlpKfnlJ8ifSx7InR5cGUiOiJLYW50by1zaG8iLCJyaWtpc2hpSWQiOjIwLCJzaGlrb25hRW4iOiJLb3RvemFrdXJhIE1hc2FrYXRzdSIsInNoaWtvbmFKcCI6IueQtOaru+OAgOWwhuWCkSJ9LHsidHlwZSI6IkthbnRvLXNobyIsInJpa2lzaGlJZCI6NzQsInNoaWtvbmFFbiI6IkF0YW1pZnVqaSBTYWt1dGFybyIsInNoaWtvbmFKcCI6IueGsea1t+WvjOWjq+OAgOaclOWkqumDjiJ9XX0="
   },
-  "payload_decoded": [
-    {
-      "id": "202311-1-1-66-40",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 1,
-      "eastId": 66,
-      "eastShikona": "Kitanowaka",
-      "eastRank": "Maegashira 17 East",
-      "westId": 40,
-      "westShikona": "Nishikifuji",
-      "westRank": "Maegashira 16 West",
-      "kimarite": "yoritaoshi",
-      "winnerId": 66,
-      "winnerEn": "Kitanowaka",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-2-55-71",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 2,
-      "eastId": 55,
-      "eastShikona": "Roga",
-      "eastRank": "Maegashira 16 East",
-      "westId": 71,
-      "westShikona": "Churanoumi",
-      "westRank": "Maegashira 15 West",
-      "kimarite": "yorikiri",
-      "winnerId": 71,
-      "winnerEn": "Churanoumi",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-3-54-11",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 3,
-      "eastId": 54,
-      "eastShikona": "Tohakuryu",
-      "eastRank": "Maegashira 15 East",
-      "westId": 11,
-      "westShikona": "Ichiyamamoto",
-      "westRank": "Maegashira 14 West",
-      "kimarite": "oshidashi",
-      "winnerId": 11,
-      "winnerEn": "Ichiyamamoto",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-4-102-31",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 4,
-      "eastId": 102,
-      "eastShikona": "Tomokaze",
-      "eastRank": "Maegashira 14 East",
-      "westId": 31,
-      "westShikona": "Tsurugisho",
-      "westRank": "Maegashira 13 West",
-      "kimarite": "uwatenage",
-      "winnerId": 31,
-      "winnerEn": "Tsurugisho",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-5-25-14",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 5,
-      "eastId": 25,
-      "eastShikona": "Takarafuji",
-      "eastRank": "Maegashira 13 East",
-      "westId": 14,
-      "westShikona": "Tamawashi",
-      "westRank": "Maegashira 12 West",
-      "kimarite": "oshidashi",
-      "winnerId": 14,
-      "winnerEn": "Tamawashi",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-6-41-24",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 6,
-      "eastId": 41,
-      "eastShikona": "Oho",
-      "eastRank": "Maegashira 12 East",
-      "westId": 24,
-      "westShikona": "Hiradoumi",
-      "westRank": "Maegashira 11 West",
-      "kimarite": "tsukidashi",
-      "winnerId": 41,
-      "winnerEn": "Oho",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-7-35-30",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 7,
-      "eastId": 35,
-      "eastShikona": "Sadanoumi",
-      "eastRank": "Maegashira 11 East",
-      "westId": 30,
-      "westShikona": "Kotoeko",
-      "westRank": "Maegashira 10 West",
-      "kimarite": "yoritaoshi",
-      "winnerId": 35,
-      "winnerEn": "Sadanoumi",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-8-15-26",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 8,
-      "eastId": 15,
-      "eastShikona": "Ryuden",
-      "eastRank": "Maegashira 10 East",
-      "westId": 26,
-      "westShikona": "Mitakeumi",
-      "westRank": "Maegashira 9 West",
-      "kimarite": "yorikiri",
-      "winnerId": 15,
-      "winnerEn": "Ryuden",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-9-36-74",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 9,
-      "eastId": 36,
-      "eastShikona": "Myogiryu",
-      "eastRank": "Maegashira 9 East",
-      "westId": 74,
-      "westShikona": "Atamifuji",
-      "westRank": "Maegashira 8 West",
-      "kimarite": "kotenage",
-      "winnerId": 74,
-      "winnerEn": "Atamifuji",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-10-17-50",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 10,
-      "eastId": 17,
-      "eastShikona": "Endo",
-      "eastRank": "Maegashira 8 East",
-      "westId": 50,
-      "westShikona": "Kinbozan",
-      "westRank": "Maegashira 7 West",
-      "kimarite": "oshidashi",
-      "winnerId": 50,
-      "winnerEn": "Kinbozan",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-11-53-37",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 11,
-      "eastId": 53,
-      "eastShikona": "Hokuseiho",
-      "eastRank": "Maegashira 7 East",
-      "westId": 37,
-      "westShikona": "Takanosho",
-      "westRank": "Maegashira 6 West",
-      "kimarite": "yorikiri",
-      "winnerId": 53,
-      "winnerEn": "Hokuseiho",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-12-49-34",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 12,
-      "eastId": 49,
-      "eastShikona": "Shonannoumi",
-      "eastRank": "Maegashira 6 East",
-      "westId": 34,
-      "westShikona": "Midorifuji",
-      "westRank": "Maegashira 5 West",
-      "kimarite": "hatakikomi",
-      "winnerId": 49,
-      "winnerEn": "Shonannoumi",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-13-10-16",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 13,
-      "eastId": 10,
-      "eastShikona": "Onosho",
-      "eastRank": "Maegashira 5 East",
-      "westId": 16,
-      "westShikona": "Nishikigi",
-      "westRank": "Maegashira 4 West",
-      "kimarite": "oshidashi",
-      "winnerId": 10,
-      "winnerEn": "Onosho",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-14-22-56",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 14,
-      "eastId": 22,
-      "eastShikona": "Abi",
-      "eastRank": "Komusubi 1 East",
-      "westId": 56,
-      "westShikona": "Gonoyama",
-      "westRank": "Maegashira 4 East",
-      "kimarite": "oshidashi",
-      "winnerId": 22,
-      "winnerEn": "Abi",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-15-20-21",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 15,
-      "eastId": 20,
-      "eastShikona": "Kotonowaka",
-      "eastRank": "Sekiwake 2 East",
-      "westId": 21,
-      "westShikona": "Tobizaru",
-      "westRank": "Maegashira 3 West",
-      "kimarite": "oshidashi",
-      "winnerId": 20,
-      "winnerEn": "Kotonowaka",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-16-44-13",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 16,
-      "eastId": 44,
-      "eastShikona": "Takayasu",
-      "eastRank": "Maegashira 3 East",
-      "westId": 13,
-      "westShikona": "Wakamotoharu",
-      "westRank": "Sekiwake 1 West",
-      "kimarite": "uwatenage",
-      "winnerId": 44,
-      "winnerEn": "Takayasu",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-17-9-38",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 17,
-      "eastId": 9,
-      "eastShikona": "Daieisho",
-      "eastRank": "Sekiwake 1 East",
-      "westId": 38,
-      "westShikona": "Meisei",
-      "westRank": "Maegashira 2 West",
-      "kimarite": "tsukidashi",
-      "winnerId": 9,
-      "winnerEn": "Daieisho",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-18-33-19",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 18,
-      "eastId": 33,
-      "eastShikona": "Shodai",
-      "eastRank": "Maegashira 2 East",
-      "westId": 19,
-      "westShikona": "Hoshoryu",
-      "westRank": "Ozeki 2 West",
-      "kimarite": "tsukidashi",
-      "winnerId": 19,
-      "winnerEn": "Hoshoryu",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-19-28-7",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 19,
-      "eastId": 28,
-      "eastShikona": "Ura",
-      "eastRank": "Maegashira 1 West",
-      "westId": 7,
-      "westShikona": "Kirishima",
-      "westRank": "Ozeki 1 West",
-      "kimarite": "yoritaoshi",
-      "winnerId": 7,
-      "winnerEn": "Kirishima",
-      "winnerJp": ""
-    },
-    {
-      "id": "202311-1-20-1-27",
-      "bashoId": "202311",
-      "division": "Makuuchi",
-      "day": 1,
-      "matchNo": 20,
-      "eastId": 1,
-      "eastShikona": "Takakeisho",
-      "eastRank": "Ozeki 1 East",
-      "westId": 27,
-      "westShikona": "Hokutofuji",
-      "westRank": "Komusubi 1 West",
-      "kimarite": "oshidashi",
-      "winnerId": 1,
-      "winnerEn": "Takakeisho",
-      "winnerJp": ""
-    }
-  ]
+  "payload_decoded": {
+    "date": "202311",
+    "location": "Fukuoka, Fukuoka International Center",
+    "startDate": "2023-11-12T00:00:00Z",
+    "endDate": "2023-11-26T00:00:00Z",
+    "yusho": [
+      {
+        "type": "Makuuchi",
+        "rikishiId": 7,
+        "shikonaEn": "Kirishima Tetsuo",
+        "shikonaJp": "霧島　鐵力"
+      },
+      {
+        "type": "Juryo",
+        "rikishiId": 8,
+        "shikonaEn": "Kotoshoho Yoshinari",
+        "shikonaJp": "琴勝峰　吉成"
+      },
+      {
+        "type": "Makushita",
+        "rikishiId": 609,
+        "shikonaEn": "Satorufuji Teppei",
+        "shikonaJp": "聖富士(さとるふじ)"
+      },
+      {
+        "type": "Sandanme",
+        "rikishiId": 236,
+        "shikonaEn": "Daishoryu Haruchika",
+        "shikonaJp": "大昇龍(だいしょうりゅう)"
+      },
+      {
+        "type": "Jonidan",
+        "rikishiId": 498,
+        "shikonaEn": "Dairinzan Rin",
+        "shikonaJp": "大凜山(だいりんざん)"
+      },
+      {
+        "type": "Jonokuchi",
+        "rikishiId": 8854,
+        "shikonaEn": "Aonishiki Arata",
+        "shikonaJp": "安青錦　新大"
+      }
+    ],
+    "specialPrizes": [
+      {
+        "type": "Kanto-sho",
+        "rikishiId": 11,
+        "shikonaEn": "Ichiyamamoto Daiki",
+        "shikonaJp": "一山本　大生"
+      },
+      {
+        "type": "Kanto-sho",
+        "rikishiId": 20,
+        "shikonaEn": "Kotozakura Masakatsu",
+        "shikonaJp": "琴櫻　将傑"
+      },
+      {
+        "type": "Kanto-sho",
+        "rikishiId": 74,
+        "shikonaEn": "Atamifuji Sakutaro",
+        "shikonaJp": "熱海富士　朔太郎"
+      }
+    ]
+  }
 }
-  
-  
   
   start_task = start_msg()
   
@@ -820,6 +535,7 @@ with DAG(
     driver_memory="4g",
     executor_memory="4g",
     executor_cores=3,
+    jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar",
     name="spark_data_cleaning_job",
     conf={
         # python plumbing
@@ -840,6 +556,7 @@ with DAG(
         "spark.hadoop.fs.s3a.threads.max": "200",
         "spark.hadoop.fs.s3a.connection.establish.timeout": "5000",
         "spark.hadoop.fs.s3a.connection.timeout": "10000",
+        
     },
     application_args=[
       "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
@@ -855,6 +572,7 @@ with DAG(
     driver_memory="4g",
     executor_memory="4g",
     executor_cores=3,
+    jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar",
     name="spark_ml_dataset_job",
     conf={
         # python plumbing
@@ -891,6 +609,7 @@ with DAG(
     driver_memory="4g",
     executor_memory="4g",
     executor_cores=3,
+    jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar",
     name="spark_ml_training_job",
     conf={
         # python plumbing

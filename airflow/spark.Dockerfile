@@ -37,31 +37,21 @@ ENV SPARK_PYTHON=/usr/bin/python3
 
 # Postgres JDBC
 ENV POSTGRES_JDBC_VERSION=42.6.0
-RUN set -eux; \
-    JDBC_JAR_URL="https://repo1.maven.org/maven2/org/postgresql/postgresql/${POSTGRES_JDBC_VERSION}/postgresql-${POSTGRES_JDBC_VERSION}.jar"; \
-    mkdir -p /opt/spark/jars; \
-    if [ ! -f /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar ]; then \
-        wget -q -O /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar "$JDBC_JAR_URL"; \
-        chmod 0644 /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar; \
-    fi
+RUN mkdir -p /opt/spark/jars-baked && \
+    wget -q -O /opt/spark/jars-baked/postgresql-${POSTGRES_JDBC_VERSION}.jar \
+      https://repo1.maven.org/maven2/org/postgresql/postgresql/${POSTGRES_JDBC_VERSION}/postgresql-${POSTGRES_JDBC_VERSION}.jar
+
 
 # S3 jars
 ENV HADOOP_AWS_VERSION=3.3.4
 ENV AWS_SDK_BUNDLE_VERSION=1.12.262
-RUN set -eux; \
-    HADOOP_AWS_URL="https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VERSION}/hadoop-aws-${HADOOP_AWS_VERSION}.jar"; \
-    AWS_BUNDLE_URL="https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_BUNDLE_VERSION}/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar"; \
-    mkdir -p /opt/spark/jars; \
-    if [ ! -f /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar ]; then \
-        wget -q -O /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar "$HADOOP_AWS_URL"; \
-    fi; \
-    if [ ! -f /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar ]; then \
-        wget -q -O /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar "$AWS_BUNDLE_URL"; \
-    fi; \
-    chmod 0644 /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar
+RUN wget -q -O /opt/spark/jars-baked/hadoop-aws-${HADOOP_AWS_VERSION}.jar \
+      https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VERSION}/hadoop-aws-${HADOOP_AWS_VERSION}.jar && \
+    wget -q -O /opt/spark/jars-baked/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar \
+      https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_BUNDLE_VERSION}/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar
 
-# make sure Spark sees them immediately
-ENV SPARK_DIST_CLASSPATH=/opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar:/opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar:$SPARK_DIST_CLASSPATH
+# make spark see them even if we don't copy to the volume
+ENV SPARK_DIST_CLASSPATH=/opt/spark/jars-baked/hadoop-aws-${HADOOP_AWS_VERSION}.jar:/opt/spark/jars-baked/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar:$SPARK_DIST_CLASSPATH
 
 # go back to spark user
 USER 185

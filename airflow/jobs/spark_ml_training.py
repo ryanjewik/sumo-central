@@ -381,7 +381,7 @@ def process_ml_training(
         main = main.drop('west_totalWins', 'west_totalMatches', 'west_totalLosses', 'east_totalWins', 'east_totalMatches', 'east_totalLosses', 
                         'west_basho', 'east_basho', 'west_age', 'east_age', "east_Gino_sho", "east_Kanto_sho", "east_Shukun_sho","west_Gino_sho",
                             "west_Kanto_sho", "west_Shukun_sho", "west_makuuchi_yusho",
-                        "east_makuuchi_yusho", "west_height", "west_weight", "east_height", "east_weight", "kimarite", "eastId", "westId", "west_specialist", "east_specialist",
+                        "east_makuuchi_yusho", "west_height", "west_weight", "east_height", "east_weight", "kimarite",  "west_specialist", "east_specialist",
                         "west_vs_oshi_winrate", "west_vs_yotsu_winrate", "west_vs_other_winrate", "east_vs_oshi_winrate", "east_vs_yotsu_winrate", "east_vs_other_winrate",
                         )
         
@@ -392,6 +392,8 @@ def process_ml_training(
         print("wrote ml training dataset")
         print("prepared main data for ML")
         #starting ML training
+        
+        main = main.drop('westId', 'eastId')
         
         feature_cols = [
             "west_yusho",

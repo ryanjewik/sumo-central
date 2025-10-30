@@ -9,6 +9,8 @@ x-spark-common: &spark-common
     dockerfile: spark.Dockerfile
   volumes:
     - ./jobs:/opt/spark/work-dir/jobs
+    - spark-jars:/opt/spark/jars 
+  image: spark-s3:3.5.2 
   networks: [airflow]
   environment:
     - SPARK_HOME=/opt/spark
@@ -69,6 +71,7 @@ x-airflow-common: &airflow-common
     - ./jobs:/opt/airflow/jobs
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
+    - spark-jars:/opt/spark/jars 
   networks: [airflow]
   depends_on:
     airflow-postgres:
@@ -78,6 +81,9 @@ services:
   # -------------------- Spark --------------------
   spark-master:
     <<: *spark-common
+    depends_on:
+      spark-jars-init:
+        condition: service_completed_successfully
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
     ports:
       - "9090:8080"
@@ -85,7 +91,11 @@ services:
 
   spark-worker:
     <<: *spark-common
-    depends_on: [spark-master]
+    depends_on: 
+      spark-master:
+        condition: service_started
+      spark-jars-init:
+        condition: service_completed_successfully
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
     environment:
       - SPARK_MODE=worker
@@ -156,6 +166,11 @@ services:
   # -------------------- One-shot DB init --------------------
   airflow-init:
     <<: *airflow-common
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      spark-jars-init:
+          condition: service_completed_successfully
     restart: "no"
     command:
       - bash
@@ -204,6 +219,20 @@ services:
         airflow connections get mongo_default
 
         echo 'Init completed.'
+        
+  spark-jars-init:
+    image: spark-s3:3.5.2      # 👈 the image you build in spark.Dockerfile
+    command: >
+      bash -lc "
+        set -e;
+        mkdir -p /opt/spark/jars;
+        cp -u /opt/spark/jars-baked/* /opt/spark/jars/ 2>/dev/null || true;
+        ls -l /opt/spark/jars;
+      "
+    volumes:
+      - spark-jars:/opt/spark/jars
+    networks: [airflow]
+    restart: "no"
 
 
   # -------------------- Webserver --------------------
@@ -211,6 +240,8 @@ services:
     <<: *airflow-common
     depends_on:
       airflow-init:
+        condition: service_completed_successfully
+      spark-jars-init:
         condition: service_completed_successfully
     ports:
       - "8081:8080"
@@ -225,6 +256,7 @@ services:
       - ./jobs:/opt/airflow/jobs
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
+      - spark-jars:/opt/spark/jars-out
       - /var/run/docker.sock:/var/run/docker.sock
 
   # -------------------- Scheduler (Execution API INSIDE) --------------------
@@ -232,6 +264,8 @@ services:
     <<: *airflow-common
     depends_on:
       airflow-init:
+        condition: service_completed_successfully
+      spark-jars-init:
         condition: service_completed_successfully
     environment:
       <<: *airflow-env
@@ -247,6 +281,7 @@ services:
       - ./jobs:/opt/airflow/jobs
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
+      - spark-jars:/opt/spark/jars-out
       - /var/run/docker.sock:/var/run/docker.sock
 
   # -------------------- DAG Processor --------------------
@@ -254,6 +289,8 @@ services:
     <<: *airflow-common
     depends_on:
       airflow-init:
+        condition: service_completed_successfully
+      spark-jars-init:
         condition: service_completed_successfully
     command: >
       bash -lc '
@@ -266,10 +303,12 @@ services:
       - ./jobs:/opt/airflow/jobs
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
+      - spark-jars:/opt/spark/jars-out
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   sumo-db-data: {}
+  spark-jars: {}  
 
 networks:
   airflow:
