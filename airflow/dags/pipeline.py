@@ -95,6 +95,15 @@ def call_push_webhook_xcom(webhook: dict):
   return json.dumps(webhook)
 
 
+def call_data_cleaning_spark(webhook: dict):
+  return _load_and_call("/opt/airflow/jobs/spark_data_cleaning.py", "process_data", webhook)
+
+def call_ml_dataset_spark(webhook: dict):
+  return _load_and_call("/opt/airflow/jobs/spark_ml_dataset.py", "process_ml_dataset", webhook)
+
+def call_ml_training_spark(webhook: dict):
+  return _load_and_call("/opt/airflow/jobs/spark_ml_training.py", "process_ml_training", webhook)
+
 default_args = {"retries": 0, "retry_delay": timedelta(minutes=1)}
 
 with DAG(
@@ -641,8 +650,8 @@ with DAG(
     application="/opt/airflow/jobs/spark_homepage.py",
     conn_id="spark_default",
     packages="org.postgresql:postgresql:42.6.0",
-    driver_memory="1g",
-    executor_memory="2g",
+    driver_memory="4g",
+    executor_memory="4g",
     executor_cores=2,
     name="spark_homepage_job",
     conf={
@@ -679,7 +688,7 @@ with DAG(
     conn_id="spark_default",
     packages="org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
     application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') }}"],
-    driver_memory="1g",
+    driver_memory="2g",
     executor_memory="2g",
     conf={
         "spark.pyspark.python": "python3",
@@ -712,7 +721,7 @@ with DAG(
     conn_id="spark_default",
     packages="org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
     application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') }}"],
-    driver_memory="1g",
+    driver_memory="2g",
     executor_memory="2g",
     executor_cores=2,
     name="spark_mongo_new_matches_job",
@@ -732,6 +741,71 @@ with DAG(
   join_postgres = EmptyOperator(task_id="join_postgres", trigger_rule="one_success")
 
   join_mongo = EmptyOperator(task_id="join_mongo", trigger_rule="one_success")
+  
+  run_spark_data_cleaning = SparkSubmitOperator(
+    task_id="run_data_cleaning",
+    application="/opt/airflow/jobs/spark_data_cleaning.py",
+    conn_id="spark_default",
+    packages="org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262",
+    driver_memory="4g",
+    executor_memory="4g",
+    executor_cores=2,
+    name="spark_data_cleaning_job",
+    conf={
+      "spark.pyspark.python": "python3",
+      "spark.executorEnv.PYSPARK_PYTHON": "python3",
+      "spark.pyspark.driver.python": "python3",
+    },
+    application_args=[
+      "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
+      "--output", "{{ dag_run.conf.get('output','s3a://ryans-sumo-bucket/silver/rikishi_matches/') }}",
+    ],
+    do_xcom_push=False,
+  )
+  
+  run_spark_ml_dataset = SparkSubmitOperator(
+    task_id="run_ml_dataset",
+    application="/opt/airflow/jobs/spark_ml_dataset.py",
+    conn_id="spark_default",
+    packages="org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262",
+    driver_memory="4g",
+    executor_memory="4g",
+    executor_cores=2,
+    name="spark_ml_dataset_job",
+    conf={
+      "spark.pyspark.python": "python3",
+      "spark.executorEnv.PYSPARK_PYTHON": "python3",
+      "spark.pyspark.driver.python": "python3",
+    },
+    application_args=[
+      "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
+      "--output", "{{ dag_run.conf.get('output','s3a://ryans-sumo-bucket/silver/rikishi_matches/') }}",
+    ],
+    do_xcom_push=False,
+  )
+  
+  
+  run_spark_ml_training = SparkSubmitOperator(
+    task_id="run_ml_training",
+    application="/opt/airflow/jobs/spark_ml_training.py",
+    conn_id="spark_default",
+    packages="org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262",
+    driver_memory="4g",
+    executor_memory="4g",
+    executor_cores=2,
+    name="spark_ml_training_job",
+    conf={
+      "spark.pyspark.python": "python3",
+      "spark.executorEnv.PYSPARK_PYTHON": "python3",
+      "spark.pyspark.driver.python": "python3",
+    },
+    application_args=[
+      "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
+      "--output", "{{ dag_run.conf.get('output','s3a://ryans-sumo-bucket/silver/rikishi_matches/') }}",
+    ],
+    do_xcom_push=False,
+  )
+  
 
   end_task = end_msg()
 
@@ -757,4 +831,4 @@ with DAG(
 
   # Both homepage and the mongo branch must finish before finishing the DAG
   homepage_task >> join_mongo
-  join_mongo >> end_task
+  join_mongo >> run_spark_data_cleaning >> end_task
