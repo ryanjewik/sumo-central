@@ -39,19 +39,16 @@ def create_spark_session(
 
     builder = (
         SparkSession.builder.appName(app_name)
-        # include common jars when running with pyspark in notebooks or local mode
-        .config(
-            "spark.jars.packages",
-            "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262",
-        )
-        # Ensure S3A is used and a sensible credentials provider chain is available
+        # we assume the image already has hadoop-aws + aws-java-sdk
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
-        .config("spark.hadoop.fs.s3a.fast.upload", "true")
-        .config("spark.hadoop.fs.s3a.fast.upload.buffer", "bytebuffer")
+        .config("spark.hadoop.fs.s3a.aws.credentials.provider",
+                "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
     )
 
-    # Apply driver/executor memory settings if provided
+    # optional: let container env decide region, not this script
+    # if you really want to force:
+    # builder = builder.config("spark.hadoop.fs.s3a.endpoint", "s3.us-west-2.amazonaws.com")
+
     if driver_mem:
         LOG.info("Setting spark.driver.memory=%s", driver_mem)
         builder = builder.config("spark.driver.memory", driver_mem)
@@ -61,14 +58,14 @@ def create_spark_session(
 
     spark = builder.getOrCreate()
 
-    # Hadoop-level S3A tuning (timeouts, retries, multipart, connection pools)
+    # Hadoop-level S3A config (lightweight)
     hadoop_conf = spark._jsc.hadoopConfiguration()
 
-    # Credentials from environment (optional override)
     aws_key = os.environ.get("AWS_ACCESS_KEY_ID")
     aws_secret = os.environ.get("AWS_SECRET_ACCESS_KEY")
     aws_token = os.environ.get("AWS_SESSION_TOKEN")
-    s3_endpoint = os.environ.get("S3_ENDPOINT")
+
+    # only set creds here if present; otherwise let the provider chain (instance role, etc.) handle it
     if aws_key and aws_secret:
         LOG.info("Applying AWS credentials to Hadoop config from environment")
         hadoop_conf.set("fs.s3a.access.key", aws_key)
@@ -76,36 +73,10 @@ def create_spark_session(
         if aws_token:
             hadoop_conf.set("fs.s3a.session.token", aws_token)
 
-    # Use AWS V4 signing for newer regions
+    # good defaults, but not overkill
     hadoop_conf.set("com.amazonaws.services.s3.enableV4", "true")
-
-    # Optional custom endpoint (e.g. MinIO or S3 compat)
-    if s3_endpoint:
-        LOG.info("Setting custom S3 endpoint: %s", s3_endpoint)
-        hadoop_conf.set("fs.s3a.endpoint", s3_endpoint)
-
-    # Performance / robustness settings
     hadoop_conf.set("fs.s3a.path.style.access", "true")
-    hadoop_conf.set("fs.s3a.connection.maximum", "100")
-    hadoop_conf.set("fs.s3a.threads.max", "100")
     hadoop_conf.set("fs.s3a.fast.upload", "true")
-    hadoop_conf.set("fs.s3a.fast.upload.buffer", "bytebuffer")
-    hadoop_conf.set("fs.s3a.multipart.size", str(10 * 1024 * 1024))         # 10 MB
-    hadoop_conf.set("fs.s3a.multipart.threshold", str(64 * 1024 * 1024))    # 64 MB
-
-    # Timeouts and retry tuning (values in milliseconds)
-    hadoop_conf.set("fs.s3a.connection.establish.timeout", "30000")  # 30s
-    hadoop_conf.set("fs.s3a.connection.timeout", "60000")          # 60s
-    hadoop_conf.set("fs.s3a.threads.keepalivetime", "60000")       # 60s
-    hadoop_conf.set("fs.s3a.connection.ttl", "300000")             # 5m
-    hadoop_conf.set("fs.s3a.retry.interval", "500")               # 500ms
-    hadoop_conf.set("fs.s3a.retry.throttle.interval", "100")       # 100ms
-
-    # When assuming roles, set a reasonable session duration (ms)
-    hadoop_conf.set("fs.s3a.assumed.role.session.duration", "1800000")  # 30m
-
-    # Try to avoid native library dependency surprises in container / Windows dev
-    hadoop_conf.set("spark.hadoop.io.native.lib.available", "false")
 
     return spark
 
@@ -129,7 +100,7 @@ def process_ml_training(
         main = (spark.read              # set to "false" if you have JSON Lines
             .option("mode", "PERMISSIVE")               # or "FAILFAST"
             .option("recursiveFileLookup", "true")
-            .parquet("s3a://ryans-sumo-bucket/gold/ml_training/"))
+            .parquet("s3a://ryans-sumo-bucket/gold/cleaned_data/"))
         print("read main data")
         main = main.withColumn(
             "match_id",
@@ -413,6 +384,12 @@ def process_ml_training(
                         "east_makuuchi_yusho", "west_height", "west_weight", "east_height", "east_weight", "kimarite", "eastId", "westId", "west_specialist", "east_specialist",
                         "west_vs_oshi_winrate", "west_vs_yotsu_winrate", "west_vs_other_winrate", "east_vs_oshi_winrate", "east_vs_yotsu_winrate", "east_vs_other_winrate",
                         )
+        
+        (main.write
+         .mode("overwrite")
+         .option("compression", "snappy")
+         .parquet("s3a://ryans-sumo-bucket/gold/ml_training_set/"))
+        print("wrote ml training dataset")
         print("prepared main data for ML")
         #starting ML training
         
@@ -524,7 +501,7 @@ def process_ml_training(
         metrics.show(truncate=False)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = f"s3a://ryans-sumo-bucket/models/sumo_westwin_best_pipeline/xgboost_tree/{timestamp}"
+        path = f"s3a://ryans-sumo-bucket/models/xgboost_model"
         best_pipeline_model = cv_model.bestModel
         best_pipeline_model.save(path)
         print("Model saved to: %s" % path)
@@ -541,42 +518,23 @@ def process_ml_training(
 
 
 def _parse_args() -> argparse.Namespace:
-	p = argparse.ArgumentParser("Simple Spark data cleaning job")
-	p.add_argument(
-		"--input",
-		required=False,
-		default="s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/",
-		help="Primary input path (default matches internal job reads)",
-	)
-	p.add_argument(
-		"--output",
-		required=False,
-		default="s3a://ryans-sumo-bucket/silver/rikishi_matches/",
-		help="Primary output path (default matches internal silver write)",
-	)
-	p.add_argument("--input-format", default="parquet", choices=["parquet", "csv"]) 
-	p.add_argument("--output-format", default="parquet", choices=["parquet", "csv"]) 
-	p.add_argument("--partition-by", nargs="*", help="columns to partition by")
-	p.add_argument("--dropna-thresh", type=int)
-	p.add_argument("--app-name", default="data_cleaning_job")
-	p.add_argument("--driver-memory", help="Spark driver memory (e.g. 4g). Can also be set with SPARK_DRIVER_MEMORY env var")
-	p.add_argument("--executor-memory", help="Spark executor memory (e.g. 4g). Can also be set with SPARK_EXECUTOR_MEMORY env var")
-	return p.parse_args()
-
+    p = argparse.ArgumentParser("Simple Spark ml training job")
+    p.add_argument("--input", default="s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/")
+    p.add_argument("--output", default="s3a://ryans-sumo-bucket/silver/rikishi_matches/")
+    p.add_argument("--app-name", default="data_training_job")
+    p.add_argument("--driver-memory")
+    p.add_argument("--executor-memory")
+    return p.parse_args()
 
 if __name__ == "__main__":
-	args = _parse_args()
-	process_ml_training(
-		input_path=args.input,
-		output_path=args.output,
-		input_format=args.input_format,
-		output_format=args.output_format,
-		partition_by=args.partition_by,
-		dropna_thresh=args.dropna_thresh,
-		app_name=args.app_name,
-		driver_memory=args.driver_memory,
-		executor_memory=args.executor_memory,
-	)
+    args = _parse_args()
+    process_ml_training(
+        input_path=args.input,
+        output_path=args.output,
+        app_name=args.app_name,
+        driver_memory=args.driver_memory,
+        executor_memory=args.executor_memory,
+    )
 
 
 
