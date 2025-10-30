@@ -1,8 +1,5 @@
 FROM apache/spark:3.5.2-java17-python3
 
-# Install Python 3.8 and pip so the Spark images use the same Python minor
-# version as the Airflow container (which is Python 3.8.x). This helps
-# avoid PySpark [PYTHON_VERSION_MISMATCH] errors between driver and workers.
 USER root
 RUN set -eux; \
     apt-get update; \
@@ -13,26 +10,18 @@ RUN set -eux; \
         software-properties-common \
         procps \
         ; \
-    # Install python3.8 (some distros may already have it); try apt first
     apt-get install -y --no-install-recommends python3.8 python3.8-venv python3.8-distutils || true; \
-    # If python3.8 not provided by apt, attempt deadsnakes PPA (best-effort)
     if ! command -v python3.8 >/dev/null 2>&1; then \
         add-apt-repository ppa:deadsnakes/ppa -y || true; \
         apt-get update; \
         apt-get install -y --no-install-recommends python3.8 python3.8-venv python3.8-distutils || true; \
     fi; \
-    # Install pip for python3.8 using the get-pip bootstrap for 3.8
-        if command -v python3.8 >/dev/null 2>&1; then \
+    if command -v python3.8 >/dev/null 2>&1; then \
         wget https://bootstrap.pypa.io/pip/3.8/get-pip.py -O /tmp/get-pip.py; \
         python3.8 /tmp/get-pip.py; \
         rm -f /tmp/get-pip.py; \
-        # Make python3.8 the default python and python3 on the image
         ln -sf /usr/bin/python3.8 /usr/bin/python3; \
         ln -sf /usr/bin/python3.8 /usr/bin/python || true; \
-        # Install runtime Python packages used by spark_homepage.py and executor-side writes.
-        # - pymongo: executor writes to MongoDB
-        # - python-dotenv: load_dotenv() at top-level in spark_homepage.py
-        # - psycopg2-binary: fallback DB driver (binary wheel avoids build deps)
         python3.8 -m pip install --no-cache-dir \
             "pymongo>=4.0,<5" \
             "python-dotenv>=0.21.0" \
@@ -41,52 +30,39 @@ RUN set -eux; \
     fi; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
-USER root
-
 ENV PYTHONUNBUFFERED=1
-
-# Ensure Spark uses the system python3 (installed above) for driver and
-# executor processes. This avoids PYTHON_VERSION_MISMATCH errors when the
-# Airflow submitter and the executors run slightly different python
-# binaries.
 ENV PYSPARK_PYTHON=/usr/bin/python3
 ENV PYSPARK_DRIVER_PYTHON=/usr/bin/python3
 ENV SPARK_PYTHON=/usr/bin/python3
 
-# Install PostgreSQL JDBC driver into Spark's jars directory so Spark jobs
-# can use the driver without needing spark.jars.packages at runtime.
+# Postgres JDBC
 ENV POSTGRES_JDBC_VERSION=42.6.0
 RUN set -eux; \
     JDBC_JAR_URL="https://repo1.maven.org/maven2/org/postgresql/postgresql/${POSTGRES_JDBC_VERSION}/postgresql-${POSTGRES_JDBC_VERSION}.jar"; \
     mkdir -p /opt/spark/jars; \
     if [ ! -f /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar ]; then \
-        echo "Downloading Postgres JDBC ${POSTGRES_JDBC_VERSION} to /opt/spark/jars"; \
         wget -q -O /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar "$JDBC_JAR_URL"; \
-        # set permissive permissions so Spark (non-root user) can read the jar
         chmod 0644 /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar; \
-    else \
-        echo "Postgres JDBC already present"; \
     fi
 
-# Pre-bake Hadoop AWS and AWS Java SDK bundle into Spark's jars so S3A is
-# available on the driver/executor classpath at JVM startup. This is
-# recommended for local/offline development to avoid Ivy/classloader races
-# when using --packages at runtime.
+# S3 jars
 ENV HADOOP_AWS_VERSION=3.3.4
 ENV AWS_SDK_BUNDLE_VERSION=1.12.262
 RUN set -eux; \
     HADOOP_AWS_URL="https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VERSION}/hadoop-aws-${HADOOP_AWS_VERSION}.jar"; \
     AWS_BUNDLE_URL="https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_BUNDLE_VERSION}/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar"; \
-    echo "Downloading hadoop-aws ${HADOOP_AWS_VERSION} and aws-java-sdk-bundle ${AWS_SDK_BUNDLE_VERSION} to /opt/spark/jars"; \
     mkdir -p /opt/spark/jars; \
     if [ ! -f /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar ]; then \
         wget -q -O /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar "$HADOOP_AWS_URL"; \
-    else \
-        echo "hadoop-aws already present"; \
     fi; \
     if [ ! -f /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar ]; then \
         wget -q -O /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar "$AWS_BUNDLE_URL"; \
-    else \
-        echo "aws-java-sdk-bundle already present"; \
     fi; \
     chmod 0644 /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar
+
+# make sure Spark sees them immediately
+ENV SPARK_DIST_CLASSPATH=/opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar:/opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar:$SPARK_DIST_CLASSPATH
+
+# go back to spark user
+USER 185
+WORKDIR /opt/spark/work-dir

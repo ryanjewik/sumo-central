@@ -801,31 +801,29 @@ with DAG(
     task_id="run_data_cleaning",
     application="/opt/airflow/jobs/spark_data_cleaning.py",
     conn_id="spark_default",
-    packages="org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262",
     driver_memory="4g",
     executor_memory="4g",
-    executor_cores=2,
+    executor_cores=3,
     name="spark_data_cleaning_job",
     conf={
-      "spark.pyspark.python": "python3",
-      "spark.executorEnv.PYSPARK_PYTHON": "python3",
-      "spark.pyspark.driver.python": "python3",
-      # AWS credentials propagated from spark_conf xcom (aws_default connection or Variables)
-      "spark.hadoop.fs.s3a.access.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.access.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.hadoop.fs.s3a.secret.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.secret.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.driverEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.driverEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      # --- S3 path only ---
-      "spark.executorEnv.S3_SMOKE_PATH": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.S3_SMOKE_PATH'] }}",
-      "spark.driverEnv.S3_SMOKE_PATH": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.S3_SMOKE_PATH'] }}",
+        # python plumbing
+        "spark.pyspark.python": "python3",
+        "spark.executorEnv.PYSPARK_PYTHON": "python3",
+        "spark.pyspark.driver.python": "python3",
 
-      # --- MINIMAL AWS (no Jinja) ---
-      # read from Airflow container env at DAG-parse/runtime
-      "spark.executorEnv.AWS_REGION": os.environ.get("AWS_REGION", "us-west-2"),
-      "spark.executorEnv.AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", ""),
-      "spark.executorEnv.AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+        # S3A base (matches your script)
+        "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
+        "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.DefaultAWSCredentialsProviderChain",
+
+        # MINIMAL AWS from Airflow container env (NO JINJA)
+        "spark.executorEnv.AWS_REGION": os.environ.get("AWS_REGION", "us-west-2"),
+        "spark.executorEnv.AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", ""),
+        "spark.executorEnv.AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+        
+        "spark.hadoop.fs.s3a.connections.maximum": "200",
+        "spark.hadoop.fs.s3a.threads.max": "200",
+        "spark.hadoop.fs.s3a.connection.establish.timeout": "5000",
+        "spark.hadoop.fs.s3a.connection.timeout": "10000",
     },
     application_args=[
       "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
@@ -838,22 +836,29 @@ with DAG(
     task_id="run_ml_dataset",
     application="/opt/airflow/jobs/spark_ml_dataset.py",
     conn_id="spark_default",
-    packages="org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262",
     driver_memory="4g",
     executor_memory="4g",
-    executor_cores=2,
+    executor_cores=3,
     name="spark_ml_dataset_job",
     conf={
-      "spark.pyspark.python": "python3",
-      "spark.executorEnv.PYSPARK_PYTHON": "python3",
-      "spark.pyspark.driver.python": "python3",
-      # AWS credentials from spark_conf xcom
-      "spark.hadoop.fs.s3a.access.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.access.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.hadoop.fs.s3a.secret.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.secret.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.driverEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.driverEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+        # python plumbing
+        "spark.pyspark.python": "python3",
+        "spark.executorEnv.PYSPARK_PYTHON": "python3",
+        "spark.pyspark.driver.python": "python3",
+
+        # S3A base (matches your script)
+        "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
+        "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.DefaultAWSCredentialsProviderChain",
+
+        # MINIMAL AWS from Airflow container env (NO JINJA)
+        "spark.executorEnv.AWS_REGION": os.environ.get("AWS_REGION", "us-west-2"),
+        "spark.executorEnv.AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", ""),
+        "spark.executorEnv.AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+        
+        "spark.hadoop.fs.s3a.connections.maximum": "200",
+        "spark.hadoop.fs.s3a.threads.max": "200",
+        "spark.hadoop.fs.s3a.connection.establish.timeout": "5000",
+        "spark.hadoop.fs.s3a.connection.timeout": "10000",
     },
     application_args=[
       "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
@@ -867,22 +872,29 @@ with DAG(
     task_id="run_ml_training",
     application="/opt/airflow/jobs/spark_ml_training.py",
     conn_id="spark_default",
-    packages="org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262",
     driver_memory="4g",
     executor_memory="4g",
-    executor_cores=2,
+    executor_cores=3,
     name="spark_ml_training_job",
     conf={
-      "spark.pyspark.python": "python3",
-      "spark.executorEnv.PYSPARK_PYTHON": "python3",
-      "spark.pyspark.driver.python": "python3",
-      # AWS credentials from spark_conf xcom
-      "spark.hadoop.fs.s3a.access.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.access.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.hadoop.fs.s3a.secret.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.secret.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.driverEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.driverEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+        # python plumbing
+        "spark.pyspark.python": "python3",
+        "spark.executorEnv.PYSPARK_PYTHON": "python3",
+        "spark.pyspark.driver.python": "python3",
+
+        # S3A base (matches your script)
+        "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
+        "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.DefaultAWSCredentialsProviderChain",
+
+        # MINIMAL AWS from Airflow container env (NO JINJA)
+        "spark.executorEnv.AWS_REGION": os.environ.get("AWS_REGION", "us-west-2"),
+        "spark.executorEnv.AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", ""),
+        "spark.executorEnv.AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+        
+        "spark.hadoop.fs.s3a.connections.maximum": "200",
+        "spark.hadoop.fs.s3a.threads.max": "200",
+        "spark.hadoop.fs.s3a.connection.establish.timeout": "5000",
+        "spark.hadoop.fs.s3a.connection.timeout": "10000",
     },
     application_args=[
       "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
@@ -916,4 +928,4 @@ with DAG(
 
   # Both homepage and the mongo branch must finish before finishing the DAG
   homepage_task >> join_mongo
-  join_mongo >> run_spark_data_cleaning >> end_task
+  join_mongo >> run_spark_data_cleaning >> run_spark_ml_dataset >> run_spark_ml_training >> end_task
