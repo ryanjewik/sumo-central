@@ -36,7 +36,8 @@ RUN set -eux; \
         python3.8 -m pip install --no-cache-dir \
             "pymongo>=4.0,<5" \
             "python-dotenv>=0.21.0" \
-            "psycopg2-binary>=2.9" ; \
+            "psycopg2-binary>=2.9" \
+            "boto3>=1.26,<2" ; \
     fi; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
@@ -66,3 +67,26 @@ RUN set -eux; \
     else \
         echo "Postgres JDBC already present"; \
     fi
+
+# Pre-bake Hadoop AWS and AWS Java SDK bundle into Spark's jars so S3A is
+# available on the driver/executor classpath at JVM startup. This is
+# recommended for local/offline development to avoid Ivy/classloader races
+# when using --packages at runtime.
+ENV HADOOP_AWS_VERSION=3.3.4
+ENV AWS_SDK_BUNDLE_VERSION=1.12.262
+RUN set -eux; \
+    HADOOP_AWS_URL="https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VERSION}/hadoop-aws-${HADOOP_AWS_VERSION}.jar"; \
+    AWS_BUNDLE_URL="https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_BUNDLE_VERSION}/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar"; \
+    echo "Downloading hadoop-aws ${HADOOP_AWS_VERSION} and aws-java-sdk-bundle ${AWS_SDK_BUNDLE_VERSION} to /opt/spark/jars"; \
+    mkdir -p /opt/spark/jars; \
+    if [ ! -f /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar ]; then \
+        wget -q -O /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar "$HADOOP_AWS_URL"; \
+    else \
+        echo "hadoop-aws already present"; \
+    fi; \
+    if [ ! -f /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar ]; then \
+        wget -q -O /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar "$AWS_BUNDLE_URL"; \
+    else \
+        echo "aws-java-sdk-bundle already present"; \
+    fi; \
+    chmod 0644 /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar

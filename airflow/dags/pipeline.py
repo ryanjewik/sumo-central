@@ -118,109 +118,164 @@ with DAG(
   
   @task
   def spark_conf():
-    # Resolve Postgres connection (minimal validation)
-    try:
-      sumo_conn = BaseHook.get_connection("sumo_db")
-      conn_host = sumo_conn.host
-      conn_port = sumo_conn.port or 5432
-      conn_db = sumo_conn.schema
-      if not conn_host or not conn_db:
-        raise RuntimeError("Airflow connection 'sumo_db' must include host and schema (database name)")
-      jdbc_url = f"jdbc:postgresql://{conn_host}:{conn_port}/{conn_db}"
-      db_username = sumo_conn.login
-      db_password = sumo_conn.password
-    except Exception as e:
-      raise RuntimeError("Failed to build JDBC URL from Airflow connection 'sumo_db'. Ensure the connection exists and has host/schema set") from e
+      """
+      Build a minimal Spark conf for the rest of the DAG:
+      - resolve Postgres
+      - resolve Mongo
+      - expose S3_SMOKE_PATH
+      NOTE: we NO LONGER push AWS creds via XCom/Jinja — containers already have them.
+      """
+      logger = logging.getLogger("pipeline.spark_conf")
 
-    logger = logging.getLogger("pipeline.spark_conf")
-    mongo_uri = None
-    mongo_db_name = None
-    extras = {}
-    host = None
-    try:
-      mconn = BaseHook.get_connection("mongo_default")
+      # --- Postgres via Airflow connection ---
       try:
-        mongo_uri = mconn.get_uri()
-      except Exception:
-        if not mconn.host:
-          raise RuntimeError("Airflow connection 'mongo_default' must include a host or URI")
-        if mconn.login and mconn.password:
-          mongo_uri = f"mongodb://{mconn.login}:{mconn.password}@{mconn.host}:{mconn.port or 27017}/{mconn.schema or ''}"
-        else:
-          mongo_uri = f"mongodb://{mconn.host}:{mconn.port or 27017}/{mconn.schema or ''}"
-      host = mconn.host
-      try:
-        extras = mconn.extra_dejson or {}
-      except Exception:
-        extras = {}
-      mongo_db_name = mconn.schema
-      logger.info("Using Airflow connection 'mongo_default' for Mongo URI and DB name")
-    except Exception:
-      # Fallback to environment variables (useful in local/rebuilt containers)
-      mongo_uri = os.environ.get("MONGO_URI")
-      mongo_db_name = os.environ.get("MONGO_DB_NAME")
+          sumo_conn = BaseHook.get_connection("sumo_db")
+          conn_host = sumo_conn.host
+          conn_port = sumo_conn.port or 5432
+          conn_db = sumo_conn.schema
+          if not conn_host or not conn_db:
+              raise RuntimeError("Airflow connection 'sumo_db' must include host and schema (database name)")
+          jdbc_url = f"jdbc:postgresql://{conn_host}:{conn_port}/{conn_db}"
+          db_username = sumo_conn.login
+          db_password = sumo_conn.password
+      except Exception as e:
+          raise RuntimeError(
+              "Failed to build JDBC URL from Airflow connection 'sumo_db'. "
+              "Ensure the connection exists and has host/schema set"
+          ) from e
+
+      # --- Mongo via Airflow connection (or env fallback) ---
+      mongo_uri = None
+      mongo_db_name = None
       extras = {}
       host = None
-      logger.info("Airflow connection 'mongo_default' not found; falling back to MONGO_URI/MONGO_DB_NAME env vars")
+      try:
+          mconn = BaseHook.get_connection("mongo_default")
+          try:
+              mongo_uri = mconn.get_uri()
+          except Exception:
+              if not mconn.host:
+                  raise RuntimeError("Airflow connection 'mongo_default' must include a host or URI")
+              if mconn.login and mconn.password:
+                  mongo_uri = f"mongodb://{mconn.login}:{mconn.password}@{mconn.host}:{mconn.port or 27017}/{mconn.schema or ''}"
+              else:
+                  mongo_uri = f"mongodb://{mconn.host}:{mconn.port or 27017}/{mconn.schema or ''}"
+          host = mconn.host
+          try:
+              extras = mconn.extra_dejson or {}
+          except Exception:
+              extras = {}
+          mongo_db_name = mconn.schema
+          logger.info("Using Airflow connection 'mongo_default' for Mongo URI and DB name")
+      except Exception:
+          # fallback to env
+          mongo_uri = os.environ.get("MONGO_URI")
+          mongo_db_name = os.environ.get("MONGO_DB_NAME")
+          extras = {}
+          host = None
+          logger.info("Airflow connection 'mongo_default' not found; using env vars")
 
-    if not mongo_uri:
-      raise RuntimeError("MongoDB URI not available: set Airflow connection 'mongo_default' or MONGO_URI env var")
+      if not mongo_uri:
+          raise RuntimeError("MongoDB URI not available")
 
-    safe_uri = sanitize_mongo_uri(mongo_uri, host=host, extras=extras)
-    if not mongo_db_name:
-      raise RuntimeError("MongoDB name not found: set Airflow connection 'mongo_default' schema or MONGO_DB_NAME env var")
+      # import here to avoid circulars
+      from mongo_utils import sanitize_mongo_uri  # type: ignore
+      safe_uri = sanitize_mongo_uri(mongo_uri, host=host, extras=extras)
 
-    # Minimal homepage_conf with only the keys Spark needs for executors and driver
-    homepage_conf = {
-      "spark.pyspark.python": "python3",
-      "spark.executorEnv.PYSPARK_PYTHON": "python3",
-      "spark.pyspark.driver.python": "python3",
-      "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
-      "spark.executorEnv.MONGO_URI": safe_uri,
-      "spark.executorEnv.MONGO_DB_NAME": mongo_db_name,
-      "spark.executorEnv.MONGO_COLL_NAME": "homepage",
-      # Mirror into driver env so the driver can build broadcasts
-      "spark.driverEnv.MONGO_URI": safe_uri,
-      "spark.driverEnv.MONGO_DB_NAME": mongo_db_name,
-      "spark.driverEnv.MONGO_COLL_NAME": "homepage",
-      # Postgres connection details for executors if they need them
-      "spark.executorEnv.DB_HOST": conn_host,
-      "spark.executorEnv.DB_PORT": str(conn_port),
-      "spark.executorEnv.DB_NAME": conn_db,
-      "spark.driverEnv.DB_HOST": conn_host,
-      "spark.driverEnv.DB_PORT": str(conn_port),
-      "spark.driverEnv.DB_NAME": conn_db,
-    }
-    if db_username:
-      homepage_conf["spark.executorEnv.DB_USERNAME"] = db_username
-    if db_password:
-      homepage_conf["spark.executorEnv.DB_PASSWORD"] = db_password
-    homepage_conf.setdefault("spark.executorEnv.DB_USERNAME", db_username or "")
-    homepage_conf.setdefault("spark.executorEnv.DB_PASSWORD", db_password or "")
+      if not mongo_db_name:
+          raise RuntimeError("MongoDB name not found")
 
-    return {"conf": homepage_conf, "jdbc_url": jdbc_url, "mongo_uri": safe_uri, "mongo_db": mongo_db_name, "mongo_coll": "homepage"}
+      # --- S3 smoke path (leave this; executor needs it) ---
+      try:
+          s3_path = Variable.get("S3_SMOKE_PATH", default_var=None)
+      except Exception:
+          s3_path = None
+      s3_path = s3_path or os.environ.get("S3_SMOKE_PATH")
+
+      # build the minimal conf we hand to downstream SparkSubmitOperators
+      homepage_conf = {
+          "spark.pyspark.python": "python3",
+          "spark.executorEnv.PYSPARK_PYTHON": "python3",
+          "spark.pyspark.driver.python": "python3",
+          "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
+          # Mongo
+          "spark.executorEnv.MONGO_URI": safe_uri,
+          "spark.executorEnv.MONGO_DB_NAME": mongo_db_name,
+          "spark.executorEnv.MONGO_COLL_NAME": "homepage",
+          "spark.driverEnv.MONGO_URI": safe_uri,
+          "spark.driverEnv.MONGO_DB_NAME": mongo_db_name,
+          "spark.driverEnv.MONGO_COLL_NAME": "homepage",
+          # Postgres (executor + driver)
+          "spark.executorEnv.DB_HOST": conn_host,
+          "spark.executorEnv.DB_PORT": str(conn_port),
+          "spark.executorEnv.DB_NAME": conn_db,
+          "spark.driverEnv.DB_HOST": conn_host,
+          "spark.driverEnv.DB_PORT": str(conn_port),
+          "spark.driverEnv.DB_NAME": conn_db,
+          # S3 smoke path (driver + executor)
+          "spark.executorEnv.S3_SMOKE_PATH": s3_path,
+          "spark.driverEnv.S3_SMOKE_PATH": s3_path,
+      }
+
+      if db_username:
+          homepage_conf["spark.executorEnv.DB_USERNAME"] = db_username
+          homepage_conf["spark.driverEnv.DB_USERNAME"] = db_username
+      if db_password:
+          homepage_conf["spark.executorEnv.DB_PASSWORD"] = db_password
+          homepage_conf["spark.driverEnv.DB_PASSWORD"] = db_password
+
+      # NOTE: we deliberately DO NOT inject AWS creds or AWS region here.
+      # containers (docker-compose) already export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION=us-west-2
+      # and spark_smoke was failing because Jinja was overriding those with literal template strings.
+
+      return {
+          "conf": homepage_conf,
+          "jdbc_url": jdbc_url,
+          "mongo_uri": safe_uri,
+          "mongo_db": mongo_db_name,
+          "mongo_coll": "homepage",
+      }
 
 
   spark_smoke = SparkSubmitOperator(
-    task_id="spark_smoke",
-    application="/opt/airflow/jobs/spark_smoke.py",   # this path matches your compose mounts
-    conn_id="spark_default",                          # optional; keep if you want (binary is in PATH)
-    driver_memory="1g", executor_memory="2g", executor_cores=2,
-    conf={
-      "spark.pyspark.python": "python3",
-      "spark.executorEnv.PYSPARK_PYTHON": "python3",
-      "spark.pyspark.driver.python": "python3",
-      "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
-      "spark.executorEnv.MONGO_URI": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_URI'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.MONGO_DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_COLL_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.DB_HOST": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_HOST'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.DB_PORT": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_PORT'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.DB_USERNAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_USERNAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-      "spark.executorEnv.DB_PASSWORD": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_PASSWORD'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-    },
-  )
+        task_id="spark_smoke",
+        application="/opt/airflow/jobs/spark_smoke.py",
+        conn_id="spark_default",
+        driver_memory="1g",
+        executor_memory="2g",
+        executor_cores=2,
+        conf={
+          # base python stuff
+          "spark.pyspark.python": "python3",
+          "spark.executorEnv.PYSPARK_PYTHON": "python3",
+          "spark.pyspark.driver.python": "python3",
+          "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
+
+          # --- Mongo from spark_conf ---
+          "spark.executorEnv.MONGO_URI": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_URI'] }}",
+          "spark.executorEnv.MONGO_DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_DB_NAME'] }}",
+          "spark.executorEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_COLL_NAME'] }}",
+
+          # --- Postgres from spark_conf ---
+          "spark.executorEnv.DB_HOST": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_HOST'] }}",
+          "spark.executorEnv.DB_PORT": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_PORT'] }}",
+          "spark.executorEnv.DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_NAME'] }}",
+          "spark.executorEnv.DB_USERNAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.DB_USERNAME','') }}",
+          "spark.executorEnv.DB_PASSWORD": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.DB_PASSWORD','') }}",
+
+          # --- S3 path only ---
+          "spark.executorEnv.S3_SMOKE_PATH": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.S3_SMOKE_PATH'] }}",
+          "spark.driverEnv.S3_SMOKE_PATH": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.S3_SMOKE_PATH'] }}",
+
+          # --- MINIMAL AWS (no Jinja) ---
+          # read from Airflow container env at DAG-parse/runtime
+          "spark.executorEnv.AWS_REGION": os.environ.get("AWS_REGION", "us-west-2"),
+          "spark.executorEnv.AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", ""),
+          "spark.executorEnv.AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+        },
+        # no need to push xcom from spark job
+        do_xcom_push=False,
+    )
     
   #2. mongo updates (can be done concurrently)
   #3. bronze to silver
@@ -755,6 +810,22 @@ with DAG(
       "spark.pyspark.python": "python3",
       "spark.executorEnv.PYSPARK_PYTHON": "python3",
       "spark.pyspark.driver.python": "python3",
+      # AWS credentials propagated from spark_conf xcom (aws_default connection or Variables)
+      "spark.hadoop.fs.s3a.access.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.access.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.hadoop.fs.s3a.secret.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.secret.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.executorEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.executorEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.driverEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.driverEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      # --- S3 path only ---
+      "spark.executorEnv.S3_SMOKE_PATH": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.S3_SMOKE_PATH'] }}",
+      "spark.driverEnv.S3_SMOKE_PATH": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.S3_SMOKE_PATH'] }}",
+
+      # --- MINIMAL AWS (no Jinja) ---
+      # read from Airflow container env at DAG-parse/runtime
+      "spark.executorEnv.AWS_REGION": os.environ.get("AWS_REGION", "us-west-2"),
+      "spark.executorEnv.AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", ""),
+      "spark.executorEnv.AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
     },
     application_args=[
       "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
@@ -776,6 +847,13 @@ with DAG(
       "spark.pyspark.python": "python3",
       "spark.executorEnv.PYSPARK_PYTHON": "python3",
       "spark.pyspark.driver.python": "python3",
+      # AWS credentials from spark_conf xcom
+      "spark.hadoop.fs.s3a.access.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.access.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.hadoop.fs.s3a.secret.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.secret.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.executorEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.executorEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.driverEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.driverEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
     },
     application_args=[
       "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
@@ -798,6 +876,13 @@ with DAG(
       "spark.pyspark.python": "python3",
       "spark.executorEnv.PYSPARK_PYTHON": "python3",
       "spark.pyspark.driver.python": "python3",
+      # AWS credentials from spark_conf xcom
+      "spark.hadoop.fs.s3a.access.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.access.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.hadoop.fs.s3a.secret.key": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.hadoop.fs.s3a.secret.key','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.executorEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.executorEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.driverEnv.AWS_ACCESS_KEY_ID": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_ACCESS_KEY_ID','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+      "spark.driverEnv.AWS_SECRET_ACCESS_KEY": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.driverEnv.AWS_SECRET_ACCESS_KEY','') if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
     },
     application_args=[
       "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",

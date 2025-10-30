@@ -43,6 +43,7 @@ def _executor_check_status(rows):
                         pass
             except Exception as e:
                 status["mongo_msg"] = f"Mongo operation failed: {e}"
+                raise
 
     # Postgres check
     try:
@@ -82,6 +83,68 @@ def _executor_check_status(rows):
                         pass
             except Exception as e:
                 status["pg_msg"] = f"Postgres check failed: {e}"
+                raise
+
+    # --- S3 check (executor-side) ---
+    # NOTE: Creating SparkSession or referencing SparkContext on workers can raise
+    # CONTEXT_ONLY_VALID_ON_DRIVER errors. Use boto3 in the executor to validate
+    # S3 connectivity and credentials from the executor environment instead.
+        # --- S3 check (simplified) ---
+    try:
+        import uuid
+        import boto3
+        from botocore.exceptions import NoCredentialsError, ClientError
+
+        s3_path = os.environ.get("S3_SMOKE_PATH")
+        if not s3_path:
+            status["s3_ok"] = False
+            status["s3_msg"] = "S3_SMOKE_PATH not set on executor"
+        else:
+            # normalize s3a:// -> s3://
+            if s3_path.startswith("s3a://"):
+                s3_path = "s3://" + s3_path[len("s3a://"):]
+            if not s3_path.startswith("s3://"):
+                status["s3_ok"] = False
+                status["s3_msg"] = f"Invalid S3 path: {s3_path}"
+            else:
+                without_scheme = s3_path[len("s3://"):].lstrip("/")
+                parts = without_scheme.split("/", 1)
+                bucket = parts[0]
+                prefix = parts[1] if len(parts) > 1 else ""
+                key = (prefix.rstrip("/") + f"/executors/{uuid.uuid4()}/smoke.txt").lstrip("/")
+
+                region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+
+                # record basic env presence (no secrets)
+                status["s3_env"] = {
+                    "s3_path_used": s3_path,
+                    "region_env": bool(region),
+                    "aws_key_present": bool(os.environ.get("AWS_ACCESS_KEY_ID")),
+                    "aws_secret_present": bool(os.environ.get("AWS_SECRET_ACCESS_KEY")),
+                }
+
+                # build client – rely on container creds
+                if region:
+                    s3 = boto3.client("s3", region_name=region)
+                else:
+                    s3 = boto3.client("s3")
+
+                try:
+                    s3.put_object(Bucket=bucket, Key=key, Body=b"ok")
+                    s3.head_object(Bucket=bucket, Key=key)
+                    status["s3_ok"] = True
+                    status["s3_msg"] = f"Put/head succeeded at s3://{bucket}/{key}"
+                except NoCredentialsError:
+                    status["s3_ok"] = False
+                    status["s3_msg"] = "No AWS credentials found in executor environment"
+                except ClientError as ce:
+                    # just surface it; no multi-region retry here
+                    status["s3_ok"] = False
+                    status["s3_msg"] = f"S3 client error: {ce}"
+    except Exception as e:
+        status["s3_ok"] = False
+        status["s3_msg"] = f"S3 check failed to run: {e}"
+
 
     return iter([status])
 
