@@ -27,6 +27,9 @@ RUN set -eux; \
             "python-dotenv>=0.21.0" \
             "psycopg2-binary>=2.9" \
             "boto3>=1.26,<2" \
+            "pandas>=1.5.0" \
+            "pyarrow>=11.0.0,<15.0.0" \
+            "numpy>=1.24" \
             "xgboost>=2.0.0" \
             "scikit-learn>=1.2.2" ; \
     fi; \

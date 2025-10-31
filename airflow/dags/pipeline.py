@@ -251,8 +251,8 @@ with DAG(
         application="/opt/airflow/jobs/spark_smoke.py",
         conn_id="spark_default",
         driver_memory="1g",
-        executor_memory="2g",
-        executor_cores=2,
+        executor_memory="1g",
+        executor_cores=1,
         conf={
           # base python stuff
           "spark.pyspark.python": "python3",
@@ -436,9 +436,9 @@ with DAG(
     application="/opt/airflow/jobs/spark_homepage.py",
     conn_id="spark_default",
     packages="org.postgresql:postgresql:42.6.0",
-    driver_memory="4g",
-    executor_memory="4g",
-    executor_cores=2,
+    driver_memory="1g",
+    executor_memory="1g",
+    executor_cores=1,
     name="spark_homepage_job",
     conf={
         "spark.pyspark.python": "python3",
@@ -461,7 +461,8 @@ with DAG(
         "spark.executorEnv.DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
         "spark.executorEnv.DB_USERNAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_USERNAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
         "spark.executorEnv.DB_PASSWORD": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_PASSWORD'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
-    },
+        "spark.executor.instances": "1",
+  },
       application_args=[
     "--jdbc-url", "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['jdbc_url'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
       ],
@@ -474,8 +475,9 @@ with DAG(
     conn_id="spark_default",
     packages="org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
     application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') }}"],
-    driver_memory="2g",
-    executor_memory="2g",
+    driver_memory="1g",
+    executor_memory="1g",
+    executor_cores=1,
     conf={
         "spark.pyspark.python": "python3",
         "spark.executorEnv.PYSPARK_PYTHON": "python3",
@@ -486,6 +488,7 @@ with DAG(
         "spark.driverEnv.MONGO_URI": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.MONGO_URI'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
         "spark.driverEnv.MONGO_DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.MONGO_DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
         "spark.driverEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.MONGO_COLL_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+        "spark.executor.instances": "1",
     },
   )
   
@@ -507,9 +510,9 @@ with DAG(
     conn_id="spark_default",
     packages="org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
     application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') }}"],
-    driver_memory="2g",
-    executor_memory="2g",
-    executor_cores=2,
+    driver_memory="1g",
+    executor_memory="1g",
+    executor_cores=1,
     name="spark_mongo_new_matches_job",
     conf={
         "spark.pyspark.python": "python3",
@@ -521,6 +524,7 @@ with DAG(
         "spark.driverEnv.MONGO_URI": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.MONGO_URI'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
         "spark.driverEnv.MONGO_DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.MONGO_DB_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
         "spark.driverEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.MONGO_COLL_NAME'] if ti.xcom_pull(task_ids='spark_conf', key='return_value') else '' }}",
+        "spark.executor.instances": "1",
     },
   )
 
@@ -532,9 +536,9 @@ with DAG(
     task_id="run_data_cleaning",
     application="/opt/airflow/jobs/spark_data_cleaning.py",
     conn_id="spark_default",
-    driver_memory="4g",
-    executor_memory="4g",
-    executor_cores=3,
+    driver_memory="1g",
+    executor_memory="1g",
+    executor_cores=1,
     jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar",
     name="spark_data_cleaning_job",
     conf={
@@ -556,6 +560,7 @@ with DAG(
         "spark.hadoop.fs.s3a.threads.max": "200",
         "spark.hadoop.fs.s3a.connection.establish.timeout": "5000",
         "spark.hadoop.fs.s3a.connection.timeout": "10000",
+        "spark.executor.instances": os.environ.get("SPARK_WORKER_CORES", "2"),
         
     },
     application_args=[
@@ -569,9 +574,9 @@ with DAG(
     task_id="run_ml_dataset",
     application="/opt/airflow/jobs/spark_ml_dataset.py",
     conn_id="spark_default",
-    driver_memory="4g",
-    executor_memory="4g",
-    executor_cores=3,
+    driver_memory="1g",
+    executor_memory="1g",
+    executor_cores=1,
     jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar",
     name="spark_ml_dataset_job",
     conf={
@@ -593,6 +598,7 @@ with DAG(
         "spark.hadoop.fs.s3a.threads.max": "200",
         "spark.hadoop.fs.s3a.connection.establish.timeout": "5000",
         "spark.hadoop.fs.s3a.connection.timeout": "10000",
+        "spark.executor.instances": os.environ.get("SPARK_WORKER_CORES", "2"),
     },
     application_args=[
       "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
@@ -606,9 +612,9 @@ with DAG(
     task_id="run_ml_training",
     application="/opt/airflow/jobs/spark_ml_training.py",
     conn_id="spark_default",
-    driver_memory="4g",
-    executor_memory="4g",
-    executor_cores=3,
+    driver_memory="1g",
+    executor_memory="2g",
+    executor_cores=1,
     jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar",
     name="spark_ml_training_job",
     conf={
@@ -630,7 +636,18 @@ with DAG(
         "spark.hadoop.fs.s3a.threads.max": "200",
         "spark.hadoop.fs.s3a.connection.establish.timeout": "5000",
         "spark.hadoop.fs.s3a.connection.timeout": "10000",
+        "spark.executor.instances": "1",
+        # expose the cluster slot hint into the Spark driver so the job can
+        # observe the intended worker capacity (TOTAL_SLOTS). In docker-compose
+        # SPARK_WORKER_CORES is set on the worker containers but not on the
+        # spark driver; pass it explicitly here so the driver-side script can
+        # read it via os.environ.get("TOTAL_SLOTS") or TOTAL_SLOTS.
+        "spark.driverEnv.TOTAL_SLOTS": os.environ.get("SPARK_WORKER_CORES", "2"),
+        
+        "spark.network.timeout": "600s",
+        "spark.executor.heartbeatInterval": "60s",
     },
+    execution_timeout=timedelta(minutes=90),
     application_args=[
       "--input", "{{ dag_run.conf.get('input','s3a://ryans-sumo-bucket/sumo-api-calls/rikishi_matches/') }}",
       "--output", "{{ dag_run.conf.get('output','s3a://ryans-sumo-bucket/silver/rikishi_matches/') }}",
@@ -664,5 +681,7 @@ with DAG(
   # Both homepage and the mongo branch must finish before finishing the DAG
   homepage_task >> join_mongo
   join_mongo >> ml_train_branch_task
+  homepage_task >> ml_train_branch_task
+
   ml_train_branch_task >> run_spark_data_cleaning >> run_spark_ml_dataset >> run_spark_ml_training >> end_task
   ml_train_branch_task  >> skip_train >> end_task

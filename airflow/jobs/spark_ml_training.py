@@ -11,6 +11,8 @@ import pyspark.sql.functions as F
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
 
+import builtins
+
 from pyspark.ml.feature import Imputer
 from pyspark.sql.types import NumericType
 from pyspark.ml.feature import VectorAssembler
@@ -91,6 +93,10 @@ def process_ml_training(
     LOG.info("Starting process_data: %s -> %s", input_path, output_path)
     spark = create_spark_session(app_name=app_name, driver_memory=driver_memory, executor_memory=executor_memory)
 
+    # NOTE: requested_slots will be derived after the SparkContext is available
+    # from Spark config (preferred) or environment fallbacks. Do not assume
+    # driver/container env vars match worker/container envs in docker-compose.
+
     try:
         print("starting process")
         main = (spark.read              # set to "false" if you have JSON Lines
@@ -124,6 +130,15 @@ def process_ml_training(
             )
         )
 
+
+        # For small/local clusters we prefer reliability over speed: allow
+        # forcing single-worker XGBoost to avoid barrier-stage slot starvation.
+        # Set env FORCE_XGB_SINGLE=1 to force single-worker mode (default).
+        # We don't know num_workers yet at this point (requested_slots/available
+        # will be computed later), so only record the flag here and perform the
+        # actual override after num_workers is derived to avoid UnboundLocalError.
+        force_single = os.environ.get("FORCE_XGB_SINGLE", "1")
+        force_single_flag = force_single in ("1", "true", "True", "yes", "y")
         #get east_id rows
         east_rows = (
             main
@@ -387,8 +402,70 @@ def process_ml_training(
          .parquet("s3a://ryans-sumo-bucket/gold/ml_training_set/"))
         print("wrote ml training dataset")
         print("prepared main data for ML")
-        #starting ML training
-        
+
+        sc = spark.sparkContext
+
+        # Determine available slots from Spark's defaultParallelism
+        try:
+            available_slots = int(sc.defaultParallelism)
+        except Exception:
+            LOG.warning("Could not read spark.defaultParallelism; defaulting available_slots=1")
+            available_slots = 1
+
+        # Derive requested_slots in preference order:
+        # 1) spark.executor.instances * spark.executor.cores (if set)
+        # 2) TOTAL_SLOTS or SPARK_WORKER_CORES env (some deployments set this)
+        # 3) fallback to available_slots
+        requested_slots = None
+        try:
+            ei = spark.conf.get("spark.executor.instances")
+            ec = spark.conf.get("spark.executor.cores")
+            if ei:
+                instances = int(ei)
+                cores = int(ec) if ec else 1
+                requested_slots = instances * cores
+                LOG.info("Computed requested_slots from spark.conf: instances=%s cores=%s -> %s", instances, cores, requested_slots)
+        except Exception:
+            LOG.debug("Unable to compute requested_slots from spark.conf")
+
+        if not requested_slots:
+            try:
+                requested_slots = int(os.environ.get("TOTAL_SLOTS") or os.environ.get("SPARK_WORKER_CORES"))
+                LOG.info("Computed requested_slots from env: %s", requested_slots)
+            except Exception:
+                requested_slots = available_slots
+                LOG.info("Defaulting requested_slots to available_slots=%s", available_slots)
+
+        # Ensure at least 1 worker (use Python builtins to avoid Spark Column shadowing)
+        available_slots = builtins.max(1, available_slots)
+
+        # Final number of XGBoost workers we will use (use Python builtin to avoid Spark function shadowing)
+        try:
+            num_workers = int(builtins.min(requested_slots, available_slots))
+        except Exception:
+            LOG.warning("Failed to compute num_workers from requested_slots=%s available_slots=%s; defaulting to 1", requested_slots, available_slots)
+            num_workers = 1
+        num_workers = builtins.max(1, num_workers)
+
+        # If the force_single flag was set earlier, override the computed value
+        # now (after num_workers is defined) to avoid referencing the variable
+        # before assignment.
+        if force_single_flag:
+            LOG.info("FORCE_XGB_SINGLE is set; overriding num_workers %s -> 1", num_workers)
+            num_workers = 1
+
+        LOG.info(
+            "Cluster slots (defaultParallelism)=%s, requested_slots=%s, using num_workers=%s",
+            available_slots,
+            requested_slots,
+            num_workers,
+        )
+
+        # Repartition to match the number of participating worker partitions
+        # so barrier stages can be satisfied without waiting for more slots.
+        LOG.info("Repartitioning main DF to %s partitions (num_workers)", num_workers)
+        main = main.repartition(num_workers)
+
         main = main.drop('westId', 'eastId')
         
         feature_cols = [
@@ -408,6 +485,8 @@ def process_ml_training(
         assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
 
         # Define XGBoost model
+        # num_workers MUST match the number of participating worker partitions / slots
+        # to avoid barrier-stage slot mismatch errors. Use total_slots derived above.
         xgb = SparkXGBClassifier(
             features_col="features",
             label_col="westWin",
@@ -418,7 +497,7 @@ def process_ml_training(
             eta=0.1,
             subsample=0.8,
             colsample_bytree=0.8,
-            num_workers=8,
+            num_workers=num_workers,
             missing = -999.0
         )
 
@@ -440,12 +519,15 @@ def process_ml_training(
             metricName="areaUnderROC"
         )
 
+
+        cv_parallelism = builtins.max(1, builtins.min(4, num_workers // 2))
+        LOG.info("Setting CrossValidator.parallelism=%s", cv_parallelism)
         cv = CrossValidator(
             estimator=pipeline,
             estimatorParamMaps=paramGrid,
             evaluator=evaluator,
             numFolds=3,      # consider 3 folds locally; XGB can be heavy
-            parallelism=2
+            parallelism=cv_parallelism
         )
         train, test = main.randomSplit([0.8, 0.2], seed=42)
         print("training model...")
@@ -506,9 +588,10 @@ def process_ml_training(
         
         
 
-    except Exception as e:
-        LOG.error("Error during process_data: %s", e)
-        print("error during process_data    %s" % e)
+    except Exception:
+        # Log full traceback so it's available in scheduler/webserver logs
+        LOG.exception("Error during process_data")
+        print("error during process_data; see logs for details")
         raise
 
     finally:

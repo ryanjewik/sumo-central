@@ -58,12 +58,12 @@ x-airflow-common: &airflow-common
     # Executor & concurrency
     AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
     # Global parallelism: total concurrent task instances across the scheduler
-    AIRFLOW__CORE__PARALLELISM: "16"
+    AIRFLOW__CORE__PARALLELISM: "8"
     # Max concurrent running task instances per DAG
-    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "8"
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "4"
     AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR: "True"
     # How many DAG runs may be active for a single DAG at once
-    AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: "4"
+    AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: "2"
     AIRFLOW__CORE__TASK_RUNNER: "StandardTaskRunner"
     AIRFLOW__CORE__STORE_SERIALIZED_DAGS: "True"
     AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
@@ -101,8 +101,8 @@ services:
       - SPARK_MODE=worker
       # Increase defaults so a few concurrent Spark executors can be scheduled locally.
       # These are still overrideable via .env or environment variables.
-      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-6}
-      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-12g}
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-2}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-2g}
       - SPARK_MASTER_URL=spark://spark-master:7077
       - JAVA_HOME=/opt/java/openjdk
 
