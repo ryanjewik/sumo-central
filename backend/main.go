@@ -49,8 +49,10 @@ func main() {
 		Destination: cfg.WebhookDest,
 		Secret:      cfg.WebhookSecret,
 		Subscriptions: map[string]bool{
-			"basho.created":   true,
-			"match.completed": true,
+			"newBasho":     true,
+			"matchResults": true,
+			"endBasho":     true,
+			"newMatches":   true,
 		},
 	}); err != nil {
 		log.Println("⚠️ could not subscribe to sumo webhook:", err)

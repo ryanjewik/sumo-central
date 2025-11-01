@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
+	"time"
 )
 
 type SumoService struct {
@@ -18,7 +21,7 @@ func NewSumoService(baseURL, secret string) SumoService {
 	return SumoService{
 		baseURL: baseURL,
 		secret:  secret,
-		client:  &http.Client{},
+		client:  &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
@@ -36,6 +39,9 @@ func (s SumoService) SubscribeWebhook(ctx context.Context, reqBody SubscribeRequ
 		return err
 	}
 
+	// helpful debug: log the outgoing subscribe payload
+	log.Printf("attempting subscribe payload: %s\n", string(b))
+
 	url := fmt.Sprintf("%s/api/webhook/subscribe", s.baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
@@ -49,8 +55,12 @@ func (s SumoService) SubscribeWebhook(ctx context.Context, reqBody SubscribeRequ
 	}
 	defer resp.Body.Close()
 
+	// read response body for better error messages
+	respBody, _ := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("subscribe failed: %s", resp.Status)
+		return fmt.Errorf("subscribe failed: %s - %s", resp.Status, string(respBody))
 	}
+	// optional: log success response body
+	log.Printf("subscribe success: %s", string(respBody))
 	return nil
 }

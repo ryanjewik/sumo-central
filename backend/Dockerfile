@@ -32,7 +32,14 @@ WORKDIR /app
 COPY --from=builder /app/sumo-backend /app/sumo-backend
 
 # Create non-root user and set ownership
-RUN addgroup -S app && adduser -S -G app app && chown app:app /app/sumo-backend
+RUN addgroup -S app && adduser -S -G app app
+
+# Create runtime directories and make sure the non-root user owns them so
+# the app can write decoded webhook payloads into /app/tmp/webhooks.
+RUN mkdir -p /app/tmp/webhooks \
+	&& chown -R app:app /app /app/tmp
+
+# Switch to non-root user
 USER app
 
 # Default port - update if your app uses another

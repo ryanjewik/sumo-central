@@ -1,0 +1,11 @@
+docker compose -f docker-compose.full.yml up -d --build
+
+
+curl -v -X POST "https://www.sumo-api.com/api/webhook/test?type=endBasho"   -H "Content-Type: application/json"   -d '{
+    "name": "sumopedia-dev",
+    "destination": "https://927b184fcde3.ngrok-free.app/webhook",
+    "secret": "ryanhideo",
+    "subscriptions": {
+      "endBasho": true
+    }
+  }'
