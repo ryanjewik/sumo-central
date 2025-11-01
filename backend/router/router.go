@@ -1,31 +1,19 @@
+// backend/router/router.go
 package router
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/ryanjewik/sumo-central/backend/handlers"
+	"github.com/ryanjewik/sumopedia/backend/handlers"
 )
 
-type Deps interface {
-	// minimal interface so we don’t tie router to concrete struct
-}
-
-func Register(r *gin.Engine, deps interface{}) {
-	// cast back to your struct
-	d := deps.(struct {
-		Cfg   interface{}
-		Mongo interface{}
-		Sumo  interface{}
-	})
-	// ^ if that feels too hacky, just pass *AppDeps directly.
-
-	app := deps.(*handlers.App) // better: pass a concrete
-
+func Register(r *gin.Engine, app *handlers.App) {
 	r.GET("/health", app.Health)
+	r.POST("/webhook", app.HandleWebhook)
+
+	r.POST("/auth/register", app.Register)
 
 	api := r.Group("/api")
 	{
-		api.GET("/matches", app.GetMatches) // read from Mongo
+		api.GET("/matches", app.GetMatches) // reads from Mongo
 	}
-
-	r.POST("/webhook", app.HandleWebhook)
 }

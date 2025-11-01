@@ -1,12 +1,21 @@
 package config
 
-import "os"
+import (
+	"fmt"
+	"net/url"
+	"os"
+)
 
 type Config struct {
-	Port          string
+	GinPort       string
 	MongoURI      string
-	MongoDB       string
-	SumoBaseURL   string
+	MongoDBName   string
+	DBUser        string
+	DBPass        string
+	DBName        string
+	DBHost        string
+	DBPort        string
+	SumoBase      string
 	WebhookName   string
 	WebhookSecret string
 	WebhookDest   string
@@ -14,12 +23,40 @@ type Config struct {
 
 func Load() Config {
 	return Config{
-		Port:          os.Getenv("PORT"),
-		MongoURI:      os.Getenv("MONGO_URI"),           // e.g. mongodb://localhost:27017
-		MongoDB:       os.Getenv("MONGO_DB"),            // e.g. sumo
-		SumoBaseURL:   os.Getenv("SUMO_BASE_URL"),       // e.g. https://sumo-api.com
-		WebhookName:   os.Getenv("SUMO_WEBHOOK_NAME"),   // e.g. "sumo-central-dev"
-		WebhookSecret: os.Getenv("SUMO_WEBHOOK_SECRET"), // used to verify signatures
-		WebhookDest:   os.Getenv("SUMO_WEBHOOK_DEST"),   // e.g. https://your-backend.com/webhook
+		GinPort:       os.Getenv("GIN_PORT"),
+		MongoURI:      os.Getenv("MONGO_URI"),
+		MongoDBName:   os.Getenv("MONGO_DB_NAME"),
+		DBUser:        os.Getenv("DB_USERNAME"),
+		DBPass:        os.Getenv("DB_PASSWORD"),
+		DBName:        os.Getenv("DB_NAME"),
+		DBHost:        os.Getenv("DB_HOST"),
+		DBPort:        os.Getenv("DB_PORT"),
+		SumoBase:      os.Getenv("SUMO_BASE"),
+		WebhookName:   os.Getenv("SUMO_WEBHOOK_NAME"),
+		WebhookSecret: os.Getenv("SUMO_WEBHOOK_SECRET"),
+		WebhookDest:   os.Getenv("SUMO_WEBHOOK_DEST"),
 	}
+}
+
+// Build DSN for pgx
+func (c Config) PostgresDSN() string {
+	host := c.DBHost
+	if host == "" {
+		host = "localhost"
+	}
+	port := c.DBPort
+	if port == "" {
+		port = "5432"
+	}
+	// escape password in case it has special chars
+	pwd := url.QueryEscape(c.DBPass)
+
+	return fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		c.DBUser,
+		pwd,
+		host,
+		port,
+		c.DBName,
+	)
 }
