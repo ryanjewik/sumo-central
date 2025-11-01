@@ -96,7 +96,7 @@ export default function DividedList() {
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: 9,
-                        <Typography className="app-text" level="title-lg" sx={{ mb: 2, fontWeight: 1000, fontSize: '1.5rem' }}>
+                        fontWeight: 700,
                         boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
                       }}
                     >

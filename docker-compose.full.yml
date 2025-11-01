@@ -1,0 +1,243 @@
+# Combined docker-compose that inlines frontend/backend and the Airflow stack.
+# This single file avoids relying on shell variables and makes paths self-contained
+# (relative to the repository root). Use this on EC2: `docker compose -f docker-compose.full.yml up -d --build`.
+
+services:
+  # -------------------- Backend (Gin) --------------------
+  gin-backend:
+    build:
+      context: ./backend
+    image: sumo-backend:local
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+    networks:
+      - sumo_net
+      - airflow
+
+  # -------------------- Frontend (React, served by nginx) --------------------
+  react-frontend:
+    build:
+      context: ./frontend
+    image: sumo-frontend:local
+    ports:
+      # map host 3000 to nginx:80 to avoid collision with Airflow (which uses 8081)
+      - "3000:80"
+    restart: unless-stopped
+    depends_on:
+      - gin-backend
+    networks:
+      - sumo_net
+      - airflow
+
+  # -------------------- Spark (shared x-spark-common) --------------------
+  spark-master:
+    build:
+      context: ./airflow
+      dockerfile: spark.Dockerfile
+    volumes:
+      - ./airflow/jobs:/opt/spark/work-dir/jobs
+      - spark-jars:/opt/spark/jars
+    image: spark-s3:3.5.2
+    networks:
+      - airflow
+    environment:
+      - SPARK_HOME=/opt/spark
+      - JAVA_HOME=/opt/java/openjdk
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB_NAME=${MONGO_DB_NAME}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JDBC_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+      - AWS_DEFAULT_REGION=${AWS_REGION}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "9090:8080"
+      - "7077:7077"
+
+  spark-worker:
+    build:
+      context: ./airflow
+      dockerfile: spark.Dockerfile
+    volumes:
+      - ./airflow/jobs:/opt/spark/work-dir/jobs
+      - spark-jars:/opt/spark/jars
+    networks:
+      - airflow
+    depends_on:
+      - spark-master
+      - spark-jars-init
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-2}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-2g}
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - JAVA_HOME=/opt/java/openjdk
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+
+  # -------------------- Postgres for Airflow --------------------
+  airflow-postgres:
+    image: postgres:14.0
+    environment:
+      - POSTGRES_USER=${AIRFLOW_PG_USER}
+      - POSTGRES_PASSWORD=${AIRFLOW_PG_PASSWORD}
+      - POSTGRES_DB=${AIRFLOW_PG_DB}
+    networks:
+      - airflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # -------------------- Sumo Postgres (dev) --------------------
+  sumo-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    volumes:
+      - sumo-db-data:/var/lib/postgresql/data
+    networks:
+      - airflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME} -h localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  sumo-db-restore:
+    image: ${SUMO_RESTORE_IMAGE:-postgres:18}
+    restart: "no"
+    env_file:
+      - ./airflow/.env
+    environment:
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=sumo-db
+      - DB_PORT=5432
+      - FORCE_RESTORE=1
+    depends_on:
+      sumo-db:
+        condition: service_healthy
+    volumes:
+      - ./airflow/db_init:/db_init:ro
+    entrypoint: ["/bin/bash", "/db_init/restore_sumo_db.sh"]
+    networks:
+      - airflow
+
+  # -------------------- One-shot DB init (Airflow init) --------------------
+  airflow-init:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    env_file:
+      - ./airflow/.env
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      spark-jars-init:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - airflow
+    command: ["bash", "-lc", "set -euo pipefail; airflow db init; airflow users create --username \"$AIRFLOW_USERNAME\" --firstname \"$AIRFLOW_FIRSTNAME\" --lastname \"$AIRFLOW_LASTNAME\" --role Admin --email \"$AIRFLOW_EMAIL\" --password \"$AIRFLOW_PASSWORD\" || true"]
+
+  spark-jars-init:
+    image: spark-s3:3.5.2
+    command: >
+      bash -lc "
+        set -e;
+        mkdir -p /opt/spark/jars;
+        cp -u /opt/spark/jars-baked/* /opt/spark/jars/ 2>/dev/null || true;
+        ls -l /opt/spark/jars;
+      "
+    volumes:
+      - spark-jars:/opt/spark/jars
+    networks:
+      - airflow
+    restart: "no"
+
+  # -------------------- Airflow services --------------------
+  airflow-webserver:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    env_file:
+      - ./airflow/.env
+    depends_on:
+      - airflow-init
+      - spark-jars-init
+    ports:
+      - "8081:8080"
+    networks:
+      - airflow
+    volumes:
+      - ./airflow/jobs:/opt/airflow/jobs
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - spark-jars:/opt/spark/jars-out
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      bash -lc 'until airflow db check-migrations; do echo "Waiting for DB migrations..."; sleep 3; done; exec airflow webserver'
+
+  airflow-scheduler:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    env_file:
+      - ./airflow/.env
+    depends_on:
+      - airflow-init
+      - spark-jars-init
+    networks:
+      - airflow
+    volumes:
+      - ./airflow/jobs:/opt/airflow/jobs
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - spark-jars:/opt/spark/jars-out
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      bash -lc 'set -euo pipefail; until airflow db check-migrations; do echo "Waiting for DB migrations..."; sleep 2; done; exec airflow scheduler'
+
+  airflow-dag-processor:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    env_file:
+      - ./airflow/.env
+    depends_on:
+      - airflow-init
+      - spark-jars-init
+    networks:
+      - airflow
+    volumes:
+      - ./airflow/jobs:/opt/airflow/jobs
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - spark-jars:/opt/spark/jars-out
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      bash -lc 'until airflow db check-migrations; do echo "Waiting for DB migrations..."; sleep 3; done; exec airflow dag-processor'
+
+volumes:
+  sumo-db-data: {}
+  spark-jars: {}
+
+networks:
+  sumo_net:
+    driver: bridge
+  airflow:
+    driver: bridge

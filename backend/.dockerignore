@@ -1,0 +1,33 @@
+# Ignore git metadata
+.git
+
+# Local env and secrets
+.env.*
+
+# Build outputs
+bin/
+_build
+*.exe
+*.dll
+*.so
+*.dylib
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Go cache and vendor
+vendor/
+**/vendor/
+
+# Logs, tmp
+log/
+logs/
+tmp/
+
+# Node stuff (if present in repo root)
+node_modules/

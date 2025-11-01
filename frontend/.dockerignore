@@ -1,0 +1,24 @@
+# Node and build outputs
+node_modules
+dist
+
+# Git
+.git
+
+# Logs
+npm-debug.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode
+.idea
+
+# Local env variants but keep main .env in context (Vite may need it at build time)
+.env.*
+
+# Misc
+coverage
