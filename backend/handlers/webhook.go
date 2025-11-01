@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -140,6 +141,73 @@ func (a *App) HandleWebhook(c *gin.Context) {
 			return
 		}
 		log.Printf("webhook: saved decoded payload -> %s", outPath)
+
+		// Trigger Airflow DAG run by POSTing to the Airflow REST API.
+		go func(envType string, decoded interface{}) {
+			// Build the webhook object we want available inside the DAG as dag_run.conf
+			webhookObj := map[string]interface{}{
+				"type":    envType,
+				"payload": decoded,
+			}
+
+			bodyObj := map[string]interface{}{"conf": webhookObj}
+			b, _ := json.Marshal(bodyObj)
+
+			// Resolve Airflow API URL and credentials (fall back to service name used in docker-compose)
+			airflowHost := os.Getenv("AIRFLOW_API_HOST")
+			if airflowHost == "" {
+				airflowHost = "http://airflow-webserver:8080"
+			} else if !strings.HasPrefix(airflowHost, "http://") && !strings.HasPrefix(airflowHost, "https://") {
+				// allow users to set host like "airflow-webserver:8080" -- normalize to include scheme
+				airflowHost = "http://" + airflowHost
+			}
+			dagID := os.Getenv("AIRFLOW_DAG_ID")
+			if dagID == "" {
+				dagID = "sumo_data_pipeline"
+			}
+			apiURL := fmt.Sprintf("%s/api/v1/dags/%s/dagRuns", strings.TrimRight(airflowHost, "/"), dagID)
+
+			req, err := http.NewRequest("POST", apiURL, bytes.NewReader(b))
+			if err != nil {
+				log.Printf("webhook: failed to build airflow request: %v", err)
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			// Prefer token auth if provided, otherwise fall back to basic auth
+			afUser := os.Getenv("AIRFLOW_USERNAME")
+			afPass := os.Getenv("AIRFLOW_PASSWORD")
+			afToken := os.Getenv("AIRFLOW_API_TOKEN")
+			if afToken != "" {
+				req.Header.Set("Authorization", "Bearer "+afToken)
+			} else if afUser != "" {
+				req.SetBasicAuth(afUser, afPass)
+			}
+
+			// Masked auth debug: don't print secrets, but show that an auth header is present
+			authHdr := req.Header.Get("Authorization")
+			masked := "<none>"
+			if authHdr != "" {
+				if strings.HasPrefix(authHdr, "Basic ") && len(authHdr) > 12 {
+					masked = "Basic " + authHdr[6:12] + "..."
+				} else if strings.HasPrefix(authHdr, "Bearer ") {
+					masked = "Bearer <set>"
+				} else {
+					masked = authHdr
+				}
+			}
+			log.Printf("webhook: triggering airflow apiURL=%s auth=%s", apiURL, masked)
+
+			client := &http.Client{Timeout: 10 * time.Second}
+			resp, err := client.Do(req)
+			if err != nil {
+				log.Printf("webhook: airflow trigger failed: %v", err)
+				return
+			}
+			defer resp.Body.Close()
+			respBody, _ := io.ReadAll(resp.Body)
+			log.Printf("webhook: airflow trigger response: status=%d body=%s", resp.StatusCode, string(respBody))
+		}(env.Type, decoded)
 
 		// Optionally: call other services (a.Sumo, push to Kafka, etc). Keep minimal here.
 	}(body, c.Request.Header)
