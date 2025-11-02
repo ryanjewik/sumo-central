@@ -14,7 +14,20 @@ def process_match_results(webhook_payload):
     else:
         webhook = webhook_payload or {}
 
-    matches = webhook.get("payload_decoded") or []
+    # 2. accept multiple shapes:
+    #    - {"payload_decoded": [...]}
+    #    - {"payload": [...]}
+    #    - [...]
+    if isinstance(webhook, dict):
+        matches = (
+            webhook.get("payload_decoded")
+            or webhook.get("payload")
+            or []
+        )
+    elif isinstance(webhook, list):
+        matches = webhook
+    else:
+        matches = []
 
     # Try Spark path
     try:
@@ -290,16 +303,19 @@ def process_match_results(webhook_payload):
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Provide webhook JSON as first arg")
-        sys.exit(2)
-    arg = sys.argv[1]
-    # If the arg is a path to a file, load the file contents (convenience for testing)
-    if os.path.exists(arg):
-        with open(arg, 'r', encoding='utf-8') as f:
-            payload = json.load(f)
-    else:
-        payload = json.loads(arg)
+    if len(sys.argv) <= 1:
+        print("[spark_mongoNewMatches] no args passed from Airflow")
+        return {}
+
+    # 👇 Airflow / shell may have split the JSON into many parts.
+    raw = " ".join(sys.argv[1:]).strip()
+    print("[spark_mongoNewMatches] raw arg:", raw[:300], "...")
+    try:
+        payload = json.loads(raw)
+    except Exception as e:
+        print("[spark_mongoNewMatches] failed to parse JSON:", e)
+        payload = {}
+        raise
     res = process_match_results(payload)
     print("Processed result type:", type(res))
 

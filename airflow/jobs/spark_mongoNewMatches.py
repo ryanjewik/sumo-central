@@ -35,13 +35,22 @@ def compute_match_date(basho_id: str, day: int, start_date: str = None) -> str:
 
 
 def main():
+    import json as _json
     app_name = "spark_mongoNewMatches"
-    if len(sys.argv) > 1:
-        webhook_json_arg = sys.argv[1]
-    else:
-        print("Expected webhook JSON as first argument (from XCom).")
-        # We haven't created a SparkSession yet, so just exit.
+    if len(sys.argv) <= 1:
+        print("[spark_mongoNewMatches] no args passed from Airflow")
+        return {}
+
+    # 👇 Airflow / shell may have split the JSON into many parts.
+    raw = " ".join(sys.argv[1:]).strip()
+    print("[spark_mongoNewMatches] raw arg:", raw[:300], "...")
+    try:
+        webhook_payload = _json.loads(raw)
+    except Exception as e:
+        print("[spark_mongoNewMatches] failed to parse JSON:", e)
+        webhook_payload = {}
         sys.exit(2)
+        raise
 
     mongo_uri = os.environ.get("MONGO_URI")
     mongo_db = os.environ.get("MONGO_DB_NAME")
@@ -61,19 +70,24 @@ def main():
 
     spark = builder.getOrCreate()
 
-    # webhook_json_arg is expected to be a JSON string passed via XCom/application_args.
-    import json as _json
-    try:
-        payload_obj = _json.loads(webhook_json_arg)
-    except Exception as e:
-        print(f"Failed to parse webhook JSON from argument: {e}")
-        spark.stop()
-        sys.exit(2)
 
-    if isinstance(payload_obj, dict) and "payload_decoded" in payload_obj:
-        matches = payload_obj["payload_decoded"]
-    elif isinstance(payload_obj, list):
-        matches = payload_obj
+    if isinstance(webhook_payload, str):
+        webhook = _json.loads(webhook_payload)
+    else:
+        webhook = webhook_payload or {}
+
+    # 2. accept multiple shapes:
+    #    - {"payload_decoded": [...]}
+    #    - {"payload": [...]}
+    #    - [...]
+    if isinstance(webhook, dict):
+        matches = (
+            webhook.get("payload_decoded")
+            or webhook.get("payload")
+            or []
+        )
+    elif isinstance(webhook, list):
+        matches = webhook
     else:
         matches = []
 

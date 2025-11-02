@@ -1,4 +1,17 @@
-docker compose -f docker-compose.full.yml up -d --build
+docker compose -f docker-compose.full.yml down --remove-orphans
+docker builder prune -f
+docker compose -f docker-compose.full.yml build --no-cache
+docker compose -f docker-compose.full.yml up -d --force-recreate
+
+
+curl -v -X POST "https://www.sumo-api.com/api/webhook/test?type=newBasho"   -H "Content-Type: application/json"   -d '{
+    "name": "sumopedia-dev",
+    "destination": "https://927b184fcde3.ngrok-free.app/webhook",
+    "secret": "ryanhideo",
+    "subscriptions": {
+      "newBasho": true
+    }
+  }'
 
 
 curl -v -X POST "https://www.sumo-api.com/api/webhook/test?type=endBasho"   -H "Content-Type: application/json"   -d '{
@@ -9,3 +22,23 @@ curl -v -X POST "https://www.sumo-api.com/api/webhook/test?type=endBasho"   -H "
       "endBasho": true
     }
   }'
+
+
+curl -v -X POST "https://www.sumo-api.com/api/webhook/test?type=newMatches"   -H "Content-Type: application/json"   -d '{
+"name": "sumopedia-dev",
+"destination": "https://927b184fcde3.ngrok-free.app/webhook",
+"secret": "ryanhideo",
+"subscriptions": {
+    "newMatches": true
+}
+}'
+
+
+curl -v -X POST "https://www.sumo-api.com/api/webhook/test?type=matchResults"   -H "Content-Type: application/json"   -d '{
+"name": "sumopedia-dev",
+"destination": "https://927b184fcde3.ngrok-free.app/webhook",
+"secret": "ryanhideo",
+"subscriptions": {
+    "matchResults": true
+}
+}'

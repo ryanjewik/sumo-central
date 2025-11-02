@@ -2,6 +2,65 @@
 # This single file avoids relying on shell variables and makes paths self-contained
 # (relative to the repository root). Use this on EC2: `docker compose -f docker-compose.full.yml up -d --build`.
 
+## Shared anchors copied from airflow/docker-compose.yml for consistent env/volumes
+x-spark-common: &spark-common
+  build:
+    context: ./airflow
+    dockerfile: spark.Dockerfile
+  volumes:
+    - ./airflow/jobs:/opt/spark/work-dir/jobs
+    - spark-jars:/opt/spark/jars
+  image: spark-s3:3.5.2
+  networks: [airflow]
+  environment:
+    - SPARK_HOME=/opt/spark
+    - JAVA_HOME=/opt/java/openjdk
+    - MONGO_URI=${MONGO_URI}
+    - MONGO_DB_NAME=${MONGO_DB_NAME}
+    - DB_HOST=${DB_HOST}
+    - DB_PORT=${DB_PORT}
+    - DB_NAME=${DB_NAME}
+    - DB_USERNAME=${DB_USERNAME}
+    - DB_PASSWORD=${DB_PASSWORD}
+    - JDBC_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    - AWS_DEFAULT_REGION=${AWS_REGION}
+    - AWS_REGION=${AWS_REGION}
+    - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+    - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+
+x-airflow-common: &airflow-common
+  build:
+    context: ./airflow
+    dockerfile: Dockerfile
+  env_file:
+    - ./airflow/.env
+  environment: &airflow-env
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${AIRFLOW_PG_USER}:${AIRFLOW_PG_PASSWORD}@airflow-postgres:5432/${AIRFLOW_PG_DB}"
+    AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+    MONGO_CONN_ID: "mongo_default"
+    AIRFLOW_CONN_AWS_DEFAULT: "aws://@/?region_name=${AWS_REGION}&aws_access_key_id=${AWS_ACCESS_KEY_ID}&aws_secret_key=${AWS_SECRET_ACCESS_KEY}"
+    AIRFLOW_CONN_SUMO_DB: "postgresql+psycopg2://${DB_USERNAME}:${DB_PASSWORD}@sumo-db:5432/${DB_NAME}"
+    JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+    SPARK_HOME: /opt/spark
+    AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
+    AIRFLOW__CORE__PARALLELISM: "8"
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "4"
+    AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR: "True"
+    AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: "2"
+    AIRFLOW__CORE__TASK_RUNNER: "StandardTaskRunner"
+    AIRFLOW__CORE__STORE_SERIALIZED_DAGS: "True"
+    AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+  volumes:
+    - ./airflow/jobs:/opt/airflow/jobs
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - spark-jars:/opt/spark/jars
+  networks: [airflow]
+  depends_on:
+    airflow-postgres:
+      condition: service_healthy
+
 services:
   # -------------------- Backend (Gin) --------------------
   gin-backend:
@@ -34,54 +93,31 @@ services:
 
   # -------------------- Spark (shared x-spark-common) --------------------
   spark-master:
-    build:
-      context: ./airflow
-      dockerfile: spark.Dockerfile
-    volumes:
-      - ./airflow/jobs:/opt/spark/work-dir/jobs
-      - spark-jars:/opt/spark/jars
-    image: spark-s3:3.5.2
-    networks:
-      - airflow
-    environment:
-      - SPARK_HOME=/opt/spark
-      - JAVA_HOME=/opt/java/openjdk
-      - MONGO_URI=${MONGO_URI}
-      - MONGO_DB_NAME=${MONGO_DB_NAME}
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
-      - DB_NAME=${DB_NAME}
-      - DB_USERNAME=${DB_USERNAME}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - JDBC_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
-      - AWS_DEFAULT_REGION=${AWS_REGION}
-      - AWS_REGION=${AWS_REGION}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    <<: *spark-common
+    depends_on:
+      spark-jars-init:
+        condition: service_completed_successfully
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
     ports:
       - "9090:8080"
       - "7077:7077"
 
   spark-worker:
-    build:
-      context: ./airflow
-      dockerfile: spark.Dockerfile
-    volumes:
-      - ./airflow/jobs:/opt/spark/work-dir/jobs
-      - spark-jars:/opt/spark/jars
-    networks:
-      - airflow
-    depends_on:
-      - spark-master
-      - spark-jars-init
+    <<: *spark-common
+    depends_on: 
+      spark-master:
+        condition: service_started
+      spark-jars-init:
+        condition: service_completed_successfully
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
     environment:
       - SPARK_MODE=worker
+      # Increase defaults so a few concurrent Spark executors can be scheduled locally.
+      # These are still overrideable via .env or environment variables.
       - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-2}
       - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-2g}
       - SPARK_MASTER_URL=spark://spark-master:7077
       - JAVA_HOME=/opt/java/openjdk
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
 
   # -------------------- Postgres for Airflow --------------------
   airflow-postgres:
@@ -139,20 +175,60 @@ services:
 
   # -------------------- One-shot DB init (Airflow init) --------------------
   airflow-init:
-    build:
-      context: ./airflow
-      dockerfile: Dockerfile
-    env_file:
-      - ./airflow/.env
+    <<: *airflow-common
     depends_on:
       airflow-postgres:
         condition: service_healthy
       spark-jars-init:
-        condition: service_completed_successfully
+          condition: service_completed_successfully
     restart: "no"
-    networks:
-      - airflow
-    command: ["bash", "-lc", "set -euo pipefail; airflow db init; airflow users create --username \"$AIRFLOW_USERNAME\" --firstname \"$AIRFLOW_FIRSTNAME\" --lastname \"$AIRFLOW_LASTNAME\" --role Admin --email \"$AIRFLOW_EMAIL\" --password \"$AIRFLOW_PASSWORD\" || true"]
+    command:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+
+        echo 'Running Airflow DB initialization...'
+        airflow db init
+
+        echo 'Creating initial user (idempotent)...'
+        airflow users create \
+          --username "$AIRFLOW_USERNAME" \
+          --firstname "$AIRFLOW_FIRSTNAME" \
+          --lastname "$AIRFLOW_LASTNAME" \
+          --role Admin \
+          --email "$AIRFLOW_EMAIL" \
+          --password "$AIRFLOW_PASSWORD" || true
+
+        echo 'Seeding spark_default connection...'
+        cat > /tmp/spark_conn.json <<'JSON'
+        {
+          "conn_type": "spark",
+          "host": "spark://spark-master:7077",
+          "extra": {
+            "deploy_mode": "cluster",
+            "spark_binary": "spark-submit",
+            "master": "spark://spark-master:7077"
+          }
+        }
+        JSON
+
+        airflow connections delete spark_default || true
+        airflow connections add spark_default --conn-json "$(cat /tmp/spark_conn.json)"
+
+        echo 'Seeding mongo_default connection (conn_type="mongo" + extras.srv to satisfy provider)...'
+        airflow connections delete mongo_default || true
+        if [ -n "${MONGO_URI:-}" ]; then
+          echo "Building connection JSON for mongo_default from MONGO_URI"
+          python3 -c 'import os,json; from urllib.parse import urlparse,unquote; uri=os.environ.get("MONGO_URI",""); parsed=urlparse(uri); username=unquote(parsed.username) if parsed.username else None; password=unquote(parsed.password) if parsed.password else None; host=parsed.hostname; schema=(parsed.path.lstrip("/") if parsed.path and parsed.path!="/" else os.environ.get("MONGO_DB_NAME")); conn={"conn_type":"mongo","host":host,"login":username,"password":password,"schema":schema,"extra":{"srv":"true"}}; import sys, json as __json; sys.stdout.write(__json.dumps(conn))' > /tmp/mongo_conn.json
+          airflow connections add mongo_default --conn-json "$(cat /tmp/mongo_conn.json)" || true
+        else
+          echo "MONGO_URI not provided; skipping mongo_default seeding."
+        fi
+
+        airflow connections get mongo_default
+
+        echo 'Init completed.'
 
   spark-jars-init:
     image: spark-s3:3.5.2
@@ -171,63 +247,53 @@ services:
 
   # -------------------- Airflow services --------------------
   airflow-webserver:
-    build:
-      context: ./airflow
-      dockerfile: Dockerfile
-    env_file:
-      - ./airflow/.env
+    <<: *airflow-common
     depends_on:
-      - airflow-init
-      - spark-jars-init
+      airflow-init:
+        condition: service_completed_successfully
+      spark-jars-init:
+        condition: service_completed_successfully
     ports:
       - "8081:8080"
-    networks:
-      - airflow
     volumes:
       - ./airflow/jobs:/opt/airflow/jobs
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
-      - spark-jars:/opt/spark/jars-out
+      - spark-jars:/opt/spark/jars
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       bash -lc 'until airflow db check-migrations; do echo "Waiting for DB migrations..."; sleep 3; done; exec airflow webserver'
 
   airflow-scheduler:
-    build:
-      context: ./airflow
-      dockerfile: Dockerfile
-    env_file:
-      - ./airflow/.env
+    <<: *airflow-common
     depends_on:
-      - airflow-init
-      - spark-jars-init
-    networks:
-      - airflow
+      airflow-init:
+        condition: service_completed_successfully
+      spark-jars-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-env
     volumes:
       - ./airflow/jobs:/opt/airflow/jobs
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
-      - spark-jars:/opt/spark/jars-out
+      - spark-jars:/opt/spark/jars
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       bash -lc 'set -euo pipefail; until airflow db check-migrations; do echo "Waiting for DB migrations..."; sleep 2; done; exec airflow scheduler'
 
   airflow-dag-processor:
-    build:
-      context: ./airflow
-      dockerfile: Dockerfile
-    env_file:
-      - ./airflow/.env
+    <<: *airflow-common
     depends_on:
-      - airflow-init
-      - spark-jars-init
-    networks:
-      - airflow
+      airflow-init:
+        condition: service_completed_successfully
+      spark-jars-init:
+        condition: service_completed_successfully
     volumes:
       - ./airflow/jobs:/opt/airflow/jobs
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
-      - spark-jars:/opt/spark/jars-out
+      - spark-jars:/opt/spark/jars
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       bash -lc 'until airflow db check-migrations; do echo "Waiting for DB migrations..."; sleep 3; done; exec airflow dag-processor'

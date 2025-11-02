@@ -40,7 +40,7 @@ def choose_job(webhook: dict, db_type: str):
     "matchResults": f"run_match_results_{db_type}",
   }
 
-  return mapping.get(webhook_type, "skip_jobs")
+  return mapping.get(webhook_type, f"skip_job_{db_type}")
   
 def ml_train_branch(webhook: dict):
   """Branch for ML training based on webhook type. Used by a BranchPythonOperator.
@@ -57,21 +57,29 @@ def ml_train_branch(webhook: dict):
 
 
 def parse_webhook(webhook):
-  """Normalize webhook input to a Python dict.
+    """
+    Normalize whatever the DAG got (str, dict, or Go's {type, payload})
+    into the shape our jobs expect, i.e. with .payload_decoded.
+    """
+    if webhook is None:
+        return {}
 
-  The webhook may be passed as a dict (native) or as a JSON string from
-  XCom templating. Return an empty dict on failure.
-  """
-  if webhook is None:
-    return {}
-  if isinstance(webhook, dict):
+    # 1) string → dict
+    if isinstance(webhook, str):
+        try:
+            webhook = json.loads(webhook)
+        except Exception:
+            return {}
+
+    # 2) if Go sent {"type": "...", "payload": {...}} (what webhook.go does),
+    # promote "payload" → "payload_decoded" so jobs can do webhook["payload_decoded"]
+    if "payload_decoded" not in webhook and "payload" in webhook:
+        webhook["payload_decoded"] = webhook["payload"]
+
+    # 3) if Go later starts sending the full saved file (like your sample)
+    # it will already have payload_decoded, so this is harmless.
     return webhook
-  if isinstance(webhook, str):
-    try:
-      return json.loads(webhook)
-    except Exception:
-      return {}
-  return {}
+
 
 
 def _load_and_call(path: str, func_name: str, webhook: dict):
@@ -288,43 +296,43 @@ with DAG(
 
 
   spark_smoke = SparkSubmitOperator(
-        task_id="spark_smoke",
-        application="/opt/airflow/jobs/spark_smoke.py",
-        conn_id="spark_default",
-        driver_memory="1g",
-        executor_memory="1g",
-        executor_cores=1,
-        conf={
-          # base python stuff
-          "spark.pyspark.python": "python3",
-          "spark.executorEnv.PYSPARK_PYTHON": "python3",
-          "spark.pyspark.driver.python": "python3",
-          "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
+      task_id="spark_smoke",
+      application="/opt/airflow/jobs/spark_smoke.py",
+      conn_id="spark_default",
+      driver_memory="1g",
+      executor_memory="1g",
+      executor_cores=1,
+      conf={
+        # base python stuff
+        "spark.pyspark.python": "python3",
+        "spark.executorEnv.PYSPARK_PYTHON": "python3",
+        "spark.pyspark.driver.python": "python3",
+        "spark.jars": "/opt/spark/jars/postgresql-42.6.0.jar",
 
-          # --- Mongo from spark_conf ---
-          "spark.executorEnv.MONGO_URI": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_URI'] }}",
-          "spark.executorEnv.MONGO_DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_DB_NAME'] }}",
-          "spark.executorEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_COLL_NAME'] }}",
+        # --- Mongo from spark_conf ---
+        "spark.executorEnv.MONGO_URI": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_URI'] }}",
+        "spark.executorEnv.MONGO_DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_DB_NAME'] }}",
+        "spark.executorEnv.MONGO_COLL_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.MONGO_COLL_NAME'] }}",
 
-          # --- Postgres from spark_conf ---
-          "spark.executorEnv.DB_HOST": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_HOST'] }}",
-          "spark.executorEnv.DB_PORT": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_PORT'] }}",
-          "spark.executorEnv.DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_NAME'] }}",
-          "spark.executorEnv.DB_USERNAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.DB_USERNAME','') }}",
-          "spark.executorEnv.DB_PASSWORD": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.DB_PASSWORD','') }}",
+        # --- Postgres from spark_conf ---
+        "spark.executorEnv.DB_HOST": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_HOST'] }}",
+        "spark.executorEnv.DB_PORT": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_PORT'] }}",
+        "spark.executorEnv.DB_NAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.DB_NAME'] }}",
+        "spark.executorEnv.DB_USERNAME": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.DB_USERNAME','') }}",
+        "spark.executorEnv.DB_PASSWORD": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf'].get('spark.executorEnv.DB_PASSWORD','') }}",
 
-          # --- S3 path only ---
-          "spark.executorEnv.S3_SMOKE_PATH": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.S3_SMOKE_PATH'] }}",
-          "spark.driverEnv.S3_SMOKE_PATH": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.S3_SMOKE_PATH'] }}",
+        # --- S3 path only ---
+        "spark.executorEnv.S3_SMOKE_PATH": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.executorEnv.S3_SMOKE_PATH'] }}",
+        "spark.driverEnv.S3_SMOKE_PATH": "{{ ti.xcom_pull(task_ids='spark_conf', key='return_value')['conf']['spark.driverEnv.S3_SMOKE_PATH'] }}",
 
-          # --- MINIMAL AWS (no Jinja) ---
-          # read from Airflow container env at DAG-parse/runtime
-          "spark.executorEnv.AWS_REGION": os.environ.get("AWS_REGION", "us-west-2"),
-          "spark.executorEnv.AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", ""),
-          "spark.executorEnv.AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
-        },
-        # no need to push xcom from spark job
-        do_xcom_push=False,
+        # --- MINIMAL AWS (no Jinja) ---
+        # read from Airflow container env at DAG-parse/runtime
+        "spark.executorEnv.AWS_REGION": os.environ.get("AWS_REGION", "us-west-2"),
+        "spark.executorEnv.AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", ""),
+        "spark.executorEnv.AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+      },
+      # no need to push xcom from spark job
+      do_xcom_push=False,
     )
 
   webhook = {}
@@ -450,7 +458,7 @@ with DAG(
     application="/opt/airflow/jobs/spark_mongoNewMatches.py",
     conn_id="spark_default",
     packages="org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
-    application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') }}"],
+    application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') | tojson }}"],
     driver_memory="1g",
     executor_memory="1g",
     executor_cores=1,
@@ -494,7 +502,7 @@ with DAG(
     application="/opt/airflow/jobs/spark_mongoMatchResults.py",
     conn_id="spark_default",
     packages="org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
-    application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') }}"],
+    application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') | tojson }}"],
     driver_memory="1g",
     executor_memory="1g",
     executor_cores=1,
@@ -653,17 +661,17 @@ with DAG(
   # Connect tasks/operators
   # run the spark smoke test first, then continue to the postgres branch
   start_task >> spark_conf
-  spark_conf >> spark_smoke
+  spark_conf >> push_webhook_xcom
+  push_webhook_xcom >> spark_smoke
   spark_smoke >> postgres_branch_task
   postgres_branch_task >> [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres]
   [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres] >> join_postgres
   # Run homepage and the mongo branch in parallel after postgres join
   join_postgres >> homepage_task
 
-  join_postgres >> push_webhook_xcom
 
   # Branch downstream choices
-  push_webhook_xcom >> mongo_branch_task >> [run_new_basho_mongo, run_new_matches_mongo, run_end_basho_mongo, run_match_results_mongo, skip_mongo] >> join_mongo
+  join_postgres >> mongo_branch_task >> [run_new_basho_mongo, run_new_matches_mongo, run_end_basho_mongo, run_match_results_mongo, skip_mongo] >> join_mongo
 
   # Both homepage and the mongo branch must finish before finishing the DAG
   homepage_task >> join_mongo
