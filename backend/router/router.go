@@ -16,6 +16,16 @@ func Register(r *gin.Engine, app *handlers.App) {
 	r.GET("/rikishi/:id", app.GetRikishi)
 	r.GET("/basho/:id", app.GetBasho)
 
+	// Authentication
+	r.POST("/auth/register", app.Register)
+	r.POST("/auth/login", app.Login)
+	r.GET("/auth", app.Auth)
+	r.POST("/auth/refresh", app.Refresh)
+	r.POST("/auth/logout", app.Logout)
+
+	// Protected actions (require JWT)
+	r.POST("/matches/:id/vote", app.JWTMiddleware(), app.Vote)
+
 	//r.POST("/auth/register", app.Register)
 
 	// api := r.Group("/api")
