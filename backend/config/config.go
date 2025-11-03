@@ -19,6 +19,7 @@ type Config struct {
 	WebhookName   string
 	WebhookSecret string
 	WebhookDest   string
+	JWTSecret     string
 }
 
 func Load() Config {
@@ -35,6 +36,7 @@ func Load() Config {
 		WebhookName:   os.Getenv("SUMO_WEBHOOK_NAME"),
 		WebhookSecret: os.Getenv("SUMO_WEBHOOK_SECRET"),
 		WebhookDest:   os.Getenv("SUMO_WEBHOOK_DEST"),
+		JWTSecret:     os.Getenv("JWT_SECRET"),
 	}
 }
 

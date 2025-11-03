@@ -67,6 +67,9 @@ func main() {
 	// ----- Gin -----
 	app := handlers.NewApp(cfg, mongoDB, pgpool, sumoSvc)
 
+	// Start background maintenance tasks (cleanup old refresh tokens every 24h, keep 30 day window)
+	services.StartCleanupTicker(pgpool, 24*time.Hour, 30)
+
 	r := gin.Default()
 	router.Register(r, app)
 
