@@ -26,6 +26,8 @@ func main() {
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
 		log.Fatal("mongo connect:", err)
+	} else {
+		log.Println("✅ connected to mongo")
 	}
 	mongoDB := mongoClient.Database(cfg.MongoDBName)
 
@@ -38,6 +40,8 @@ func main() {
 	// optional: ping
 	if err := pgpool.Ping(context.Background()); err != nil {
 		log.Fatal("postgres ping:", err)
+	} else {
+		log.Println("✅ connected to postgres")
 	}
 
 	// ----- Sumo service -----

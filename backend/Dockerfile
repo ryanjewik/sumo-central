@@ -25,11 +25,14 @@ RUN go build -ldflags="-s -w" -o /app/sumo-backend ./main.go
 
 # Final stage - small runtime image
 FROM alpine:3.18
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata netcat-openbsd
 WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/sumo-backend /app/sumo-backend
+# Copy tiny entrypoint that waits for Postgres to accept TCP connections
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Create non-root user and set ownership
 RUN addgroup -S app && adduser -S -G app app
@@ -48,5 +51,7 @@ EXPOSE 8080
 # Recommended environment defaults
 ENV GIN_MODE=release
 
-# Run the binary
+# Entrypoint waits for DB then execs the backend
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+# Default command (kept for compatibility; entrypoint will exec the binary)
 CMD ["/app/sumo-backend"]

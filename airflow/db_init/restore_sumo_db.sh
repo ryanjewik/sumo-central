@@ -1,4 +1,21 @@
-#!/bin/bash
+﻿#!/usr/bin/env bash
+
+# Ensure we're running under bash. The restore script uses bash-specific features
+# (arrays, shopt nullglob, etc.). If the container's default /bin/sh is not bash
+# (for example an alpine/busybox image), fail early with a helpful message.
+if [ -z "${BASH_VERSION:-}" ]; then
+  cat >&2 <<'MSG'
+This restore script requires bash but the current shell is not bash.
+Please use a restore image that includes bash (for example the Debian-based
+Postgres image) or set the environment variable SUMO_RESTORE_IMAGE to a
+compatible image (e.g. 'postgres:18' not 'postgres:18-alpine').
+
+Example: in your docker-compose set
+  SUMO_RESTORE_IMAGE=postgres:18
+MSG
+  exit 2
+fi
+
 set -euo pipefail
 
 DB_HOST=${SUMO_DB_HOST:-sumo-db}

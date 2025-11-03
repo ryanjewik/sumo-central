@@ -1,0 +1,42 @@
+package handlers
+
+import (
+	"context"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+)
+
+// GetBasho returns a basho page document from the `basho_pages` collection
+// It looks up the document by the `id` field (string) matching the route param.
+func (a *App) GetBasho(c *gin.Context) {
+	id := c.Param("id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	// ID is stored as an integer in Mongo. Parse and only query numeric types.
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id must be numeric"})
+		return
+	}
+	filter := bson.M{"$or": bson.A{bson.M{"id": n}, bson.M{"id": int32(n)}}}
+
+	coll := a.Mongo.Collection("basho_pages")
+	var doc bson.M
+	err = coll.FindOne(ctx, filter).Decode(&doc)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			c.JSON(http.StatusNotFound, gin.H{"error": "basho not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch basho"})
+		return
+	}
+
+	c.JSON(http.StatusOK, doc)
+}
