@@ -1,0 +1,46 @@
+{
+  "name": "sumopedia-frontend",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@fontsource/roboto": "^5.2.6",
+    "@mui/icons-material": "^7.3.2",
+    "@mui/joy": "^5.0.0-beta.52",
+    "@mui/material": "^7.3.2",
+    "@mui/x-charts": "^8.11.2",
+    "@untitledui/icons": "^0.0.19",
+    "@vnedyalk0v/react19-simple-maps": "github:vnedyalk0v/react19-simple-maps",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.544.0",
+    "next": "16.0.1",
+    "react": "19.2.0",
+    "react-aria-components": "^1.12.1",
+    "react-dom": "19.2.0",
+    "recharts": "^2.15.4",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss-animate": "^1.0.7",
+    "tailwindcss-react-aria-components": "^2.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.13",
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/recharts": "^1.8.29",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5"
+  }
+}
