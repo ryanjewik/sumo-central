@@ -9,38 +9,30 @@ import { areaElementClasses, lineElementClasses } from '@mui/x-charts/LineChart'
 import { chartsAxisHighlightClasses } from '@mui/x-charts/ChartsAxisHighlight';
 
 
-// Generate random win/loss data for last 30 matches (1 = win, 0 = loss)
-const matches = 30;
-const winLossRaw = Array.from({ length: matches }, () => Math.random() > 0.5 ? 1 : 0);
-const matchLabels = Array.from({ length: matches }, (_, i) => `Match ${i + 1}`);
+interface RikishiSparklineProps {
+  data?: number[]; // optional array of 0/1 (loss/win) or numeric metric
+  title?: string;
+}
 
-// Calculate running win/loss ratio (wins/losses)
-const winLossRatio = winLossRaw.map((_, i) => {
-  const arr = winLossRaw.slice(0, i + 1);
-  const wins = arr.reduce((acc: number, v) => acc + v, 0);
+// Generate random win/loss data for last 30 matches (1 = win, 0 = loss) if no data provided
+const defaultMatches = 30;
+const defaultWinLossRaw = Array.from({ length: defaultMatches }, () => Math.random() > 0.5 ? 1 : 0);
+const defaultMatchLabels = Array.from({ length: defaultMatches }, (_, i) => `Match ${i + 1}`);
+
+// Helper: convert binary win/loss series to running win/loss ratio
+const computeRunningRatio = (series: number[]) => series.map((_, i) => {
+  const arr = series.slice(0, i + 1);
+  const wins = arr.reduce((acc: number, v) => acc + (Number(v) || 0), 0);
   const losses = arr.length - wins;
-  // If no losses yet, show wins (as ratio to 1)
   if (losses === 0) return wins === 0 ? 0 : wins;
   return wins / losses;
 });
 
 
-// Calculate dynamic min/max for y-axis
-const minY = Math.min(...winLossRatio);
-const maxY = Math.max(...winLossRatio);
-const yPadding = (maxY - minY) * 0.15 || 0.2;
-
-const settings: SparkLineChartProps = {
-  data: winLossRatio,
+// Base settings for the sparkline chart (data/xAxis/yAxis applied per-instance)
+const baseSettings: Omit<SparkLineChartProps, 'data' | 'xAxis' | 'yAxis'> = {
   baseline: 'min',
   margin: { bottom: 0, top: 5, left: 4, right: 0 },
-  xAxis: { id: 'match-axis', data: matchLabels },
-  yAxis: {
-    min: Math.floor(minY - yPadding),
-    max: Math.ceil(maxY + yPadding),
-    tickMinStep: 0.1,
-    tickNumber: 5,
-  },
   sx: {
     [`& .${areaElementClasses.root}`]: { opacity: 0.2 },
     [`& .${lineElementClasses.root}`]: { strokeWidth: 3 },
@@ -57,9 +49,27 @@ const settings: SparkLineChartProps = {
   axisHighlight: { x: 'line' },
 };
 
+export default function RikishiWinLossSparkline({ data, title }: RikishiSparklineProps) {
+  const series = (Array.isArray(data) && data.length > 0) ? data.map(d => Number(d) || 0) : defaultWinLossRaw;
+  const matchLabels = Array.from({ length: series.length }, (_, i) => `Match ${i + 1}`);
+  const winLossRatio = computeRunningRatio(series);
+  const minY = Math.min(...winLossRatio);
+  const maxY = Math.max(...winLossRatio);
+  const yPadding = (maxY - minY) * 0.15 || 0.2;
 
-export default function RikishiWinLossSparkline() {
   const [matchIndex, setMatchIndex] = React.useState<null | number>(null);
+
+  const settingsLocal: SparkLineChartProps = {
+    ...baseSettings,
+    data: winLossRatio,
+    xAxis: { id: 'match-axis', data: matchLabels },
+    yAxis: {
+      min: Math.floor(minY - yPadding),
+      max: Math.ceil(maxY + yPadding),
+      tickMinStep: 0.1,
+      tickNumber: 5,
+    },
+  };
 
   return (
     <div
@@ -92,7 +102,7 @@ export default function RikishiWinLossSparkline() {
             pt: 1,
           }}
         >
-          {matchIndex === null ? 'Last 30 Matches' : matchLabels[matchIndex]}
+          {matchIndex === null ? (title ?? `Last ${series.length} Matches`) : matchLabels[matchIndex]}
         </Typography>
         <Stack
           direction="column"
@@ -110,12 +120,13 @@ export default function RikishiWinLossSparkline() {
             }}
           >
             {(() => {
-              const idx = matchIndex ?? winLossRaw.length - 1;
-              const arr = winLossRaw.slice(0, idx + 1);
-              const wins = arr.reduce((acc: number, v) => acc + v, 0);
+              const idx = matchIndex ?? series.length - 1;
+              const arr = series.slice(0, idx + 1);
+              const wins = arr.reduce((acc: number, v) => acc + (Number(v) || 0), 0);
               const losses = arr.length - wins;
-              if (losses === 0) return `Win/Loss Ratio: ${wins}.0`;
-              return `Win/Loss Ratio: ${(wins / losses).toFixed(2)}`;
+              const winRate = Math.round((wins / arr.length) * 100);
+              if (losses === 0) return `Win/Loss Ratio: ${wins}.0 (${winRate}% win)`;
+              return `Win/Loss Ratio: ${(wins / losses).toFixed(2)} (${winRate}% win)`;
             })()}
           </Typography>
           <SparkLineChart
@@ -132,7 +143,7 @@ export default function RikishiWinLossSparkline() {
                 ? []
                 : [{ axisId: 'match-axis', dataIndex: matchIndex }]
             }
-            {...settings}
+            {...settingsLocal}
           />
         </Stack>
       </Stack>

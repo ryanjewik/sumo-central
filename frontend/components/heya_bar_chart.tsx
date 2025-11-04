@@ -100,9 +100,27 @@ const chartConfig = {
 import { Card } from "./ui/card";
 import { ChartContainer, ChartTooltip } from "./ui/chart";
 
-export function ChartBarInteractive() {
+interface ChartBarInteractiveProps {
+  heyaAvgRank?: Record<string, number>;
+  heyaRikishiCount?: Record<string, number>;
+}
+
+export function ChartBarInteractive({ heyaAvgRank, heyaRikishiCount }: ChartBarInteractiveProps) {
+  // if props provided, compute chartData from them; otherwise use compiled constants
+  const computeChartData = () => {
+    if (heyaAvgRank && Object.keys(heyaAvgRank).length > 0) {
+      return Object.entries(heyaAvgRank).map(([heya, avgRank]) => ({
+        heya,
+        avgRankTransformed: 3000 - (avgRank as number),
+        rikishiCount: (heyaRikishiCount && heyaRikishiCount[heya]) || 0,
+      }));
+    }
+    return chartData;
+  };
+
+  const chartDataComputed = computeChartData().sort((a, b) => b.avgRankTransformed - a.avgRankTransformed);
   // Find min/max rikishi count for color scaling
-  const rikishiCounts = chartData.map(d => d.rikishiCount);
+  const rikishiCounts = chartDataComputed.map(d => d.rikishiCount);
   const minCount = Math.min(...rikishiCounts);
   const maxCount = Math.max(...rikishiCounts);
   return (
@@ -118,7 +136,7 @@ export function ChartBarInteractive() {
         >
           <BarChart
             accessibilityLayer
-            data={chartData}
+            data={chartDataComputed}
             margin={{
               left: 12,
               right: 12,
@@ -156,7 +174,7 @@ export function ChartBarInteractive() {
               }}
             />
             <Bar dataKey="avgRankTransformed">
-              {chartData.map((entry, idx) => (
+              {chartDataComputed.map((entry, idx) => (
                 <Cell key={`cell-${entry.heya}`} fill={getBarColor(entry.rikishiCount, minCount, maxCount)} />
               ))}
             </Bar>

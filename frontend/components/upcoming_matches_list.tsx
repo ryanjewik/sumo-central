@@ -124,7 +124,7 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                   >
                     {/* West avatar */}
                     <Box sx={{ position: 'relative' }}>
-                      <Avatar size="sm" src="/static/images/avatar/default.jpg" />
+                      <Avatar size="sm" src="/sumo_logo.png" />
                     </Box>
                     {/* Middle content */}
                     <Box sx={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -202,7 +202,7 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                     </Box>
                     {/* East avatar */}
                     <Box sx={{ position: 'relative' }}>
-                      <Avatar size="sm" src="/static/images/avatar/default.jpg" />
+                      <Avatar size="sm" src="/sumo_logo.png" />
                     </Box>
                     {/* Divider drawn INSIDE this item (never overlaps the next row) */}
                     {idx < matches.length - 1 && (
