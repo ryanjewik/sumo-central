@@ -20,13 +20,15 @@ const Transition = React.forwardRef(function Transition(
   return <Slide direction="up" ref={ref} {...props} />;
 });
 
+import { useAuth } from '../context/AuthContext';
+
 interface LoginDialogProps {
   open: boolean;
   onClose: () => void;
-  setUser: (user: { id: string; username: string } | null) => void;
 }
 
-const LoginDialog: React.FC<LoginDialogProps> = ({ open, onClose, setUser }) => {
+const LoginDialog: React.FC<LoginDialogProps> = ({ open, onClose }) => {
+  const { setUser, login } = useAuth();
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [registerOpen, setRegisterOpen] = React.useState(false);
@@ -49,21 +51,15 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ open, onClose, setUser }) => 
       return;
     }
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      const data = await res.json();
-      if (data.success && data.id && data.username) {
+      const result = await login(username, password);
+      if (result.ok) {
         setSuccess(true);
-        setUser({ id: data.id, username: data.username });
         setTimeout(() => {
           setSuccess(false);
           handleClose();
         }, 1200);
       } else {
-        setError(data.error || 'Login failed.');
+        setError(result.error || 'Login failed.');
       }
     } catch (err) {
       setError('Login failed.');

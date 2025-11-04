@@ -26,7 +26,10 @@ interface RegisterDialogProps {
   onClose: () => void;
 }
 
+import { useAuth } from '../context/AuthContext';
+
 const RegisterDialog: React.FC<RegisterDialogProps> = ({ open, onClose }) => {
+  const { register } = useAuth();
   const [username, setUsername] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -65,22 +68,17 @@ const RegisterDialog: React.FC<RegisterDialogProps> = ({ open, onClose }) => {
     }
     setError('');
     setSuccess(false);
-    // Send registration data to backend
+    // Send registration data to backend via provider
     try {
-      const res = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password })
-      });
-      const data = await res.json();
-      if (data.success) {
+      const result = await register(username, email, password);
+      if (result.ok) {
         setSuccess(true);
         setTimeout(() => {
           setSuccess(false);
           handleClose();
         }, 1500);
       } else {
-        setError(data.error || 'Registration failed.');
+        setError(result.error || 'Registration failed.');
       }
     } catch (err) {
       setError('Registration failed.');

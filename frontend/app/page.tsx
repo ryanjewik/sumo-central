@@ -6,6 +6,7 @@ import { RikishiTable } from '../components/application/rikishi_table';
 import KimariteRadarChart from "../components/application/charts/KimariteRadarChart";
 import LeaderboardTable from "../components/leaderboard_table";
 import LoginDialog from "../components/login_dialog";
+import { AuthProvider, useAuth } from '../context/AuthContext';
 import ClimbingRikishiCard from '../components/ClimbingRikishiCard';
 import { ChartBarInteractive } from '../components/heya_bar_chart';
 import { ShusshinHeatMapCard } from '../components/ShusshinHeatMapCard';
@@ -23,11 +24,11 @@ import Image from 'next/image';
 
 
 
-function App() {
+function InnerApp() {
   // Login dialog state
   const [loginOpen, setLoginOpen] = useState(false);
-  // User state (null if not logged in)
-  const [user, setUser] = useState<{ id: string; username: string } | null>(null);
+  // Get auth from provider
+  const { user, setUser, logout } = useAuth();
   // Sample upcoming matches data
   // All upcoming matches are on the same day
   const upcomingDate = '2025-09-20';
@@ -95,6 +96,8 @@ function App() {
       setMainContentVisible(true);
     }, 1400);
   }, []);
+
+  // (Rehydration is handled by AuthProvider)
   // Sample forum post data
   const sampleForumPosts = [
     {
@@ -183,41 +186,96 @@ function App() {
           </div>
           <div className="navbar-right">
             <button className="navbar-btn">L</button>
-            {/* Login/User button with fixed width */}
-            <button
-              className="navbar-btn"
-              style={{
-                minWidth: 100,
-                maxWidth: 120,
-                width: 110,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                display: 'inline-block',
-                justifyContent: 'center',
-                alignItems: 'center',
-                borderRadius: '999px', // pill/rounded rectangle
-                border: '2px solid #563861',
-                background: '#563861',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '1rem',
-                fontFamily: 'inherit',
-                transition: 'background 0.18s, color 0.18s',
-              }}
-              onClick={() => {
-                if (!user) setLoginOpen(true);
-              }}
-              disabled={!!user}
-            >
-              {user ? user.username : 'Sign In'}
-            </button>
-            <LoginDialog
-              open={loginOpen}
-              onClose={() => setLoginOpen(false)}
-              // Pass setUser to LoginDialog so it can set user on successful login
-              setUser={setUser}
-            />
+
+            {/* If logged in, show username and logout; otherwise show Sign In */}
+            {user ? (
+              <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                <span
+                  style={{
+                    minWidth: 100,
+                    maxWidth: 140,
+                    width: 120,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    display: 'inline-block',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderRadius: '999px',
+                    border: '2px solid #563861',
+                    background: '#563861',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: '1rem',
+                    fontFamily: 'inherit',
+                    padding: '0.45rem 0.9rem',
+                  }}
+                >
+                  {user.username}
+                </span>
+
+                <button
+                  className="navbar-btn"
+                  onClick={async () => {
+                    try {
+                      await logout();
+                    } catch (err) {
+                      // ignore
+                    }
+                    // logout() will setUser(null)
+                  }}
+                  style={{
+                    minWidth: 88,
+                    maxWidth: 110,
+                    borderRadius: '0.7rem',
+                    background: '#fff',
+                    color: '#563861',
+                    border: '2px solid #563861',
+                    fontWeight: 600,
+                    padding: '0.4rem 0.8rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Login/User button with fixed width */}
+                <button
+                  className="navbar-btn"
+                  style={{
+                    minWidth: 100,
+                    maxWidth: 120,
+                    width: 110,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    display: 'inline-block',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderRadius: '999px', // pill/rounded rectangle
+                    border: '2px solid #563861',
+                    background: '#563861',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: '1rem',
+                    fontFamily: 'inherit',
+                    transition: 'background 0.18s, color 0.18s',
+                  }}
+                  onClick={() => {
+                    if (!user) setLoginOpen(true);
+                  }}
+                >
+                  Sign In
+                </button>
+
+                <LoginDialog
+                  open={loginOpen}
+                  onClose={() => setLoginOpen(false)}
+                />
+              </>
+            )}
           </div>
         </div>
         <div className="navbar-row navbar-row-bottom app-text">
@@ -501,4 +559,10 @@ function App() {
   );
 }
 
-export default App
+export default function App() {
+  return (
+    <AuthProvider>
+      <InnerApp />
+    </AuthProvider>
+  );
+}
