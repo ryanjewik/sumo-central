@@ -47,7 +47,15 @@ const HighlightedMatchCard: React.FC<HighlightedMatchCardProps> = ({ match }) =>
               src={m.west_image ?? m.west_image_url ?? m.west_photo ?? '/sumo_logo.png'}
               alt={`${westName} profile`}
               onError={(e) => { (e.target as HTMLImageElement).src = '/sumo_logo.png'; }}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12, border: winnerSide === 'west' ? '3px solid #3b82f6' : '2px solid rgba(0,0,0,0.06)', boxShadow: winnerSide === 'west' ? '0 6px 20px rgba(59,130,246,0.18)' : 'none' }}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                borderRadius: 12,
+                // make the west outline blue and more opaque even when not the winner
+                border: winnerSide === 'west' ? '3px solid #2563eb' : '2px solid rgba(37,99,235,0.9)',
+                boxShadow: winnerSide === 'west' ? '0 8px 28px rgba(37,99,235,0.28)' : '0 4px 12px rgba(37,99,235,0.12)'
+              }}
             />
             {winnerSide === 'west' && (
               <div style={{ position: 'absolute', top: -8, right: -8, background: '#10b981', color: '#fff', width: 20, height: 20, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>W</div>
