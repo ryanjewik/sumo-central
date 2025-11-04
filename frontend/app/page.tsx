@@ -123,6 +123,13 @@ function InnerApp() {
   const [bashoLoading, setBashoLoading] = useState(false);
   const [bashoError, setBashoError] = useState<string | null>(null);
 
+  // derived stats from homepage
+  const avgStats = homepage?.avg_stats ?? {};
+  const avgWeightTotal = Number(avgStats.average_weight_kg ?? avgStats.average_weight ?? 157.42);
+  const avgHeightTotal = Number(avgStats.average_height_cm ?? avgStats.average_height ?? 185.27);
+  const yushoWeight = Number(avgStats.makuuchi_yusho_avg_weight_kg ?? avgWeightTotal);
+  const yushoHeight = Number(avgStats.makuuchi_yusho_avg_height_cm ?? avgHeightTotal);
+
   // load homepage document from backend (Mongo)
   useEffect(() => {
     let mounted = true;
@@ -505,7 +512,7 @@ function InnerApp() {
                       Average Yusho Weight
                     </span>
                     <span style={{ fontWeight: 600, fontSize: '2rem', color: '#563861', fontFamily: 'inherit' }}>
-                      157.42kg
+                      {yushoWeight.toFixed(2)}kg
                     </span>
                   </div>
 
@@ -550,7 +557,7 @@ function InnerApp() {
                       Average Yusho Height
                     </span>
                     <span style={{ fontWeight: 600, fontSize: '2rem', color: '#563861', fontFamily: 'inherit' }}>
-                      185.27cm
+                      {yushoHeight.toFixed(2)}cm
                     </span>
                   </div>
 

@@ -23,7 +23,10 @@ DB_PORT=${SUMO_DB_PORT:-5432}
 DB_USER=${DB_USERNAME:-postgres}
 DB_NAME=${DB_NAME:-sumo}
 DB_PASS=${DB_PASSWORD:-}
-FORCE=${FORCE_RESTORE:-0}
+# If FORCE_RESTORE is unset, default to 1 so the restore runs on a fresh
+# developer machine the first time. If the variable is explicitly provided
+# (in the environment or via docker-compose), use that value.
+FORCE=${FORCE_RESTORE:-1}
 
 export PGPASSWORD="$DB_PASS"
 
@@ -40,7 +43,30 @@ done
 # Debug: show resolved connection targets so logs make it clear which DB the script uses.
 echo "Using connection: host=$DB_HOST port=$DB_PORT user=$DB_USER dbname=$DB_NAME"
 
-# If FORCE is set, attempt a clean drop+create of the target database so the
+## Use a marker table to decide whether a restore already ran. This is more reliable
+## than counting tables because some schemas may be present but incomplete.
+MARKER_CHECK=$(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -Atc "SELECT to_regclass('public._sumo_restore_meta');" 2>/dev/null || echo "")
+
+# If a restore marker exists we should normally skip the restore. However, if
+# the user explicitly set FORCE_RESTORE in the environment to "1" we allow
+# forcing a restore to override the marker. The test below distinguishes an
+# unset environment variable from one explicitly set by checking the parameter
+# expansion form.
+if [ -n "$MARKER_CHECK" ]; then
+  if [ -z "${FORCE_RESTORE+x}" ]; then
+    echo "Restore marker found (public._sumo_restore_meta); skipping restore (FORCE_RESTORE unset)."
+    exit 0
+  else
+    if [ "${FORCE_RESTORE}" != "1" ]; then
+      echo "Restore marker found (public._sumo_restore_meta); skipping restore (FORCE_RESTORE != 1)."
+      exit 0
+    else
+      echo "Restore marker found but FORCE_RESTORE=1 explicitly set; continuing (force)."
+    fi
+  fi
+fi
+
+# If FORCE is set (or defaulted), attempt a clean drop+create of the target database so the
 # restore runs against an empty DB. This requires a DB user with CREATE/DROP
 # privileges (the default Postgres superuser created by the image does).
 if [ "${FORCE:-0}" = "1" ]; then
@@ -79,10 +105,7 @@ fi
 ## Use a marker table to decide whether a restore already ran. This is more reliable
 ## than counting tables because some schemas may be present but incomplete.
 MARKER_CHECK=$(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -Atc "SELECT to_regclass('public._sumo_restore_meta');" 2>/dev/null || echo "")
-if [ -n "$MARKER_CHECK" ] && [ "$FORCE" != "1" ]; then
-  echo "Restore marker found (public._sumo_restore_meta); skipping restore (set FORCE_RESTORE=1 to override)."
-  exit 0
-fi
+# The marker check has already been performed above; no-op here.
 
 shopt -s nullglob
 # Prefer custom dumps (*.dump) for pg_restore
@@ -219,6 +242,31 @@ if [ ${#RESTORED_FILES[@]} -gt 0 ]; then
     fi
     echo "Restore marker written."
   fi
+
+  # Attempt to update a host-provided env file to set FORCE_RESTORE=0 so future
+  # container starts don't force a restore. This is best-effort: if no such file
+  # is mounted into the container or it isn't writable, we skip gracefully.
+  ENV_CANDIDATES=(/db_init/airflow.env /restore_env.env /airflow.env /env/airflow.env /db_init/.env)
+  for ef in "${ENV_CANDIDATES[@]}"; do
+    if [ -f "$ef" ] && [ -w "$ef" ]; then
+      echo "Attempting to set FORCE_RESTORE=0 in host env file: $ef"
+      cp "$ef" "${ef}.bak" 2>/dev/null || true
+      if grep -q '^FORCE_RESTORE=' "$ef" 2>/dev/null; then
+        if sed -i -E 's/^FORCE_RESTORE=.*/FORCE_RESTORE=0/' "$ef" 2>/dev/null; then
+          echo "Updated $ef -> FORCE_RESTORE=0"
+        else
+          echo "Failed to update $ef" >&2
+        fi
+      else
+        if echo 'FORCE_RESTORE=0' >> "$ef" 2>/dev/null; then
+          echo "Appended FORCE_RESTORE=0 to $ef"
+        else
+          echo "Failed to append FORCE_RESTORE to $ef" >&2
+        fi
+      fi
+      break
+    fi
+  done
 else
   echo "No files were restored by the script and no existing data detected."
 fi
