@@ -18,6 +18,7 @@ interface Match {
   rikishi2Rank?: string;
   date: string;
   venue?: string;
+  ai_prediction?: number | boolean;
 }
 
 
@@ -97,6 +98,8 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
               const matchVotes = votes[match.id] || { west: 0, east: 0 };
               const totalVotes = matchVotes.west + matchVotes.east;
               const percent = totalVotes === 0 ? 50 : Math.round((matchVotes.west / totalVotes) * 100);
+              const aiPred = (match as any).ai_prediction ?? (match as any).AI_prediction ?? (match as any).aiPrediction;
+
               return (
                 <ListItem key={match.id} sx={{ p: 0, m: 0, listStyle: 'none', position: 'relative' }}>
                   <ListItemButton
@@ -122,9 +125,16 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                       },
                     }}
                   >
+                    {/* AI prediction indicator (top-right) */}
+                    {typeof aiPred !== 'undefined' && (
+                      <Box sx={{ position: 'absolute', top: 6, right: 10, background: '#fff', borderRadius: '0.4rem', px: 0.6, py: 0.15, border: '1px solid rgba(0,0,0,0.06)', fontSize: '0.78rem', fontWeight: 700, color: '#563861' }}>
+                        {Number(aiPred) === 1 ? 'AI → West' : 'AI → East'}
+                      </Box>
+                    )}
+
                     {/* West avatar */}
                     <Box sx={{ position: 'relative' }}>
-                      <Avatar size="sm" src="/static/images/avatar/default.jpg" />
+                      <Avatar size="sm" src="/sumo_logo.png" />
                     </Box>
                     {/* Middle content */}
                     <Box sx={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -202,7 +212,7 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                     </Box>
                     {/* East avatar */}
                     <Box sx={{ position: 'relative' }}>
-                      <Avatar size="sm" src="/static/images/avatar/default.jpg" />
+                      <Avatar size="sm" src="/sumo_logo.png" />
                     </Box>
                     {/* Divider drawn INSIDE this item (never overlaps the next row) */}
                     {idx < matches.length - 1 && (

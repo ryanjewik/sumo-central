@@ -14,6 +14,9 @@ import requests
 import boto3
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import io
+import pymongo
+from PIL import Image
 
 
 load_dotenv()
@@ -38,6 +41,10 @@ DB_PORT = int(os.getenv("DB_PORT", "5432"))
 DB_NAME = os.getenv("DB_NAME", "postgres")
 DB_USERNAME = os.getenv("DB_USERNAME", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+
+# Mongo
+MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sumo")
 
 # S3
 S3_BUCKET = os.getenv("S3_BUCKET")
@@ -354,13 +361,34 @@ def fetch_headshot_to_s3_for_terms(terms: Iterable[str]) -> Optional[ImageRecord
     chosen_url = image_url if (PREFER_FULLRES or not thumb_url) else thumb_url
 
     blob, content_type = download_bytes(chosen_url)
-    ext = mimetypes.guess_extension(content_type or "") or os.path.splitext(chosen_url.split("?")[0])[1] or ".jpg"
-    if not ext.startswith("."):
-        ext = "." + ext
+
+    # Convert to WebP before uploading
+    try:
+        im = Image.open(io.BytesIO(blob))
+        # Convert palette/transparent images appropriately
+        has_alpha = (im.mode in ("RGBA", "LA")) or (im.mode == "P" and "transparency" in im.info)
+        if has_alpha:
+            out_im = im.convert("RGBA")
+        else:
+            out_im = im.convert("RGB")
+
+        out_buf = io.BytesIO()
+        # quality 85 is a reasonable default; method 6 for slower/better
+        out_im.save(out_buf, format="WEBP", quality=85, method=6)
+        webp_data = out_buf.getvalue()
+        content_type = "image/webp"
+        ext = ".webp"
+        blob_to_upload = webp_data
+    except Exception:
+        # If conversion fails, fall back to original bytes
+        blob_to_upload = blob
+        ext = mimetypes.guess_extension(content_type or "") or os.path.splitext(chosen_url.split("?")[0])[1] or ".jpg"
+        if not ext.startswith("."):
+            ext = "." + ext
 
     base_name = f"{safe_slug(tried[0])}-{hashlib.sha256((chosen_url or '').encode()).hexdigest()[:8]}{ext}"
-    s3_key = f"{S3_PREFIX.rstrip('/')}/{base_name}".lstrip("/")
-    s3_url = s3_put_bytes(blob, S3_BUCKET, s3_key, content_type=content_type or "image/jpeg", public=SAVE_PUBLIC)
+    s3_key = f"{(S3_PREFIX or '').rstrip('/')}/{base_name}".lstrip("/")
+    s3_url = s3_put_bytes(blob_to_upload, S3_BUCKET, s3_key, content_type=content_type or "image/jpeg", public=SAVE_PUBLIC)
 
     commons_title = filename if filename.startswith("File:") else f"File:{filename}"
     commons_source_url = f"https://commons.wikimedia.org/wiki/{ul.quote(commons_title)}"
@@ -374,7 +402,7 @@ def fetch_headshot_to_s3_for_terms(terms: Iterable[str]) -> Optional[ImageRecord
         image_url=chosen_url,
         width=info.get("width"),
         height=info.get("height"),
-        mime=info.get("mime"),
+        mime=content_type,
         license=(extmeta.get("LicenseShortName") or {}).get("value"),
         license_url=(extmeta.get("LicenseUrl") or {}).get("value"),
         attribution_html=(extmeta.get("Artist") or {}).get("value"),
@@ -397,7 +425,7 @@ def pg_conn():
     )
 
 def load_shikona_list(limit: int = 0, start_from: int = 0) -> list:
-    q = "SELECT shikona FROM rikishi WHERE shikona IS NOT NULL"
+    q = "SELECT id, shikona FROM rikishi WHERE shikona IS NOT NULL"
     params = []
     if start_from > 0:
         q += " OFFSET %s"
@@ -412,9 +440,14 @@ def load_shikona_list(limit: int = 0, start_from: int = 0) -> list:
             else:
                 cur.execute(q)
             rows = cur.fetchall()
-    return [row["shikona"] for row in rows]
+    # return list of (id, shikona) tuples
+    out = []
+    for row in rows:
+        out.append((row.get("id"), row.get("shikona")))
+    return out
 
-def update_rikishi_image(shikona: str, rec: ImageRecord):
+def update_rikishi_image(pg_id: int, rec: ImageRecord):
+    """Update the Postgres rikishi row by id with the S3 URL and metadata."""
     q = """
         UPDATE rikishi
         SET image_url = %s,
@@ -422,7 +455,7 @@ def update_rikishi_image(shikona: str, rec: ImageRecord):
             license = %s,
             license_url = %s,
             attribution_html = %s
-        WHERE shikona = %s
+        WHERE id = %s
     """
     with pg_conn() as conn:
         with conn.cursor() as cur:
@@ -432,9 +465,30 @@ def update_rikishi_image(shikona: str, rec: ImageRecord):
                 rec.license,
                 rec.license_url,
                 rec.attribution_html,
-                shikona,
+                pg_id,
             ))
         conn.commit()
+
+
+def update_mongo_pfp(pg_id, s3_url: str):
+    """Update the rikishi_pages document in MongoDB by matching the 'id' field with pg_id and set 'pfp_url'.
+
+    Tries both the raw pg_id and its string form if no match found.
+    """
+    if not MONGO_URI:
+        # No Mongo configured
+        return
+    try:
+        client = pymongo.MongoClient(MONGO_URI)
+        db = client[MONGO_DB_NAME]
+        coll = db.get_collection("rikishi_pages")
+        res = coll.update_one({"id": pg_id}, {"$set": {"pfp_url": s3_url}})
+        if res.matched_count == 0:
+            # Try string form
+            coll.update_one({"id": str(pg_id)}, {"$set": {"pfp_url": s3_url}})
+        client.close()
+    except Exception as e:
+        print(f"Mongo update error for id {pg_id}: {e}")
 
 # -----------------------------
 # Runner
@@ -451,7 +505,8 @@ def main():
     success = 0
     misses = 0
 
-    for idx, s in enumerate(shikonas, 1):
+    for idx, row in enumerate(shikonas, 1):
+        pg_id, s = row
         variants = list(extract_name_variants(s))
         if not variants:
             variants = [s]
@@ -460,7 +515,15 @@ def main():
             if rec and rec.s3_url:
                 success += 1
                 print(f"[{idx}/{total}] OK  {s}  → {rec.s3_url}  (license: {rec.license})")
-                update_rikishi_image
+                try:
+                    update_rikishi_image(pg_id, rec)
+                except Exception as e:
+                    print(f"Postgres update error for id {pg_id}: {e}")
+
+                try:
+                    update_mongo_pfp(pg_id, rec.s3_url)
+                except Exception as e:
+                    print(f"Mongo update error for id {pg_id}: {e}")
             else:
                 misses += 1
                 tried = ", ".join(variants[:3]) + ("..." if len(variants) > 3 else "")

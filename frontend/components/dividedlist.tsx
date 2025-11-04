@@ -80,7 +80,7 @@ export default function DividedList() {
               >
                 {/* West avatar + WIN badge */}
                 <Box sx={{ position: 'relative' }}>
-                  <Avatar size="sm" src="/static/images/avatar/default.jpg" />
+                  <Avatar size="sm" src="/sumo_logo.png" />
                   {match.winner === 'west' && (
                     <Box
                       sx={{
@@ -145,7 +145,7 @@ export default function DividedList() {
 
                 {/* East avatar + WIN badge */}
                 <Box sx={{ position: 'relative' }}>
-                  <Avatar size="sm" src="/static/images/avatar/default.jpg" />
+                  <Avatar size="sm" src="/sumo_logo.png" />
                   {match.winner === 'east' && (
                     <Box
                       sx={{

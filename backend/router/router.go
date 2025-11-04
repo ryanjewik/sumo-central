@@ -11,6 +11,8 @@ func Register(r *gin.Engine, app *handlers.App) {
 	r.POST("/webhook", app.HandleWebhook)
 	// Homepage route - returns the homepage document stored in Mongo
 	r.GET("/", app.Home)
+	// also expose under /homepage for explicit API consumer
+	r.GET("/homepage", app.Home)
 
 	// Rikishi and Basho individual pages (fetch by `id` field in Mongo)
 	r.GET("/rikishi/:id", app.GetRikishi)

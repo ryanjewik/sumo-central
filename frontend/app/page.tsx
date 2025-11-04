@@ -97,7 +97,118 @@ function InnerApp() {
     }, 1400);
   }, []);
 
+  // Shared auth button/pill style for profile and logout buttons
+  const authPillStyle: React.CSSProperties = {
+    minWidth: 88,
+    maxWidth: 140,
+    padding: '0.45rem 0.9rem',
+    borderRadius: '999px',
+    border: '2px solid #563861',
+    background: '#563861',
+    color: '#fff',
+    fontWeight: 600,
+    fontSize: '1rem',
+    fontFamily: 'inherit',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  };
+
   // (Rehydration is handled by AuthProvider)
+  const [homepage, setHomepage] = useState<any | null>(null);
+  const [homepageError, setHomepageError] = useState<string | null>(null);
+  const [homepageLoading, setHomepageLoading] = useState(false);
+  const [bashoUpcomingMatches, setBashoUpcomingMatches] = useState<any[] | null>(null);
+  const [bashoLoading, setBashoLoading] = useState(false);
+  const [bashoError, setBashoError] = useState<string | null>(null);
+
+  // load homepage document from backend (Mongo)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setHomepageLoading(true);
+      try {
+        const res = await fetch('/api/homepage', { credentials: 'include' });
+        if (!mounted) return;
+        if (!res.ok) {
+          setHomepageError(`failed to load homepage: ${res.status}`);
+          setHomepageLoading(false);
+          return;
+        }
+        const doc = await res.json();
+        if (mounted) setHomepage(doc);
+      } catch (err: any) {
+        if (mounted) setHomepageError(err?.message || 'network error');
+      } finally {
+        if (mounted) setHomepageLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // When homepage loads, fetch the most recent basho document (if present)
+  useEffect(() => {
+    let mounted = true;
+    const bashoId = homepage?.most_recent_basho;
+    if (!bashoId) {
+      // clear any previous
+      setBashoUpcomingMatches(null);
+      setBashoError(null);
+      setBashoLoading(false);
+      return;
+    }
+
+    (async () => {
+      setBashoLoading(true);
+      setBashoError(null);
+      try {
+        // The backend exposes /basho/:id; frontend routes API calls under /api/*
+        const res = await fetch(`/api/basho/${encodeURIComponent(String(bashoId))}`, { credentials: 'include' });
+        if (!mounted) return;
+        if (!res.ok) {
+          setBashoError(`failed to load basho: ${res.status}`);
+          setBashoUpcomingMatches([]);
+          setBashoLoading(false);
+          return;
+        }
+        const doc = await res.json();
+        // Normalize upcoming_matches into the shape UpcomingMatchesList expects
+        const rawMatches: any[] = Array.isArray(doc?.upcoming_matches) ? doc.upcoming_matches : [];
+        const normalized = rawMatches.map((m: any, idx: number) => {
+          // match id fallback
+          const id = m.match_number ?? m.id ?? idx + 1;
+          // left side in the UI is treated as WEST (rikishi1)
+          const rikishiWest = m.westshikona ?? m.west_shikona ?? m.west_name ?? m.west ?? m.west_name_local;
+          const rikishiEast = m.eastshikona ?? m.east_shikona ?? m.east_name ?? m.east ?? m.east_name_local;
+          return {
+            id: Number(id),
+            rikishi1: rikishiWest || rikishiEast || 'TBD',
+            rikishi2: rikishiEast || rikishiWest || 'TBD',
+            rikishi1Rank: m.west_rank ?? m.west_rank_label,
+            rikishi2Rank: m.east_rank ?? m.east_rank_label,
+            date: m.match_date ?? doc?.start_date ?? undefined,
+            venue: m.venue ?? doc?.venue,
+            // keep original AI prediction field available for UI indicator
+            ai_prediction: m.AI_prediction ?? m.ai_prediction ?? m.aiPrediction,
+          };
+        });
+
+        if (mounted) setBashoUpcomingMatches(normalized);
+      } catch (err: any) {
+        if (mounted) setBashoError(err?.message || 'network error');
+        if (mounted) setBashoUpcomingMatches([]);
+      } finally {
+        if (mounted) setBashoLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [homepage]);
   // Sample forum post data
   const sampleForumPosts = [
     {
@@ -185,33 +296,17 @@ function InnerApp() {
             </div>
           </div>
           <div className="navbar-right">
-            <button className="navbar-btn">L</button>
+            <button className="navbar-btn" style={authPillStyle}>L</button>
 
             {/* If logged in, show username and logout; otherwise show Sign In */}
             {user ? (
               <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
-                <span
-                  style={{
-                    minWidth: 100,
-                    maxWidth: 140,
-                    width: 120,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    display: 'inline-block',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    borderRadius: '999px',
-                    border: '2px solid #563861',
-                    background: '#563861',
-                    color: '#fff',
-                    fontWeight: 600,
-                    fontSize: '1rem',
-                    fontFamily: 'inherit',
-                    padding: '0.45rem 0.9rem',
-                  }}
-                >
-                  {user.username}
+                <span style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  <span style={authPillStyle}>{user.username}</span>
                 </span>
 
                 <button
@@ -224,17 +319,7 @@ function InnerApp() {
                     }
                     // logout() will setUser(null)
                   }}
-                  style={{
-                    minWidth: 88,
-                    maxWidth: 110,
-                    borderRadius: '0.7rem',
-                    background: '#fff',
-                    color: '#563861',
-                    border: '2px solid #563861',
-                    fontWeight: 600,
-                    padding: '0.4rem 0.8rem',
-                    cursor: 'pointer',
-                  }}
+                  style={authPillStyle}
                 >
                   Logout
                 </button>
@@ -283,6 +368,12 @@ function InnerApp() {
         </div>
       </nav>
       <div id="background">
+        {/* simple dev view: show homepage document returned from Mongo */}
+        <div style={{ maxWidth: 1100, margin: '1rem auto', padding: '0 1rem' }}>
+          {homepageLoading && <div style={{ color: '#563861' }}>Loading homepage...</div>}
+          {homepageError && <div style={{ color: 'red' }}>{homepageError}</div>}
+          {/* homepage document is loaded into components below — avoid printing raw JSON in production */}
+        </div>
         <div className="content-box" style={{ marginTop: '13rem' }}>
           <div
             className="left-bar"
@@ -296,13 +387,13 @@ function InnerApp() {
             }}
           >
             {/* Highlighted Rikishi Card */}
-            <HighlightedRikishiCard />
+            <HighlightedRikishiCard rikishi={homepage?.top_rikishi} />
             {/* End Highlighted Rikishi Card */}
-            <div style={{ flex: 1, paddingBottom: '1rem' }}>
-                <RikishiTable />
-            </div>
+      <div style={{ flex: 1, paddingBottom: '1rem' }}>
+        <RikishiTable topRikishiOrdered={homepage?.top_rikishi_ordered} />
+      </div>
             <div style={{ flex: 1, gap: '1rem', display: 'flex', flexDirection: 'column' }}>
-              <KimariteRadarChart />
+              <KimariteRadarChart kimariteCounts={homepage?.kimarite_usage_most_recent_basho} />
               <LeaderboardTable leaderboard={sampleLeaderboard} />
               <SumoTicketsCard />
             </div>
@@ -314,7 +405,7 @@ function InnerApp() {
               transition: 'opacity 1.1s cubic-bezier(0.77,0,0.175,1)',
             }}
           >
-            <HighlightedMatchCard />
+            <HighlightedMatchCard match={homepage?.highlighted_match} />
 
             {/* Dashboard Section: Climbing Rikishi */}
 
@@ -356,7 +447,7 @@ function InnerApp() {
                     alignSelf: 'stretch',
                   }}
                 >
-                  <ClimbingRikishiCard />
+                  <ClimbingRikishiCard rikishi={homepage?.fast_climber} />
                 </div>
 
                 {/* Right: stats row (two cards) + heya card spanning full width below */}
@@ -504,7 +595,7 @@ function InnerApp() {
                     <div style={{ flex: 1, display: 'flex' }}>
                       {/* Let the chart stretch */}
                       <div style={{ flex: 1, display: 'flex' }}>
-                        <ChartBarInteractive />
+                        <ChartBarInteractive heyaAvgRank={homepage?.heya_avg_rank} heyaRikishiCount={homepage?.heya_counts} />
                       </div>
                     </div>
                   </div>
@@ -531,7 +622,7 @@ function InnerApp() {
                   (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
                 }}
               >
-                <ShusshinHeatMapCard />
+                <ShusshinHeatMapCard shusshinCounts={homepage?.shusshin_counts} />
               </div>
             </div>
 
@@ -549,9 +640,15 @@ function InnerApp() {
             }}
           >
             <div style={{ marginBottom: '1.5rem' }}>
-              <UpcomingMatchesList matches={sampleUpcomingMatches} date={upcomingDate}/>
+              <UpcomingMatchesList
+                matches={bashoUpcomingMatches ?? sampleUpcomingMatches}
+                date={
+                  // prefer a date derived from the first basho match or fall back to the sample upcoming date
+                  (bashoUpcomingMatches && bashoUpcomingMatches.length > 0 && bashoUpcomingMatches[0].date) || upcomingDate
+                }
+              />
             </div>
-            <RecentMatchesList date={recentMatchesDate} />
+            <RecentMatchesList date={recentMatchesDate} matches={homepage?.recent_matches ? Object.values(homepage.recent_matches) : undefined} />
           </div>
         </div>
       </div>

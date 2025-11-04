@@ -87,17 +87,30 @@ const CustomRadarChartTick = (props: any) => {
     );
 };
 
-const radarData = [
-    { technique: "Yorikiri", Hoshoryu: 12, Terunofuji: 18, Takakeisho: 5, Asanoyama: 9, Wakatakakage: 7, Shodai: 6 },
-    { technique: "Oshidashi", Hoshoryu: 7, Terunofuji: 3, Takakeisho: 15, Asanoyama: 8, Wakatakakage: 6, Shodai: 5 },
-    { technique: "Hatakikomi", Hoshoryu: 4, Terunofuji: 2, Takakeisho: 8, Asanoyama: 3, Wakatakakage: 2, Shodai: 4 },
-    { technique: "Tsukiotoshi", Hoshoryu: 2, Terunofuji: 1, Takakeisho: 6, Asanoyama: 2, Wakatakakage: 1, Shodai: 3 },
-    { technique: "Uwatenage", Hoshoryu: 6, Terunofuji: 9, Takakeisho: 1, Asanoyama: 4, Wakatakakage: 3, Shodai: 2 },
-    { technique: "Kotenage", Hoshoryu: 3, Terunofuji: 4, Takakeisho: 2, Asanoyama: 2, Wakatakakage: 1, Shodai: 1 },
-    { technique: "Sukuinage", Hoshoryu: 1, Terunofuji: 5, Takakeisho: 0, Asanoyama: 1, Wakatakakage: 0, Shodai: 0 },
+const radarDataDefault = [
+        { technique: "Yorikiri", Hoshoryu: 12, Terunofuji: 18, Takakeisho: 5, Asanoyama: 9, Wakatakakage: 7, Shodai: 6 },
+        { technique: "Oshidashi", Hoshoryu: 7, Terunofuji: 3, Takakeisho: 15, Asanoyama: 8, Wakatakakage: 6, Shodai: 5 },
+        { technique: "Hatakikomi", Hoshoryu: 4, Terunofuji: 2, Takakeisho: 8, Asanoyama: 3, Wakatakakage: 2, Shodai: 4 },
+        { technique: "Tsukiotoshi", Hoshoryu: 2, Terunofuji: 1, Takakeisho: 6, Asanoyama: 2, Wakatakakage: 1, Shodai: 3 },
+        { technique: "Uwatenage", Hoshoryu: 6, Terunofuji: 9, Takakeisho: 1, Asanoyama: 4, Wakatakakage: 3, Shodai: 2 },
+        { technique: "Kotenage", Hoshoryu: 3, Terunofuji: 4, Takakeisho: 2, Asanoyama: 2, Wakatakakage: 1, Shodai: 1 },
+        { technique: "Sukuinage", Hoshoryu: 1, Terunofuji: 5, Takakeisho: 0, Asanoyama: 1, Wakatakakage: 0, Shodai: 0 },
 ];
 
-const KimariteRadarChart: React.FC = () => {
+interface KimariteRadarChartProps {
+    kimariteCounts?: Record<string, number>;
+}
+
+const KimariteRadarChart: React.FC<KimariteRadarChartProps> = ({ kimariteCounts }) => {
+    // if backend provides `kimarite_usage_most_recent_basho` as an object { technique: count }
+    // take the top 6 techniques by count and convert to radar data with a single series named 'Usage'
+    let radarData = radarDataDefault;
+    if (kimariteCounts && Object.keys(kimariteCounts).length > 0) {
+        const entries = Object.entries(kimariteCounts).map(([k, v]) => ({ technique: k, Usage: v }));
+        entries.sort((a, b) => (b.Usage as number) - (a.Usage as number));
+        const top = entries.slice(0, 6);
+        radarData = top.map(e => ({ technique: e.technique, Usage: e.Usage } as any));
+    }
     const colors: Record<string, string> = {
         Hoshoryu: "text-utility-brand-600",
         Terunofuji: "text-utility-pink-500",
@@ -123,23 +136,19 @@ const KimariteRadarChart: React.FC = () => {
                 color: mainTextColor,
             }}
         >
-            <div
-                style={{
-                    fontWeight: 'bold',
-                    fontSize: 'clamp(1rem, 1.2vw, 1.5rem)',
-                    marginBottom: '1rem',
-                    color: mainTextColor,
-                    fontFamily: 'Courier New, Courier, monospace',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    width: '100%',
-                    textAlign: 'center',
-                }}
-            >
-                Top Rikishi Kimarite Usage
-            </div>
-            <ResponsiveContainer width="100%" height="100%">
+                    <div
+                        style={{
+                            fontWeight: 800,
+                            fontSize: 'clamp(0.95rem, 1.1vw, 1.25rem)',
+                            marginBottom: '0.75rem',
+                            color: mainTextColor,
+                            fontFamily: 'Courier New, Courier, monospace',
+                            textAlign: 'center',
+                        }}
+                    >
+                        Top Kimarite Usage (most recent basho)
+                    </div>
+            <ResponsiveContainer width="100%" height={420}>
                 <RechartsRadarChart
                     cx="50%"
                     cy="50%"
@@ -148,30 +157,39 @@ const KimariteRadarChart: React.FC = () => {
                     className="size-full font-medium text-tertiary [&_.recharts-polar-grid]:text-utility-gray-100 [&_.recharts-text]:text-sm"
                     margin={{ left: 0, right: 0, top: 0, bottom: 0 }}
                 >
-                    <Legend
-                        verticalAlign="bottom"
-                        align="center"
-                        layout="horizontal"
-                        content={CustomLegend}
-                    />
+                                        {/* show a compact legend only for multi-rikishi demo; for single 'Usage' series we show no legend */}
+                                        {!(kimariteCounts && Object.keys(kimariteCounts).length > 0) && (
+                                            <Legend
+                                                verticalAlign="bottom"
+                                                align="center"
+                                                layout="horizontal"
+                                                content={CustomLegend}
+                                            />
+                                        )}
                     <PolarGrid stroke="currentColor" className="text-utility-gray-100" />
                     <PolarAngleAxis
                         dataKey="technique"
                         stroke="currentColor"
-                        tick={({ x, y, textAnchor, index, payload, ...props }) => (
-                            <text
-                                x={x}
-                                y={index === 0 ? Number(y) - 14 : index === 3 || index === 4 ? Number(y) + 10 : Number(y)}
-                                textAnchor={textAnchor}
-                                {...props}
-                                className={cx("recharts-text recharts-polar-angle-axis-tick-value", props.className)}
-                                fill={axisTextColor}
-                            >
-                                <tspan dy="0em" style={{ fill: axisTextColor }} className="text-xs font-medium">
-                                    {payload.value}
-                                </tspan>
-                            </text>
-                        )}
+                        tick={({ x, y, textAnchor, index, payload, ...props }) => {
+                            // shorten long technique names for radial ticks
+                            const label = String(payload.value || '');
+                            const short = label.length > 18 ? `${label.slice(0, 16)}…` : label;
+                            const yAdj = index === 0 ? Number(y) - 14 : index === 3 || index === 4 ? Number(y) + 10 : Number(y);
+                            return (
+                                <text
+                                    x={x}
+                                    y={yAdj}
+                                    textAnchor={textAnchor}
+                                    {...props}
+                                    className={cx("recharts-text recharts-polar-angle-axis-tick-value", props.className)}
+                                    fill={axisTextColor}
+                                >
+                                    <tspan dy="0em" style={{ fill: axisTextColor }} className="text-xs font-medium">
+                                        {short}
+                                    </tspan>
+                                </text>
+                            );
+                        }}
                         tickLine={false}
                         axisLine={false}
                     />
@@ -182,85 +200,114 @@ const KimariteRadarChart: React.FC = () => {
                         angle={90}
                         domain={[0, 20]}
                     />
+                    {/* Custom tooltip: show technique and value formatted for single-series or multi-series */}
                     <Tooltip
-                        content={<ChartTooltipContent />}
+                        content={({ active, payload }) => {
+                            if (!active || !payload || !payload.length) return null;
+                            const p = payload[0];
+                            const name = p?.payload?.technique ?? p?.name ?? '';
+                            // find the numeric value from available keys
+                            const val = p?.payload?.Usage ?? Object.values(p?.payload ?? {}).filter(v => typeof v === 'number')[0] ?? p?.value;
+                            return (
+                                <div style={{ padding: 8, background: '#fff', border: '1px solid #e0a3c2', color: '#563861', borderRadius: 8 }}>
+                                    <div style={{ fontWeight: 800 }}>{String(name)}</div>
+                                    <div style={{ fontSize: 13 }}>Count: <strong>{Number(val ?? 0)}</strong></div>
+                                </div>
+                            );
+                        }}
                         cursor={{
                             className: "stroke-utility-brand-600  stroke-2",
                             style: { transform: "translateZ(0)" },
                         }}
                     />
-                    <Radar
-                        isAnimationActive={false}
-                        className={colors["Hoshoryu"]}
-                        dataKey="Hoshoryu"
-                        name="Hoshoryu"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinejoin="round"
-                        fill="currentColor"
-                        fillOpacity={0.2}
-                        activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
-                    />
-                    <Radar
-                        isAnimationActive={false}
-                        className={colors["Terunofuji"]}
-                        dataKey="Terunofuji"
-                        name="Terunofuji"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinejoin="round"
-                        fill="currentColor"
-                        fillOpacity={0.2}
-                        activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
-                    />
-                    <Radar
-                        isAnimationActive={false}
-                        className={colors["Takakeisho"]}
-                        dataKey="Takakeisho"
-                        name="Takakeisho"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinejoin="round"
-                        fill="currentColor"
-                        fillOpacity={0.2}
-                        activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
-                    />
-                    <Radar
-                        isAnimationActive={false}
-                        className={colors["Asanoyama"]}
-                        dataKey="Asanoyama"
-                        name="Asanoyama"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinejoin="round"
-                        fill="currentColor"
-                        fillOpacity={0.2}
-                        activeDot={{ className: "fill-bg-primary stroke-utility-green-500 stroke-2" }}
-                    />
-                    <Radar
-                        isAnimationActive={false}
-                        className={colors["Wakatakakage"]}
-                        dataKey="Wakatakakage"
-                        name="Wakatakakage"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinejoin="round"
-                        fill="currentColor"
-                        fillOpacity={0.2}
-                        activeDot={{ className: "fill-bg-primary stroke-utility-orange-500 stroke-2" }}
-                    />
-                    <Radar
-                        isAnimationActive={false}
-                        className={colors["Shodai"]}
-                        dataKey="Shodai"
-                        name="Shodai"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinejoin="round"
-                        fill="currentColor"
-                        fillOpacity={0.2}
-                        activeDot={{ className: "fill-bg-primary stroke-utility-purple-500 stroke-2" }}
-                    />
+                    {/* If kimariteCounts provided we render a single series named 'Usage' */}
+                    {kimariteCounts && Object.keys(kimariteCounts).length > 0 ? (
+                        <Radar
+                            isAnimationActive={false}
+                            dataKey="Usage"
+                            name="Usage"
+                            stroke="#563861"
+                            strokeWidth={2}
+                            strokeLinejoin="round"
+                            fill="#563861"
+                            fillOpacity={0.2}
+                        />
+                    ) : (
+                        <>
+                            <Radar
+                                isAnimationActive={false}
+                                className={colors["Hoshoryu"]}
+                                dataKey="Hoshoryu"
+                                name="Hoshoryu"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                                strokeLinejoin="round"
+                                fill="currentColor"
+                                fillOpacity={0.2}
+                                activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
+                            />
+                            <Radar
+                                isAnimationActive={false}
+                                className={colors["Terunofuji"]}
+                                dataKey="Terunofuji"
+                                name="Terunofuji"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                                strokeLinejoin="round"
+                                fill="currentColor"
+                                fillOpacity={0.2}
+                                activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
+                            />
+                            <Radar
+                                isAnimationActive={false}
+                                className={colors["Takakeisho"]}
+                                dataKey="Takakeisho"
+                                name="Takakeisho"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                                strokeLinejoin="round"
+                                fill="currentColor"
+                                fillOpacity={0.2}
+                                activeDot={{ className: "fill-bg-primary stroke-utility-brand-600 stroke-2" }}
+                            />
+                            <Radar
+                                isAnimationActive={false}
+                                className={colors["Asanoyama"]}
+                                dataKey="Asanoyama"
+                                name="Asanoyama"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                                strokeLinejoin="round"
+                                fill="currentColor"
+                                fillOpacity={0.2}
+                                activeDot={{ className: "fill-bg-primary stroke-utility-green-500 stroke-2" }}
+                            />
+                            <Radar
+                                isAnimationActive={false}
+                                className={colors["Wakatakakage"]}
+                                dataKey="Wakatakakage"
+                                name="Wakatakakage"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                                strokeLinejoin="round"
+                                fill="currentColor"
+                                fillOpacity={0.2}
+                                activeDot={{ className: "fill-bg-primary stroke-utility-orange-500 stroke-2" }}
+                            />
+                            <Radar
+                                isAnimationActive={false}
+                                className={colors["Shodai"]}
+                                dataKey="Shodai"
+                                name="Shodai"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                                strokeLinejoin="round"
+                                fill="currentColor"
+                                fillOpacity={0.2}
+                                activeDot={{ className: "fill-bg-primary stroke-utility-purple-500 stroke-2" }}
+                            />
+                        </>
+                    )}
                 </RechartsRadarChart>
             </ResponsiveContainer>
         </div>
