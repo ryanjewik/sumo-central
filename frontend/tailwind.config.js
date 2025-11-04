@@ -1,8 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    "./app/**/*.{ts,tsx,js,jsx,mdx}",
+    "./components/**/*.{ts,tsx,js,jsx,mdx}",
+    "./providers/**/*.{ts,tsx,js,jsx,mdx}",
+    "./lib/**/*.{ts,tsx,js,jsx,mdx}",
+    "./styles/**/*.{css}"
   ],
   theme: {
     extend: {
@@ -26,12 +29,8 @@ export default {
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
         heading: ['Space Grotesk', 'sans-serif'],
       },
-      boxShadow: {
-        xs: '0 1px 2px 0 rgba(0,0,0,0.05)',
-      },
-      borderRadius: {
-        xl: '1rem',
-      },
+      boxShadow: { xs: '0 1px 2px 0 rgba(0,0,0,0.05)' },
+      borderRadius: { xl: '1rem' },
     },
   },
   plugins: [

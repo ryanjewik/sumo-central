@@ -179,10 +179,11 @@ func (a *App) Refresh(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	// Validate refresh token in DB: not revoked and not expired
+	// Validate refresh token in DB: not revoked and not expired. Also fetch username
 	var userID string
 	var expires time.Time
-	err = a.PG.QueryRow(ctx, "SELECT user_id, expires_at FROM refresh_tokens WHERE token=$1 AND revoked=false", rt).Scan(&userID, &expires)
+	var username string
+	err = a.PG.QueryRow(ctx, "SELECT rt.user_id, rt.expires_at, u.username FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id WHERE rt.token=$1 AND rt.revoked=false", rt).Scan(&userID, &expires, &username)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
 		return
@@ -217,10 +218,11 @@ func (a *App) Refresh(c *gin.Context) {
 		return
 	}
 
-	// Issue new access token
+	// Issue new access token (include username so client can rehydrate display)
 	accessTok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": userID,
-		"exp": time.Now().Add(1 * time.Hour).Unix(),
+		"sub":  userID,
+		"name": username,
+		"exp":  time.Now().Add(1 * time.Hour).Unix(),
 	})
 	signed, err := accessTok.SignedString([]byte(a.Cfg.JWTSecret))
 	if err != nil {

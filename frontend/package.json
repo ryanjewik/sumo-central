@@ -1,14 +1,12 @@
 {
-  "name": "frontend",
+  "name": "sumopedia-frontend",
+  "version": "0.2.0",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-  "build": "tsc -b && vite build",
-  "build:docker": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -18,42 +16,31 @@
     "@mui/joy": "^5.0.0-beta.52",
     "@mui/material": "^7.3.2",
     "@mui/x-charts": "^8.11.2",
-    "@tailwindcss/vite": "^4.1.13",
     "@untitledui/icons": "^0.0.19",
     "@vnedyalk0v/react19-simple-maps": "github:vnedyalk0v/react19-simple-maps",
-    "autoprefixer": "^10.4.21",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.544.0",
-    "react": "^19.1.1",
+    "next": "16.0.1",
+    "react": "19.2.0",
     "react-aria-components": "^1.12.1",
-    "react-dom": "^19.1.1",
-    "react-router-dom": "^7.8.2",
+    "react-dom": "19.2.0",
     "recharts": "^2.15.4",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "tailwindcss-react-aria-components": "^2.0.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.33.0",
     "@tailwindcss/postcss": "^4.1.13",
-    "@tailwindcss/typography": "^0.5.16",
-    "@types/node": "^24.3.1",
-    "@types/react": "^19.1.13",
-    "@types/react-dom": "^19.1.7",
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "@types/recharts": "^1.8.29",
-    "@vitejs/plugin-react": "^5.0.2",
-    "@vitejs/plugin-react-swc": "^4.0.0",
-    "eslint": "^9.33.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.20",
-    "globals": "^16.3.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.13",
-    "typescript": "~5.8.3",
-    "typescript-eslint": "^8.39.1",
-    "vite": "^7.1.5"
+    "typescript": "^5"
   }
-  ,
-  "proxy": "http://localhost:5000"
 }

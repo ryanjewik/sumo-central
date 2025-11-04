@@ -1,24 +1,18 @@
-# Node and build outputs
 node_modules
+.next
 dist
-
-# Git
-.git
-
-# Logs
-npm-debug.log*
-pnpm-debug.log*
-
-# OS files
+build
 .DS_Store
-Thumbs.db
-
-# IDEs
+.git
+.gitignore
+.env
+.env.local
+npm-debug.log
+yarn-error.log
+coverage
 .vscode
 .idea
-
-# Local env variants but keep main .env in context (Vite may need it at build time)
-.env.*
-
-# Misc
-coverage
+/.cache
+/dist
+/.turbo
+*.tgz

@@ -16,6 +16,8 @@ services:
       - DB_USERNAME=${DB_USERNAME}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
+      # JWT secret for signing tokens in dev. In production set a secure secret via env.
+      - JWT_SECRET=dev_jwt_secret_change_me
     networks:
       - sumo_net
       - airflow
@@ -24,12 +26,22 @@ services:
     build:
       context: ./frontend
     image: sumo-frontend:local
+    # Map host 8081 -> container 3000 (Next.js dev/start default)
     ports:
-      # host:container -> map host 8081 to nginx:80 inside container
-      - "8081:80"
+      - "8081:3000"
     restart: unless-stopped
     depends_on:
       - gin-backend
+    # Mount source for live dev inside the container and ensure node_modules is isolated
+    volumes:
+      - ./frontend:/app:cached
+      - /app/node_modules
+    working_dir: /app
+    environment:
+      - NODE_ENV=development
+      # Allow the frontend to talk to the backend by docker service name
+      - BACKEND_URL=http://gin-backend:8080
+    command: sh -c "npm install --no-audit --no-fund && npm run dev"
     networks:
       - sumo_net
       - airflow
