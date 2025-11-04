@@ -33,11 +33,21 @@ const defaultRawData = [
 
 export function RikishiTable({ topRikishiOrdered }: RikishiTableProps) {
   // map incoming ordered list (from homepage.top_rikishi_ordered) to table rows
-  const data = (topRikishiOrdered && Array.isArray(topRikishiOrdered) && topRikishiOrdered.length > 0)
-    ? topRikishiOrdered.map((r: any, idx: number) => ({
+  let sourceList: any[] = [];
+  if (topRikishiOrdered) {
+    if (Array.isArray(topRikishiOrdered)) {
+      sourceList = topRikishiOrdered;
+    } else if (typeof topRikishiOrdered === 'object') {
+      // sometimes the backend stores ordered rikishi as an object/map — take values
+      sourceList = Object.values(topRikishiOrdered as any);
+    }
+  }
+
+  const data = (sourceList && sourceList.length > 0)
+    ? sourceList.map((r: any, idx: number) => ({
       id: r.id ?? r._id ?? idx,
-      name: r.shikona ?? r.name ?? 'Unknown',
-      rank: r.current_rank ?? r.rank ?? '',
+      name: r.shikona ?? r.name ?? r.display_name ?? 'Unknown',
+      rank: r.current_rank ?? r.rank ?? r.rank_label ?? '',
       wins: r.wins ?? r.win_count ?? 0,
       profile: (r.photo_url ?? r.profile ?? '/sumo_logo.png'),
       index: idx,
@@ -60,7 +70,7 @@ export function RikishiTable({ topRikishiOrdered }: RikishiTableProps) {
           <Table.Body items={data}>
             {(item) => (
               <Table.Row
-                key={item.id}
+                key={`${item.id ?? 'r'}-${item.index}`}
                 columns={columns}
                 // make rows keyboard accessible; clicking navigates to rikishi page
                 className="cursor-pointer"

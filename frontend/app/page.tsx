@@ -119,6 +119,9 @@ function InnerApp() {
   const [homepage, setHomepage] = useState<any | null>(null);
   const [homepageError, setHomepageError] = useState<string | null>(null);
   const [homepageLoading, setHomepageLoading] = useState(false);
+  const [bashoUpcomingMatches, setBashoUpcomingMatches] = useState<any[] | null>(null);
+  const [bashoLoading, setBashoLoading] = useState(false);
+  const [bashoError, setBashoError] = useState<string | null>(null);
 
   // load homepage document from backend (Mongo)
   useEffect(() => {
@@ -145,6 +148,67 @@ function InnerApp() {
       mounted = false;
     };
   }, []);
+
+  // When homepage loads, fetch the most recent basho document (if present)
+  useEffect(() => {
+    let mounted = true;
+    const bashoId = homepage?.most_recent_basho;
+    if (!bashoId) {
+      // clear any previous
+      setBashoUpcomingMatches(null);
+      setBashoError(null);
+      setBashoLoading(false);
+      return;
+    }
+
+    (async () => {
+      setBashoLoading(true);
+      setBashoError(null);
+      try {
+        // The backend exposes /basho/:id; frontend routes API calls under /api/*
+        const res = await fetch(`/api/basho/${encodeURIComponent(String(bashoId))}`, { credentials: 'include' });
+        if (!mounted) return;
+        if (!res.ok) {
+          setBashoError(`failed to load basho: ${res.status}`);
+          setBashoUpcomingMatches([]);
+          setBashoLoading(false);
+          return;
+        }
+        const doc = await res.json();
+        // Normalize upcoming_matches into the shape UpcomingMatchesList expects
+        const rawMatches: any[] = Array.isArray(doc?.upcoming_matches) ? doc.upcoming_matches : [];
+        const normalized = rawMatches.map((m: any, idx: number) => {
+          // match id fallback
+          const id = m.match_number ?? m.id ?? idx + 1;
+          // left side in the UI is treated as WEST (rikishi1)
+          const rikishiWest = m.westshikona ?? m.west_shikona ?? m.west_name ?? m.west ?? m.west_name_local;
+          const rikishiEast = m.eastshikona ?? m.east_shikona ?? m.east_name ?? m.east ?? m.east_name_local;
+          return {
+            id: Number(id),
+            rikishi1: rikishiWest || rikishiEast || 'TBD',
+            rikishi2: rikishiEast || rikishiWest || 'TBD',
+            rikishi1Rank: m.west_rank ?? m.west_rank_label,
+            rikishi2Rank: m.east_rank ?? m.east_rank_label,
+            date: m.match_date ?? doc?.start_date ?? undefined,
+            venue: m.venue ?? doc?.venue,
+            // keep original AI prediction field available for UI indicator
+            ai_prediction: m.AI_prediction ?? m.ai_prediction ?? m.aiPrediction,
+          };
+        });
+
+        if (mounted) setBashoUpcomingMatches(normalized);
+      } catch (err: any) {
+        if (mounted) setBashoError(err?.message || 'network error');
+        if (mounted) setBashoUpcomingMatches([]);
+      } finally {
+        if (mounted) setBashoLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [homepage]);
   // Sample forum post data
   const sampleForumPosts = [
     {
@@ -576,7 +640,13 @@ function InnerApp() {
             }}
           >
             <div style={{ marginBottom: '1.5rem' }}>
-              <UpcomingMatchesList matches={sampleUpcomingMatches} date={upcomingDate}/>
+              <UpcomingMatchesList
+                matches={bashoUpcomingMatches ?? sampleUpcomingMatches}
+                date={
+                  // prefer a date derived from the first basho match or fall back to the sample upcoming date
+                  (bashoUpcomingMatches && bashoUpcomingMatches.length > 0 && bashoUpcomingMatches[0].date) || upcomingDate
+                }
+              />
             </div>
             <RecentMatchesList date={recentMatchesDate} matches={homepage?.recent_matches ? Object.values(homepage.recent_matches) : undefined} />
           </div>
