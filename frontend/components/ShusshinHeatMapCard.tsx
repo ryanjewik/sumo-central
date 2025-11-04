@@ -72,7 +72,7 @@ export function ShusshinHeatMapCard({ shusshinCounts }: ShusshinHeatMapCardProps
         </span>
       </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 320 }}>
+  <div style={{ flex: '2 1 320px', minWidth: 320 }}>
           <div style={{ width: '100%', height: 320, background: '#f9f6ef', borderRadius: 12, overflow: 'hidden', border: '1px solid #e0a3c2' }}>
             <ComposableMap
               projection="geoMercator"
@@ -125,19 +125,21 @@ export function ShusshinHeatMapCard({ shusshinCounts }: ShusshinHeatMapCardProps
           </div>
         </div>
 
-        <aside style={{ width: 220, minWidth: 180, background: '#fff', borderRadius: 12, padding: 12, border: '1px solid #e0a3c2' }}>
-          <div style={{ fontWeight: 800, color: '#563861', marginBottom: 8 }}>Top Birthplaces</div>
+  <aside style={{ flex: '1 1 260px', minWidth: 180, background: '#fff', borderRadius: 12, padding: 10, border: '1px solid #e0a3c2' }}>
+          <div style={{ fontWeight: 800, color: '#563861', marginBottom: 6, fontSize: 14 }}>Top Birthplaces</div>
           {topMarkers.length === 0 && (
             <div style={{ color: '#6b7280' }}>No data</div>
           )}
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Make the list a responsive grid so items can flow into multiple columns
+              when the aside has horizontal room. This reduces vertical height. */}
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
             {topMarkers.map((t) => (
-              <li key={t.name} title={t.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 9999, background: '#563861', opacity: 0.6 }} />
-                  <span style={{ fontSize: 13, color: '#374151' }}>{t.name.length > 26 ? `${t.name.slice(0, 24)}…` : t.name}</span>
+              <li key={t.name} title={t.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '2px 4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 9999, background: '#563861', opacity: 0.6, flex: '0 0 10px' }} />
+                  <span style={{ fontSize: 13, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
                 </div>
-                <div style={{ fontWeight: 800, color: '#563861' }}>{t.count}</div>
+                <div style={{ fontWeight: 800, color: '#563861', marginLeft: 8 }}>{t.count}</div>
               </li>
             ))}
           </ul>

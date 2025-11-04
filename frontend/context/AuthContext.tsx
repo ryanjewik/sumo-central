@@ -24,7 +24,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let mounted = true;
     (async () => {
       try {
-        const info = await authLib.tryRefresh();
+        // Try a few times with small backoff. Some browsers behave differently
+        // on a plain reload vs reload-with-devtools-open (timing, caching,
+        // or request ordering). Retrying briefly often reproduces the
+        // "works with DevTools" case and makes auth more robust.
+        const delays = [0, 200, 800];
+        let info: { id?: string; username?: string } | null = null;
+        for (let i = 0; i < delays.length; i++) {
+          if (delays[i] > 0) await new Promise((res) => setTimeout(res, delays[i]));
+          try {
+            // Debug: log attempts so we can correlate with backend logs
+            // eslint-disable-next-line no-console
+            console.debug(`[auth] tryRefresh attempt ${i + 1}`);
+            // call the library function
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            info = await authLib.tryRefresh();
+            if (info && info.id) break;
+          } catch (err) {
+            // swallow and continue to retry
+          }
+        }
+
         if (mounted && info && info.id) {
           setUser({ id: info.id, username: info.username || '' });
         }
