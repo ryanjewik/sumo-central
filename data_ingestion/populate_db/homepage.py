@@ -384,16 +384,16 @@ homepage_doc = {
     "_homepage_doc": True,
     "most_recent_basho": most_recent_basho,
     "most_recent_basho_date": date,
-    "ordered_top_rikishi": ordered_top_rikishi,
+    "top_rikishi_ordered": ordered_top_rikishi,
     "top_rikishi": top_rikishi,
-    "top_rikishi_kimarite_counts": kimarite_counts,
-    "recent_makuuchi_matches": recent_matches,
+    "kimarite_counts": kimarite_counts,
+    "recent_matches": recent_matches,
     "highlighted_match": highlighted_match,
     "heya_counts": heya_counts_clean,
     "shusshin_counts": shusshin_counts_clean,
     "heya_avg_rank": heya_avg_rank,
     "kimarite_usage_most_recent_basho": kimarite_usage_dict,
-    "rikishi_average_stats": avg_stats,
+    "avg_stats": avg_stats,
 }
 
 if locals().get('fast_climber_dict') is not None:
