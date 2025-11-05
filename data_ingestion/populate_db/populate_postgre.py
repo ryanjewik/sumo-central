@@ -74,6 +74,19 @@ if conn: # drop and create tables-----------------------------------------------
             current_rank VARCHAR(255),
             heya VARCHAR(255),
             shusshin VARCHAR(255),
+            -- Image / media metadata added so update_rikishi_image() can write S3/Commons fields
+            image_url TEXT,
+            commons_source_url TEXT,
+            license VARCHAR(255),
+            license_url TEXT,
+            attribution_html TEXT,
+            credit_html TEXT,
+            s3_key TEXT,
+            s3_url TEXT,
+            -- image dimensions and mime type
+            width INT,
+            height INT,
+            mime VARCHAR(255),
             current_height INT,
             current_weight INT,
             debut DATE,
@@ -177,6 +190,9 @@ if conn: # drop and create tables-----------------------------------------------
             prediction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             is_correct BOOLEAN
         );
+        ALTER TABLE match_predictions
+        ADD CONSTRAINT uniq_user_match
+        UNIQUE (user_id, match_id);
         '''
         cursor.execute(create_match_predictions_table_query)
         conn.commit()
@@ -225,6 +241,24 @@ if conn: # drop and create tables-----------------------------------------------
         cursor.execute(create_shikona_changes_table_query)
         conn.commit()
         print("✅ Rikishi shikona changes table ensured in database.")
+        
+        
+        create_refresh_token_table_query = '''
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+        token UUID PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL,
+        revoked BOOLEAN DEFAULT FALSE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+        '''
+        cursor.execute(create_refresh_token_table_query)
+        conn.commit()
+        print("✅ Refresh tokens table ensured in database.")
+        
+        
     except Exception as e:
         print("❌ Error creating tables:", e)
 
