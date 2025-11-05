@@ -397,7 +397,7 @@ homepage_doc = {
 }
 
 if locals().get('fast_climber_dict') is not None:
-    homepage_doc['fast_climbing_rikishi'] = fast_climber_dict
+    homepage_doc['fast_climber'] = fast_climber_dict
 
 # sanitize and insert
 homepage_doc = convert_dates(convert_decimals(homepage_doc))
