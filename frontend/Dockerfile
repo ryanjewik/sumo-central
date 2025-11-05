@@ -1,10 +1,19 @@
 # Production multi-stage Dockerfile for Next.js
 ARG NODE_VERSION=20
+ARG NEXT_PUBLIC_BACKEND_URL
+
+# Expose build-time backend URL to the builder so Next can embed it at build-time when
+# process.env.NEXT_PUBLIC_BACKEND_URL is read by next.config.ts or application code.
 
 # Builder: install deps and build the app
 FROM node:${NODE_VERSION}-alpine AS builder
 WORKDIR /app
 ENV PATH=/app/node_modules/.bin:$PATH
+
+# Set the build-time backend URL for the builder stage
+ARG NEXT_PUBLIC_BACKEND_URL
+ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+ENV BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
 
 # Copy package files and install dependencies
 COPY package.json package-lock.json* ./

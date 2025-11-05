@@ -9,6 +9,10 @@ import (
 func Register(r *gin.Engine, app *handlers.App) {
 	r.GET("/health", app.Health)
 	r.POST("/webhook", app.HandleWebhook)
+	// in your router setup
+	r.GET("/webhook", func(c *gin.Context) { c.String(200, "ok") })
+	r.HEAD("/webhook", func(c *gin.Context) { c.Status(200) })
+
 	// Homepage route - returns the homepage document stored in Mongo
 	r.GET("/", app.Home)
 	// also expose under /homepage for explicit API consumer
