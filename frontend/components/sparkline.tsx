@@ -12,11 +12,13 @@ import { chartsAxisHighlightClasses } from '@mui/x-charts/ChartsAxisHighlight';
 interface RikishiSparklineProps {
   data?: number[]; // optional array of 0/1 (loss/win) or numeric metric
   title?: string;
+  rikishiId?: string | number;
 }
 
-// Generate random win/loss data for last 30 matches (1 = win, 0 = loss) if no data provided
+// Deterministic placeholder win/loss data for SSR (avoids hydration mismatch).
+// We may replace this with client-side random data after hydration for visual variety.
 const defaultMatches = 30;
-const defaultWinLossRaw = Array.from({ length: defaultMatches }, () => Math.random() > 0.5 ? 1 : 0);
+const defaultWinLossRaw = Array.from({ length: defaultMatches }, (_, i) => (i % 2 === 0 ? 1 : 0));
 
 // Helper: convert binary win/loss series to running win/loss ratio
 const computeRunningRatio = (series: number[]) => series.map((_, i) => {
@@ -48,15 +50,105 @@ const baseSettings: Omit<SparkLineChartProps, 'data' | 'xAxis' | 'yAxis'> = {
   axisHighlight: { x: 'line' },
 };
 
-export default function RikishiWinLossSparkline({ data, title }: RikishiSparklineProps) {
-  const series = (Array.isArray(data) && data.length > 0) ? data.map(d => Number(d) || 0) : defaultWinLossRaw;
-  const matchLabels = Array.from({ length: series.length }, (_, i) => `Match ${i + 1}`);
+export default function RikishiWinLossSparkline({ data, title, rikishiId }: RikishiSparklineProps) {
+  const [fetchedSeries, setFetchedSeries] = React.useState<number[] | null>(null);
+  const [fetchedLabels, setFetchedLabels] = React.useState<string[] | null>(null);
+
+  const series = React.useMemo(() => {
+    if (Array.isArray(data) && data.length > 0) return data.map(d => Number(d) || 0);
+    if (fetchedSeries && fetchedSeries.length > 0) return fetchedSeries;
+    return defaultWinLossRaw;
+  }, [data, fetchedSeries]);
+
+  const matchLabels = React.useMemo(() => {
+    if (fetchedLabels && fetchedLabels.length > 0) return fetchedLabels;
+    return Array.from({ length: series.length }, (_, i) => `Match ${i + 1}`);
+  }, [fetchedLabels, series.length]);
+
   const winLossRatio = computeRunningRatio(series);
   const minY = Math.min(...winLossRatio);
   const maxY = Math.max(...winLossRatio);
   const yPadding = (maxY - minY) * 0.15 || 0.2;
 
   const [matchIndex, setMatchIndex] = React.useState<null | number>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+    if (rikishiId == null) return () => { mounted = false };
+
+    (async () => {
+      try {
+        const id = String(rikishiId);
+        const res = await fetch(`/api/rikishi/${encodeURIComponent(id)}`);
+        if (!mounted) return;
+        if (!res.ok) return;
+        const doc = await res.json();
+        if (!doc) return;
+
+        const matchesObj = doc.matches ?? {};
+        const entries = Object.entries(matchesObj as Record<string, unknown>);
+
+        const parsedAll = entries.map(([key, val]) => {
+          const dateStr = String(key).slice(0, 10);
+          const date = new Date(dateStr);
+          return { key, date: isNaN(date.getTime()) ? null : date, val } as { key: string; date: Date | null; val: unknown };
+        });
+        const parsed = parsedAll.filter(e => e.date != null) as { key: string; date: Date; val: unknown }[];
+
+        parsed.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+        const winLossSeries: number[] = [];
+        const labels: string[] = [];
+
+        for (const p of parsed) {
+          const match = p.val as Record<string, unknown>;
+          let winner: unknown = (match && (match['winner'] ?? match['winner_id'] ?? match['winning_side'])) ?? null;
+          if (winner === 'east' || winner === 'west') {
+            const eastObj = match && match['east'] as Record<string, unknown> | undefined;
+            const westObj = match && match['west'] as Record<string, unknown> | undefined;
+            const eastId = (match && (match['east_rikishi_id'] ?? match['east_id'] ?? (eastObj && eastObj['id']))) ?? null;
+            const westId = (match && (match['west_rikishi_id'] ?? match['west_id'] ?? (westObj && westObj['id']))) ?? null;
+            winner = (winner === 'east') ? eastId : westId;
+          }
+
+          // If winner is an object with id/_id, resolve
+          if (winner && typeof winner === 'object') {
+            const w = winner as Record<string, unknown>;
+            winner = (w['id'] ?? w['_id']) ?? winner;
+          }
+
+          const won = (winner != null) && (String(winner) === String(rikishiId));
+          winLossSeries.push(won ? 1 : 0);
+          labels.push(p.date.toISOString().slice(0, 10));
+        }
+
+        if (mounted) {
+          if (winLossSeries.length > 0) setFetchedSeries(winLossSeries);
+          if (labels.length > 0) setFetchedLabels(labels);
+        }
+      } catch {
+        // ignore and keep fallback
+      }
+    })();
+
+    return () => { mounted = false };
+  }, [rikishiId]);
+
+  // After hydration (client-side) optionally populate a randomized sample series
+  // only when no real rikishiId and no explicit `data` was provided. This runs
+  // on the client and won't affect SSR output (which uses deterministic
+  // `defaultWinLossRaw`), avoiding hydration mismatches.
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (rikishiId != null) return; // real data path takes precedence
+    if (Array.isArray(data) && data.length > 0) return; // user-provided data
+    if (fetchedSeries && fetchedSeries.length > 0) return; // already set
+
+    // generate a modestly randomized series on the client only
+    const rnd = Array.from({ length: defaultMatches }, () => (Math.random() > 0.5 ? 1 : 0));
+    setFetchedSeries(rnd);
+    setFetchedLabels(Array.from({ length: rnd.length }, (_, i) => `Match ${i + 1}`));
+  }, [data, rikishiId, fetchedSeries]);
 
   const settingsLocal: SparkLineChartProps = {
     ...baseSettings,

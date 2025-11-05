@@ -55,6 +55,12 @@ const ClimbingRikishiCard: React.FC<ClimbingRikishiCardProps> = ({ rikishi }) =>
     paceLabel = `${wins}/${lastN.length} wins (${pct}%)`;
   }
 
+  // derive a safe rikishi id from common keys
+  const _rawId = (r as Record<string, unknown>)['id'] ?? (r as Record<string, unknown>)['_id'] ?? (r as Record<string, unknown>)['rikishi_id'];
+  let rikishiIdValue: string | number | undefined;
+  if (typeof _rawId === 'string' || typeof _rawId === 'number') rikishiIdValue = _rawId;
+  else rikishiIdValue = undefined;
+
   return (
   <div
     className="climbing-rikishi-card"
@@ -145,7 +151,11 @@ const ClimbingRikishiCard: React.FC<ClimbingRikishiCardProps> = ({ rikishi }) =>
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <RikishiWinLossSparkline data={sparkData} title={undefined} />
+          <RikishiWinLossSparkline
+            data={sparkData}
+            title={undefined}
+            rikishiId={rikishiIdValue}
+          />
           {paceLabel && <div style={{ fontSize: 12, color: '#563861', marginTop: 6 }}>Recent: <strong>{paceLabel}</strong></div>}
         </div>
       </div>
