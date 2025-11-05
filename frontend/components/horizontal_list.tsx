@@ -278,46 +278,7 @@ export default function HorizontalList() {
             Discussions
           </ListItemButton>
         </ListItem>
-        <ListDivider orientation="vertical" />
-        <ListItem role="none" className="flex-1 flex justify-center">
-          <ListItemButton
-            role="menuitem"
-            component="a"
-            href="#horizontal-list"
-            className="modern-navbar-link"
-            sx={{
-              position: 'relative',
-              color: '#563861',
-              fontSize: '1.25rem',
-              fontWeight: 500,
-              pb: '2px',
-              overflow: 'hidden',
-              borderRadius: '0.75rem',
-              transition: 'background 0.22s, color 0.22s',
-              '::after': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                bottom: 0,
-                width: 0,
-                height: '2px',
-                background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
-                transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
-              },
-              '&:hover::after': {
-                width: '100%',
-              },
-              '&:hover': {
-                color: '#563861',
-                background: '#f5e6c8',
-                borderRadius: '0.75rem',
-              },
-            }}
-          >
-            Brackets
-          </ListItemButton>
-        </ListItem>
-        <ListDivider orientation="vertical" />
+        
         <ListItem role="none" className="flex-1 flex justify-center">
           <ListItemButton
             role="menuitem"

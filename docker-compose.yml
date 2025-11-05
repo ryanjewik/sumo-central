@@ -75,7 +75,6 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_HOST=sumo-db
       - DB_PORT=5432
-      - FORCE_RESTORE=1
     depends_on:
       sumo-db:
         condition: service_healthy
