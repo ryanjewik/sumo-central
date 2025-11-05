@@ -54,14 +54,14 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
     profile_image: undefined,
   };
 
-  // normalize names used across docs
-  const name = r.shikona ?? r.name ?? 'Unknown';
-  const rank = r.current_rank ?? r.rank ?? '';
-  const age = r.age ?? r.current_age ?? '';
-  const height = r.current_height ?? r.height ?? '';
-  const weight = r.current_weight ?? r.weight ?? '';
-  const heya = r.heya ?? r.heya_name ?? '';
-  const shusshin = r.shusshin ?? r.shusshin_place ?? '';
+  // normalize names used across docs and coerce to safe string/number types
+  const name = String(r.shikona ?? r.name ?? 'Unknown');
+  const rank = String(r.current_rank ?? r.rank ?? '');
+  const age = (r.age ?? r.current_age ?? '') as string | number;
+  const height = (r.current_height ?? r.height ?? '') as string | number;
+  const weight = (r.current_weight ?? r.weight ?? '') as string | number;
+  const heya = String(r.heya ?? r.heya_name ?? '');
+  const shusshin = String(r.shusshin ?? r.shusshin_place ?? '');
   const wins = Number(r.wins ?? (r as Record<string, unknown>)['win_count'] ?? (r as Record<string, unknown>)['wins_count'] ?? 0);
   const losses = Number(r.losses ?? (r as Record<string, unknown>)['losses_count'] ?? 0);
 
@@ -70,6 +70,9 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
 
   const totalMatches = Number(wins) + Number(losses);
   const winRate = totalMatches > 0 ? Math.round((Number(wins) / totalMatches) * 100) : null;
+
+  const yushoCount = Number(r.yusho_count ?? r.yusho ?? 0);
+  const sanshoCount = Number(r.sansho_count ?? r.special_prizes ?? 0);
 
   return (
     <div
@@ -140,11 +143,11 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
       <div style={{ width: '100%', marginTop: 10, display: 'flex', flexDirection: 'row', gap: 18, justifyContent: 'flex-start' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span role="img" aria-label="Trophy" style={{ fontSize: 22, color: '#f59e0b' }}>🏆</span>
-          <div style={{ fontSize: '0.95rem', color: '#563861' }}><strong>Yusho</strong> {r.yusho_count ?? r.yusho ?? 0}</div>
+          <div style={{ fontSize: '0.95rem', color: '#563861' }}><strong>Yusho</strong> {yushoCount}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span role="img" aria-label="Star" style={{ fontSize: 20, color: '#e0a3c2' }}>⭐</span>
-          <div style={{ fontSize: '0.95rem', color: '#563861' }}><strong>Sansho</strong> {r.sansho_count ?? r.special_prizes ?? 0}</div>
+          <div style={{ fontSize: '0.95rem', color: '#563861' }}><strong>Sansho</strong> {sanshoCount}</div>
         </div>
       </div>
     </div>

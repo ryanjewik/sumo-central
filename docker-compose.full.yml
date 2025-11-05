@@ -76,17 +76,24 @@ services:
       - sumo_net
       - airflow
 
-  # -------------------- Frontend (React, served by nginx) --------------------
+  # -------------------- Frontend (Next.js production) --------------------
   react-frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
     image: sumo-frontend:local
     ports:
-      # map host 3000 to nginx:80 to avoid collision with Airflow (which uses 8081)
-      - "3000:80"
+      # Expose Next production port
+      - "3000:3000"
     restart: unless-stopped
     depends_on:
       - gin-backend
+    environment:
+      - NODE_ENV=production
+      # Backend reachable by Docker service name on the compose network
+      - BACKEND_URL=http://gin-backend:8080
+      # Optional: expose to client-side builds if app uses NEXT_PUBLIC_BACKEND_URL
+      - NEXT_PUBLIC_BACKEND_URL=http://gin-backend:8080
     networks:
       - sumo_net
       - airflow
