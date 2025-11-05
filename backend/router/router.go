@@ -13,6 +13,7 @@ func Register(r *gin.Engine, app *handlers.App) {
 	r.GET("/", app.Home)
 	// also expose under /homepage for explicit API consumer
 	r.GET("/homepage", app.Home)
+	r.GET("/leaderboard", app.Leaderboard)
 
 	// Rikishi and Basho individual pages (fetch by `id` field in Mongo)
 	r.GET("/rikishi/:id", app.GetRikishi)

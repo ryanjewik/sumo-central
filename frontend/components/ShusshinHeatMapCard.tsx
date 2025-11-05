@@ -134,12 +134,12 @@ export function ShusshinHeatMapCard({ shusshinCounts }: ShusshinHeatMapCardProps
               when the aside has horizontal room. This reduces vertical height. */}
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
             {topMarkers.map((t) => (
-              <li key={t.name} title={t.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '2px 4px' }}>
+              <li key={t.name} title={t.name} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4, padding: '4px 6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                   <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 9999, background: '#563861', opacity: 0.6, flex: '0 0 10px' }} />
-                  <span style={{ fontSize: 13, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                  <span style={{ fontSize: 13, color: '#374151', wordBreak: 'break-word' }}>{t.name}</span>
                 </div>
-                <div style={{ fontWeight: 800, color: '#563861', marginLeft: 8 }}>{t.count}</div>
+                <div style={{ fontWeight: 800, color: '#563861', alignSelf: 'flex-end' }}>{t.count}</div>
               </li>
             ))}
           </ul>

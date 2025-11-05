@@ -47,6 +47,25 @@ function InnerApp() {
     { username: 'kimariteKing', correctPredictions: 24 },
     // ...more users
   ];
+  const [leaderboard, setLeaderboard] = useState<{ username: string; correctPredictions: number }[] | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/leaderboard', { credentials: 'include' });
+        if (!mounted) return;
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted && data && Array.isArray(data.leaderboard)) {
+          setLeaderboard(data.leaderboard);
+        }
+      } catch (err) {
+        // ignore
+      }
+    })();
+    return () => { mounted = false };
+  }, []);
 
 
   const sampleUpcomingMatches = [
@@ -401,7 +420,7 @@ function InnerApp() {
       </div>
             <div style={{ flex: 1, gap: '1rem', display: 'flex', flexDirection: 'column' }}>
               <KimariteRadarChart kimariteCounts={homepage?.kimarite_usage_most_recent_basho} />
-              <LeaderboardTable leaderboard={sampleLeaderboard} />
+              <LeaderboardTable leaderboard={leaderboard ?? sampleLeaderboard} />
               <SumoTicketsCard />
             </div>
           </div>
@@ -511,7 +530,7 @@ function InnerApp() {
                     >
                       Average Yusho Weight
                     </span>
-                    <span style={{ fontWeight: 600, fontSize: '2rem', color: '#563861', fontFamily: 'inherit' }}>
+                    <span style={{ fontWeight: 700, fontSize: '1.6rem', color: '#563861', fontFamily: 'inherit' }}>
                       {yushoWeight.toFixed(2)}kg
                     </span>
                   </div>
@@ -556,7 +575,7 @@ function InnerApp() {
                     >
                       Average Yusho Height
                     </span>
-                    <span style={{ fontWeight: 600, fontSize: '2rem', color: '#563861', fontFamily: 'inherit' }}>
+                    <span style={{ fontWeight: 700, fontSize: '1.6rem', color: '#563861', fontFamily: 'inherit' }}>
                       {yushoHeight.toFixed(2)}cm
                     </span>
                   </div>
