@@ -86,10 +86,11 @@ services:
       - sumo_net
       - airflow
 
-  # -------------------- Frontend (React, served by nginx) --------------------
+  # -------------------- Frontend (Next.js production) --------------------
   react-frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
     image: sumo-frontend:local
     ports:
       # Map host 3000 to the container's Next.js dev server (port 3000).
@@ -97,12 +98,17 @@ services:
       # so map host:container as 3000:3000 so the site is reachable at
       # http://localhost:3000 on the host.
       - "3000:3000"
+      # Expose Next production port
+      - "3000:3000"
     restart: unless-stopped
     depends_on:
       - gin-backend
     environment:
-      # Let Next.js rewrites proxy /api/* to the backend container.
+      - NODE_ENV=production
+      # Backend reachable by Docker service name on the compose network
       - BACKEND_URL=http://gin-backend:8080
+      # Optional: expose to client-side builds if app uses NEXT_PUBLIC_BACKEND_URL
+      - NEXT_PUBLIC_BACKEND_URL=http://gin-backend:8080
     networks:
       - sumo_net
       - airflow

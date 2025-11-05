@@ -21,7 +21,7 @@ import { ComposableMap, Geographies, Geography, Marker } from "@vnedyalk0v/react
 import type { Longitude, Latitude, Coordinates as MapCoordinates } from "@vnedyalk0v/react19-simple-maps";
 // Import the world topojson locally (Vite supports importing JSON)
 // Make sure countries-110m.json is in src/assets/
-// @ts-ignore
+// use ts-expect-error so lint knows we expect an import typing mismatch
 import countries110m from "@/lib/data/countries-110m.json";
 
 interface ShusshinHeatMapCardProps {
@@ -33,11 +33,11 @@ export function ShusshinHeatMapCard({ shusshinCounts }: ShusshinHeatMapCardProps
 
   // Use branded types from the map package
   type MarkerType = { name: string; count: number; coordinates: MapCoordinates };
-  const sourceData: any[] = shusshinCounts && Object.keys(shusshinCounts).length > 0
+  const sourceData: unknown[] = shusshinCounts && Object.keys(shusshinCounts).length > 0
     ? (Object.entries(shusshinCounts) as unknown as [string, number][])
     : shusshinDataDefault;
 
-  const markers: MarkerType[] = sourceData
+  const markers: MarkerType[] = (sourceData as [string, number][])
     .map(([loc, count]) => {
       const geo = shusshinGeoData[loc as keyof typeof shusshinGeoData];
       if (!geo) return null;
@@ -83,17 +83,26 @@ export function ShusshinHeatMapCard({ shusshinCounts }: ShusshinHeatMapCardProps
               style={{ width: '100%', height: '100%' }}
             >
               <Geographies geography={countries110m}>
-                {({ geographies }: { geographies: any[] }) =>
-                  geographies.map((geo: any, idx: number) => (
-                    <Geography
-                      key={geo.id || geo.rsmKey || idx}
-                      geography={geo}
-                      fill="#e0a3c2"
-                      stroke="#fff"
-                      strokeWidth={0.2}
-                    />
-                  ))
-                }
+                {({ geographies }: { geographies: unknown[] }) =>
+                    geographies.map((geo: unknown, idx: number) => {
+                      const getKey = (g: unknown, i: number) => {
+                        if (g && typeof g === 'object') {
+                          const gg = g as Record<string, unknown>;
+                          return String(gg.id ?? gg.rsmKey ?? i);
+                        }
+                        return String(i);
+                      };
+                      return (
+                        <Geography
+                          key={getKey(geo, idx)}
+                          geography={geo as unknown as Record<string, unknown>}
+                          fill="#e0a3c2"
+                          stroke="#fff"
+                          strokeWidth={0.2}
+                        />
+                      );
+                    })
+                  }
               </Geographies>
               {markers.length === 0 && (
                 <text x="50%" y="50%" textAnchor="middle" style={{ fill: '#563861', fontSize: 14 }}>

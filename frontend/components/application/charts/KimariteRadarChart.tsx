@@ -69,32 +69,42 @@ const CustomLegend = () => {
 };
 import React from "react";
 import { Legend, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart as RechartsRadarChart, ResponsiveContainer, Tooltip } from "recharts";
-import { ChartLegendContent, ChartTooltipContent } from "./charts-base";
+// Chart helper components (not used by this chart) removed to avoid unused-import warnings
 import { cx } from "../../../utils/cx";
 
 // Custom tick component for PolarRadiusAxis
-const CustomRadarChartTick = (props: any) => {
+type CustomRadarChartTickProps = {
+    x?: number | string;
+    y?: number | string;
+    payload?: { value?: string | number };
+    className?: string;
+    [key: string]: unknown;
+};
+
+const CustomRadarChartTick: React.FC<CustomRadarChartTickProps> = (props) => {
     const { x, y, payload } = props;
     return (
         <text
-            x={x}
-            y={y}
+            x={x as number}
+            y={y as number}
             textAnchor="middle"
             className="fill-utility-gray-700 text-xs font-medium"
         >
-            {payload.value}
+            {String(payload?.value ?? '')}
         </text>
     );
 };
 
-const radarDataDefault = [
-        { technique: "Yorikiri", Hoshoryu: 12, Terunofuji: 18, Takakeisho: 5, Asanoyama: 9, Wakatakakage: 7, Shodai: 6 },
-        { technique: "Oshidashi", Hoshoryu: 7, Terunofuji: 3, Takakeisho: 15, Asanoyama: 8, Wakatakakage: 6, Shodai: 5 },
-        { technique: "Hatakikomi", Hoshoryu: 4, Terunofuji: 2, Takakeisho: 8, Asanoyama: 3, Wakatakakage: 2, Shodai: 4 },
-        { technique: "Tsukiotoshi", Hoshoryu: 2, Terunofuji: 1, Takakeisho: 6, Asanoyama: 2, Wakatakakage: 1, Shodai: 3 },
-        { technique: "Uwatenage", Hoshoryu: 6, Terunofuji: 9, Takakeisho: 1, Asanoyama: 4, Wakatakakage: 3, Shodai: 2 },
-        { technique: "Kotenage", Hoshoryu: 3, Terunofuji: 4, Takakeisho: 2, Asanoyama: 2, Wakatakakage: 1, Shodai: 1 },
-        { technique: "Sukuinage", Hoshoryu: 1, Terunofuji: 5, Takakeisho: 0, Asanoyama: 1, Wakatakakage: 0, Shodai: 0 },
+type RadarDatum = { technique: string; [key: string]: number | string | undefined };
+
+const radarDataDefault: RadarDatum[] = [
+    { technique: "Yorikiri", Hoshoryu: 12, Terunofuji: 18, Takakeisho: 5, Asanoyama: 9, Wakatakakage: 7, Shodai: 6 },
+    { technique: "Oshidashi", Hoshoryu: 7, Terunofuji: 3, Takakeisho: 15, Asanoyama: 8, Wakatakakage: 6, Shodai: 5 },
+    { technique: "Hatakikomi", Hoshoryu: 4, Terunofuji: 2, Takakeisho: 8, Asanoyama: 3, Wakatakakage: 2, Shodai: 4 },
+    { technique: "Tsukiotoshi", Hoshoryu: 2, Terunofuji: 1, Takakeisho: 6, Asanoyama: 2, Wakatakakage: 1, Shodai: 3 },
+    { technique: "Uwatenage", Hoshoryu: 6, Terunofuji: 9, Takakeisho: 1, Asanoyama: 4, Wakatakakage: 3, Shodai: 2 },
+    { technique: "Kotenage", Hoshoryu: 3, Terunofuji: 4, Takakeisho: 2, Asanoyama: 2, Wakatakakage: 1, Shodai: 1 },
+    { technique: "Sukuinage", Hoshoryu: 1, Terunofuji: 5, Takakeisho: 0, Asanoyama: 1, Wakatakakage: 0, Shodai: 0 },
 ];
 
 interface KimariteRadarChartProps {
@@ -106,10 +116,10 @@ const KimariteRadarChart: React.FC<KimariteRadarChartProps> = ({ kimariteCounts 
     // take the top 6 techniques by count and convert to radar data with a single series named 'Usage'
     let radarData = radarDataDefault;
     if (kimariteCounts && Object.keys(kimariteCounts).length > 0) {
-        const entries = Object.entries(kimariteCounts).map(([k, v]) => ({ technique: k, Usage: v }));
-        entries.sort((a, b) => (b.Usage as number) - (a.Usage as number));
+        const entries: { technique: string; Usage: number }[] = Object.entries(kimariteCounts).map(([k, v]) => ({ technique: k, Usage: Number(v ?? 0) }));
+        entries.sort((a, b) => b.Usage - a.Usage);
         const top = entries.slice(0, 6);
-        radarData = top.map(e => ({ technique: e.technique, Usage: e.Usage } as any));
+        radarData = top.map(e => ({ technique: e.technique, Usage: e.Usage } as RadarDatum));
     }
     const colors: Record<string, string> = {
         Hoshoryu: "text-utility-brand-600",

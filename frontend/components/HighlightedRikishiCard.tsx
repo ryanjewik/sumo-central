@@ -1,13 +1,43 @@
 "use client";
 
 import React from "react";
+import Image from 'next/image';
+
+type RikishiInfo = {
+  shikona?: string;
+  name?: string;
+  current_rank?: string;
+  rank?: string;
+  age?: number | string;
+  current_age?: number | string;
+  current_height?: number | string;
+  height?: number | string;
+  current_weight?: number | string;
+  weight?: number | string;
+  heya?: string;
+  heya_name?: string;
+  shusshin?: string;
+  shusshin_place?: string;
+  wins?: number | string;
+  losses?: number | string;
+  yusho_count?: number;
+  sansho_count?: number;
+  s3_url?: string;
+  pfp_url?: string;
+  image_url?: string;
+  profile_image?: string;
+  photo?: string;
+  image?: string;
+  imageUrl?: string;
+  [k: string]: unknown;
+};
 
 interface HighlightedRikishiCardProps {
-  rikishi?: any;
+  rikishi?: RikishiInfo;
 }
 
 const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi }) => {
-  const r = rikishi ?? {
+  const r: RikishiInfo = rikishi ?? {
     shikona: 'Kotonowaka',
     current_rank: 'Komusubi',
     age: 26,
@@ -24,23 +54,25 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
     profile_image: undefined,
   };
 
-  // normalize names used across docs
-  const name = r.shikona ?? r.name ?? 'Unknown';
-  const rank = r.current_rank ?? r.rank ?? '';
-  const age = r.age ?? r.current_age ?? '';
-  const height = r.current_height ?? r.height ?? '';
-  const weight = r.current_weight ?? r.weight ?? '';
-  const heya = r.heya ?? r.heya_name ?? '';
-  const shusshin = r.shusshin ?? r.shusshin_place ?? '';
-  const wins = r.wins ?? r.win_count ?? r.wins_count ?? 0;
-  const losses = r.losses ?? r.losses_count ?? 0;
+  // normalize names used across docs and coerce to safe string/number types
+  const name = String(r.shikona ?? r.name ?? 'Unknown');
+  const rank = String(r.current_rank ?? r.rank ?? '');
+  const age = (r.age ?? r.current_age ?? '') as string | number;
+  const height = (r.current_height ?? r.height ?? '') as string | number;
+  const weight = (r.current_weight ?? r.weight ?? '') as string | number;
+  const heya = String(r.heya ?? r.heya_name ?? '');
+  const shusshin = String(r.shusshin ?? r.shusshin_place ?? '');
+  const wins = Number(r.wins ?? (r as Record<string, unknown>)['win_count'] ?? (r as Record<string, unknown>)['wins_count'] ?? 0);
+  const losses = Number(r.losses ?? (r as Record<string, unknown>)['losses_count'] ?? 0);
 
-  // profile image: try common keys then fallback to placeholder
-  const imageSrc =
-  (r.image_url as string) || (r.profile_image as string) || (r.photo as string) || (r.image as string) || (r.imageUrl as string) || '/sumo_logo.png';
+  // profile image: prefer S3-hosted webp if present, then common keys, then placeholder
+  const imageSrc = String(r.s3_url ?? r.pfp_url ?? r.image_url ?? r.profile_image ?? r.photo ?? r.image ?? r.imageUrl ?? '/sumo_logo.png');
 
   const totalMatches = Number(wins) + Number(losses);
   const winRate = totalMatches > 0 ? Math.round((Number(wins) / totalMatches) * 100) : null;
+
+  const yushoCount = Number(r.yusho_count ?? r.yusho ?? 0);
+  const sanshoCount = Number(r.sansho_count ?? r.special_prizes ?? 0);
 
   return (
     <div
@@ -76,20 +108,16 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
         Highlighted Rikishi
       </span>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', gap: '1.2rem' }}>
-        <img
-          src={imageSrc}
-          alt={`${name} profile`}
-          onError={(e) => { (e.target as HTMLImageElement).src = '/sumo_logo.png'; }}
-          style={{
-            width: 170,
-            height: 250,
-            borderRadius: 18,
-            border: '3px solid rgba(224,163,194,0.9)',
-            background: '#fff',
-            objectFit: 'cover',
-            boxShadow: '0 6px 24px rgba(0,0,0,0.12)',
-          }}
-        />
+        <div style={{ width: 170, height: 250, position: 'relative', borderRadius: 18, overflow: 'hidden', border: '3px solid rgba(224,163,194,0.9)' }}>
+          <Image
+            src={imageSrc}
+            alt={`${name} profile`}
+            fill
+            style={{ objectFit: 'cover' }}
+            sizes="(max-width: 480px) 120px, 170px"
+            priority={false}
+          />
+        </div>
         <div style={{ textAlign: 'center', minWidth: 200, fontFamily: `'Courier New', Courier, monospace` }}>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center' }}>
             <div style={{ fontWeight: 800, fontSize: '1.35rem', color: '#563861' }}>{name}</div>
@@ -115,11 +143,11 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
       <div style={{ width: '100%', marginTop: 10, display: 'flex', flexDirection: 'row', gap: 18, justifyContent: 'flex-start' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span role="img" aria-label="Trophy" style={{ fontSize: 22, color: '#f59e0b' }}>🏆</span>
-          <div style={{ fontSize: '0.95rem', color: '#563861' }}><strong>Yusho</strong> {r.yusho_count ?? r.yusho ?? 0}</div>
+          <div style={{ fontSize: '0.95rem', color: '#563861' }}><strong>Yusho</strong> {yushoCount}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span role="img" aria-label="Star" style={{ fontSize: 20, color: '#e0a3c2' }}>⭐</span>
-          <div style={{ fontSize: '0.95rem', color: '#563861' }}><strong>Sansho</strong> {r.sansho_count ?? r.special_prizes ?? 0}</div>
+          <div style={{ fontSize: '0.95rem', color: '#563861' }}><strong>Sansho</strong> {sanshoCount}</div>
         </div>
       </div>
     </div>

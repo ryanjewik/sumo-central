@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 //import { TableCard, Table } from './components/application/table/table';
 import { RikishiTable } from '../components/application/rikishi_table';
 import KimariteRadarChart from "../components/application/charts/KimariteRadarChart";
+import Image from 'next/image';
 import LeaderboardTable from "../components/leaderboard_table";
 import LoginDialog from "../components/login_dialog";
 import { AuthProvider, useAuth } from '../context/AuthContext';
@@ -18,7 +19,7 @@ import HighlightedRikishiCard from '../components/HighlightedRikishiCard';
 import HighlightedMatchCard from '../components/HighlightedMatchCard';
 import SumoTicketsCard from '../components/SumoTicketsCard';
 import UpcomingMatchesList from '../components/upcoming_matches_list';
-import Image from 'next/image';
+// Image intentionally not used in this file directly
 
 
 
@@ -28,7 +29,7 @@ function InnerApp() {
   // Login dialog state
   const [loginOpen, setLoginOpen] = useState(false);
   // Get auth from provider
-  const { user, setUser, logout } = useAuth();
+  const { user, logout } = useAuth();
   // Sample upcoming matches data
   // All upcoming matches are on the same day
   const upcomingDate = '2025-09-20';
@@ -60,7 +61,7 @@ function InnerApp() {
         if (mounted && data && Array.isArray(data.leaderboard)) {
           setLeaderboard(data.leaderboard);
         }
-      } catch (err) {
+      } catch {
         // ignore
       }
     })();
@@ -135,12 +136,26 @@ function InnerApp() {
   };
 
   // (Rehydration is handled by AuthProvider)
-  const [homepage, setHomepage] = useState<any | null>(null);
+  interface Homepage {
+    top_rikishi?: Record<string, unknown>;
+    top_rikishi_ordered?: Record<string, unknown>[] | Record<string, Record<string, unknown>>;
+    kimarite_usage_most_recent_basho?: Record<string, number>;
+    avg_stats?: Record<string, unknown>;
+    highlighted_match?: Record<string, unknown>;
+    fast_climber?: Record<string, unknown>;
+    heya_avg_rank?: Record<string, number>;
+    heya_counts?: Record<string, number>;
+    shusshin_counts?: Record<string, number>;
+    recent_matches?: Record<string, unknown> | Record<string, Record<string, unknown>>;
+    most_recent_basho?: string | number;
+  }
+
+  const [homepage, setHomepage] = useState<Homepage | null>(null);
   const [homepageError, setHomepageError] = useState<string | null>(null);
   const [homepageLoading, setHomepageLoading] = useState(false);
-  const [bashoUpcomingMatches, setBashoUpcomingMatches] = useState<any[] | null>(null);
-  const [bashoLoading, setBashoLoading] = useState(false);
-  const [bashoError, setBashoError] = useState<string | null>(null);
+  const [bashoUpcomingMatches, setBashoUpcomingMatches] = useState<Record<string, unknown>[] | null>(null);
+  const [, setBashoLoading] = useState(false);
+  const [, setBashoError] = useState<string | null>(null);
 
   // derived stats from homepage
   const avgStats = homepage?.avg_stats ?? {};
@@ -163,9 +178,9 @@ function InnerApp() {
           return;
         }
         const doc = await res.json();
-        if (mounted) setHomepage(doc);
-      } catch (err: any) {
-        if (mounted) setHomepageError(err?.message || 'network error');
+        if (mounted) setHomepage(doc as Record<string, unknown>);
+      } catch (_err) {
+        if (mounted) setHomepageError((_err as Error)?.message || 'network error');
       } finally {
         if (mounted) setHomepageLoading(false);
       }
@@ -202,30 +217,41 @@ function InnerApp() {
         }
         const doc = await res.json();
         // Normalize upcoming_matches into the shape UpcomingMatchesList expects
-        const rawMatches: any[] = Array.isArray(doc?.upcoming_matches) ? doc.upcoming_matches : [];
-        const normalized = rawMatches.map((m: any, idx: number) => {
+        const rawMatches: Record<string, unknown>[] = Array.isArray(doc?.upcoming_matches) ? doc.upcoming_matches : [];
+        const getString = (o: Record<string, unknown> | undefined, ...keys: string[]) => {
+          if (!o) return undefined;
+          for (const k of keys) {
+            const v = o[k];
+            if (typeof v === 'string') return v;
+            if (typeof v === 'number') return String(v);
+          }
+          return undefined;
+        };
+
+        const normalized = rawMatches.map((m: Record<string, unknown>, idx: number) => {
           // match id fallback
-          const id = m.match_number ?? m.id ?? idx + 1;
+          const id = getString(m, 'match_number') ?? getString(m, 'id') ?? String(idx + 1);
           // left side in the UI is treated as WEST (rikishi1)
-          const rikishiWest = m.westshikona ?? m.west_shikona ?? m.west_name ?? m.west ?? m.west_name_local;
-          const rikishiEast = m.eastshikona ?? m.east_shikona ?? m.east_name ?? m.east ?? m.east_name_local;
+          const rikishiWest = getString(m, 'westshikona', 'west_shikona', 'west_name', 'west', 'west_name_local');
+          const rikishiEast = getString(m, 'eastshikona', 'east_shikona', 'east_name', 'east', 'east_name_local');
           return {
             id: Number(id),
             rikishi1: rikishiWest || rikishiEast || 'TBD',
             rikishi2: rikishiEast || rikishiWest || 'TBD',
-            rikishi1Rank: m.west_rank ?? m.west_rank_label,
-            rikishi2Rank: m.east_rank ?? m.east_rank_label,
-            date: m.match_date ?? doc?.start_date ?? undefined,
-            venue: m.venue ?? doc?.venue,
+            rikishi1Rank: getString(m, 'west_rank') ?? getString(m, 'west_rank_label'),
+            rikishi2Rank: getString(m, 'east_rank') ?? getString(m, 'east_rank_label'),
+            date: getString(m, 'match_date') ?? getString(doc as Record<string, unknown>, 'start_date') ?? undefined,
+            venue: getString(m, 'venue') ?? getString(doc as Record<string, unknown>, 'venue'),
             // keep original AI prediction field available for UI indicator
-            ai_prediction: m.AI_prediction ?? m.ai_prediction ?? m.aiPrediction,
+            ai_prediction: getString(m, 'AI_prediction') ?? getString(m, 'ai_prediction') ?? getString(m, 'aiPrediction'),
           };
         });
 
         if (mounted) setBashoUpcomingMatches(normalized);
-      } catch (err: any) {
-        if (mounted) setBashoError(err?.message || 'network error');
+      } catch (err: unknown) {
+        const msg = (err && typeof err === 'object' && 'message' in err) ? String((err as { message?: unknown }).message) : String(err ?? 'network error');
         if (mounted) setBashoUpcomingMatches([]);
+        if (mounted) setBashoError(msg || 'network error');
       } finally {
         if (mounted) setBashoLoading(false);
       }
@@ -296,8 +322,8 @@ function InnerApp() {
         }}
       >
         <div className="navbar-row navbar-row-top">
-          <div className="navbar-left">
-            <img src="/sumo_logo.png" alt="Sumo Logo" className="navbar-logo" />
+            <div className="navbar-left">
+            <Image src="/sumo_logo.png" alt="Sumo Logo" width={40} height={40} className="navbar-logo" />
             <span className="navbar-title">Sumo App</span>
           </div>
           <div
@@ -340,7 +366,7 @@ function InnerApp() {
                   onClick={async () => {
                     try {
                       await logout();
-                    } catch (err) {
+                    } catch {
                       // ignore
                     }
                     // logout() will setUser(null)
@@ -670,7 +696,9 @@ function InnerApp() {
                 matches={bashoUpcomingMatches ?? sampleUpcomingMatches}
                 date={
                   // prefer a date derived from the first basho match or fall back to the sample upcoming date
-                  (bashoUpcomingMatches && bashoUpcomingMatches.length > 0 && bashoUpcomingMatches[0].date) || upcomingDate
+                  (bashoUpcomingMatches && bashoUpcomingMatches.length > 0 && typeof bashoUpcomingMatches[0].date === 'string')
+                    ? (bashoUpcomingMatches[0].date as string)
+                    : upcomingDate
                 }
               />
             </div>

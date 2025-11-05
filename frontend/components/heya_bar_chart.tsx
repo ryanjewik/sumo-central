@@ -179,7 +179,7 @@ export function ChartBarInteractive({ heyaAvgRank, heyaRikishiCount }: ChartBarI
               }}
             />
             <Bar dataKey="avgRankTransformed">
-              {chartDataComputed.map((entry, idx) => (
+              {chartDataComputed.map((entry) => (
                 <Cell key={`cell-${entry.heya}`} fill={getBarColor(entry.rikishiCount, minCount, maxCount)} />
               ))}
             </Bar>

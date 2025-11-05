@@ -30,17 +30,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // "works with DevTools" case and makes auth more robust.
         const delays = [0, 200, 800];
         let info: { id?: string; username?: string } | null = null;
-        for (let i = 0; i < delays.length; i++) {
+          for (let i = 0; i < delays.length; i++) {
           if (delays[i] > 0) await new Promise((res) => setTimeout(res, delays[i]));
           try {
             // Debug: log attempts so we can correlate with backend logs
-            // eslint-disable-next-line no-console
             console.debug(`[auth] tryRefresh attempt ${i + 1}`);
             // call the library function
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
             info = await authLib.tryRefresh();
             if (info && info.id) break;
-          } catch (err) {
+          } catch {
             // swallow and continue to retry
           }
         }
@@ -48,7 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (mounted && info && info.id) {
           setUser({ id: info.id, username: info.username || '' });
         }
-      } catch (err) {
+      } catch {
         // ignore
       }
       if (mounted) setLoading(false);
@@ -61,7 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
       await authLib.logout();
-    } catch (err) {
+    } catch {
       // ignore
     }
     setUser(null);
@@ -83,7 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { ok: true };
       }
       return { ok: false, error: (data && data.error) || 'Login failed' };
-    } catch (err) {
+    } catch {
       return { ok: false, error: 'Login failed' };
     }
   };
@@ -104,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { ok: true };
       }
       return { ok: false, error: (data && data.error) || 'Registration failed' };
-    } catch (err) {
+    } catch {
       return { ok: false, error: 'Registration failed' };
     }
   };

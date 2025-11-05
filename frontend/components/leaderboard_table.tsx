@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Box, Typography, Table, TableBody, TableCell, TableHead, TableRow, Paper } from '@mui/material';
+import { Box, Table, TableBody, TableCell, TableHead, TableRow, Paper } from '@mui/material';
 
 interface LeaderboardEntry {
   username: string;
