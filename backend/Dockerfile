@@ -33,6 +33,8 @@ COPY --from=builder /app/sumo-backend /app/sumo-backend
 # Copy tiny entrypoint that waits for Postgres to accept TCP connections
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
+# Ensure entrypoint has LF line endings (Windows CRLF can cause "no such file or directory" on exec)
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh || true
 
 # Create non-root user and set ownership
 RUN addgroup -S app && adduser -S -G app app

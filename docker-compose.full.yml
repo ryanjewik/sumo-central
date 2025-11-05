@@ -72,6 +72,16 @@ services:
     env_file:
       - ./backend/.env
     restart: unless-stopped
+    depends_on:
+      - sumo-db
+    environment:
+      - DB_HOST=sumo-db
+      - DB_PORT=${DB_PORT}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      # JWT secret for signing tokens in dev. In production set a secure secret via env.
+      - JWT_SECRET=dev_jwt_secret_change_me
     networks:
       - sumo_net
       - airflow
@@ -82,11 +92,17 @@ services:
       context: ./frontend
     image: sumo-frontend:local
     ports:
-      # map host 3000 to nginx:80 to avoid collision with Airflow (which uses 8081)
-      - "3000:80"
+      # Map host 3000 to the container's Next.js dev server (port 3000).
+      # The frontend runs a Next dev server inside the container on port 3000,
+      # so map host:container as 3000:3000 so the site is reachable at
+      # http://localhost:3000 on the host.
+      - "3000:3000"
     restart: unless-stopped
     depends_on:
       - gin-backend
+    environment:
+      # Let Next.js rewrites proxy /api/* to the backend container.
+      - BACKEND_URL=http://gin-backend:8080
     networks:
       - sumo_net
       - airflow
