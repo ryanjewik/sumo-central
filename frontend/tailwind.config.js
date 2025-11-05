@@ -1,5 +1,8 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+import tailwindReactAria from 'tailwindcss-react-aria-components';
+import tailwindAnimate from 'tailwindcss-animate';
+
+const config = {
   content: [
     "./app/**/*.{ts,tsx,js,jsx,mdx}",
     "./components/**/*.{ts,tsx,js,jsx,mdx}",
@@ -34,8 +37,10 @@ export default {
     },
   },
   plugins: [
-    require('tailwindcss-react-aria-components'),
-    require('tailwindcss-animate'),
+    tailwindReactAria,
+    tailwindAnimate,
   ],
   darkMode: 'class',
-}
+};
+
+export default config;

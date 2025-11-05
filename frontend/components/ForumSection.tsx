@@ -37,10 +37,7 @@ const ForumSection: React.FC<ForumSectionProps> = ({ posts }) => (
           color: 'inherit',
           transition: 'box-shadow 0.15s, transform 0.15s',
         }}
-        onClick={e => {
-          // Prevent default for now if you want to handle navigation in React Router
-          // e.preventDefault();
-        }}
+        
         onMouseOver={e => {
           (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(86,56,97,0.15)';
           (e.currentTarget as HTMLElement).style.transform = 'scale(1.02)';

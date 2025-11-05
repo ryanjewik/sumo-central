@@ -19,7 +19,7 @@ export async function logout(): Promise<void> {
   try {
     // call backend logout which revokes refresh token and clears cookie
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-  } catch (err) {
+  } catch {
     // ignore errors; ensure local state cleared
   }
   clearAccessToken();
@@ -47,11 +47,11 @@ export async function tryRefresh(): Promise<{ id?: string; username?: string } |
           const claims = JSON.parse(decoded);
           return { id: claims.sub, username: claims.name } as { id?: string; username?: string };
         }
-      } catch (err) {
+      } catch {
         // failed to decode, fall through to clear token below
       }
     }
-  } catch (err) {
+  } catch {
     // fallthrough
   }
   clearAccessToken();
@@ -89,7 +89,7 @@ export async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Pro
         return res;
       }
     }
-  } catch (err) {
+  } catch {
     // fall through to return original 401
   }
 
