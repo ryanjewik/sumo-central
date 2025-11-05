@@ -17,7 +17,6 @@ interface RikishiSparklineProps {
 // Generate random win/loss data for last 30 matches (1 = win, 0 = loss) if no data provided
 const defaultMatches = 30;
 const defaultWinLossRaw = Array.from({ length: defaultMatches }, () => Math.random() > 0.5 ? 1 : 0);
-const defaultMatchLabels = Array.from({ length: defaultMatches }, (_, i) => `Match ${i + 1}`);
 
 // Helper: convert binary win/loss series to running win/loss ratio
 const computeRunningRatio = (series: number[]) => series.map((_, i) => {

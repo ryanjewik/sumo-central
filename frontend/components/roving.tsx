@@ -35,9 +35,9 @@ const useRovingIndex = (options?: Options) => {
     initialActiveIndex!,
   );
   const targetRefs = React.useRef<Array<HTMLAnchorElement>>([]);
-  const targets = targetRefs.current;
   const focusNext = () => {
-    let newIndex = activeIndex! + 1;
+    const targets = targetRefs.current;
+    let newIndex = (activeIndex ?? 0) + 1;
     if (newIndex >= targets.length) {
       newIndex = 0;
     }
@@ -45,7 +45,8 @@ const useRovingIndex = (options?: Options) => {
     setActiveIndex(newIndex);
   };
   const focusPrevious = () => {
-    let newIndex = activeIndex! - 1;
+    const targets = targetRefs.current;
+    let newIndex = (activeIndex ?? 0) - 1;
     if (newIndex < 0) {
       newIndex = targets.length - 1;
     }
@@ -55,7 +56,7 @@ const useRovingIndex = (options?: Options) => {
   const getTargetProps = (index: number) => ({
     ref: (ref: HTMLAnchorElement) => {
       if (ref) {
-        targets[index] = ref;
+        targetRefs.current[index] = ref;
       }
     },
     tabIndex: activeIndex === index ? 0 : -1,
@@ -74,13 +75,19 @@ const useRovingIndex = (options?: Options) => {
       setActiveIndex(index);
     },
   });
+  const focusTarget = (index: number) => {
+    const t = targetRefs.current[index];
+    t?.focus();
+    setActiveIndex(index);
+  };
+
   return {
     activeIndex,
     setActiveIndex,
-    targets,
     getTargetProps,
     focusNext,
     focusPrevious,
+    focusTarget,
   };
 };
 
@@ -97,7 +104,7 @@ const SumoMenu = React.forwardRef(
     ref: React.ForwardedRef<HTMLAnchorElement>,
   ) => {
     const [anchorEl, setAnchorEl] = React.useState<HTMLAnchorElement | null>(null);
-    const { targets, setActiveIndex, getTargetProps } = useRovingIndex({
+    const { getTargetProps, focusTarget } = useRovingIndex({
       initialActiveIndex: null,
       vertical: true,
       handlers: {
@@ -139,8 +146,7 @@ const SumoMenu = React.forwardRef(
               }
               if (event.key === 'ArrowDown') {
                 event.preventDefault();
-                targets[0]?.focus();
-                setActiveIndex(0);
+                focusTarget(0);
               }
             }}
             onFocus={(event) => setAnchorEl(event.currentTarget)}
@@ -190,9 +196,10 @@ const SumoMenu = React.forwardRef(
     );
   },
 );
+SumoMenu.displayName = 'SumoMenu';
 
 export default function ExampleNavigationMenu() {
-  const { targets, getTargetProps, setActiveIndex, focusNext, focusPrevious } =
+  const { getTargetProps, setActiveIndex, focusNext, focusPrevious, focusTarget } =
     useRovingIndex();
   return (
     <Box sx={{ minHeight: 190 }}>
@@ -210,7 +217,7 @@ export default function ExampleNavigationMenu() {
           <SumoMenu
             onMouseEnter={() => {
               setActiveIndex(1);
-              targets[1].focus();
+              focusTarget(1);
             }}
             focusNext={focusNext}
             focusPrevious={focusPrevious}

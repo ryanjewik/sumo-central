@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Avatar from '@mui/joy/Avatar';
+import Image from 'next/image';
 import Box from '@mui/joy/Box';
 import List from '@mui/joy/List';
 import ListItem from '@mui/joy/ListItem';
@@ -11,8 +12,28 @@ import { ProgressBar } from "../components/base/progress-indicators/progress-ind
 
 interface RecentMatchesListProps {
   date?: string;
-  matches?: any[] | Record<string, any>;
+  matches?: unknown[] | Record<string, unknown>;
 }
+
+type RawMatch = Record<string, unknown>;
+
+type NormalizedMatch = {
+  raw: RawMatch;
+  eastName: string;
+  westName: string;
+  eastRank: string;
+  westRank: string;
+  kim?: string;
+  eastVotes: number;
+  westVotes: number;
+  winnerSide?: string | null;
+  matchNumber?: number;
+  dayLabel?: string;
+  timestamp?: number;
+  eastImage?: string | null;
+  westImage?: string | null;
+  id?: string | number;
+};
 
 const sampleMatches = [
   { westShikona: 'Hoshoryu', westRank: 'Sekiwake', eastShikona: 'Takakeisho', eastRank: 'Ozeki', winner: 'west' },
@@ -39,33 +60,49 @@ const sampleMatches = [
 
 const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) => {
   // normalize matches input: accept array or object map
-  let itemsArray: any[] = [];
-  if (Array.isArray(matches) && matches.length > 0) itemsArray = matches;
-  else if (matches && typeof matches === 'object') itemsArray = Object.values(matches as Record<string, any>);
-  else itemsArray = sampleMatches;
+  let itemsArray: RawMatch[] = [];
+  if (Array.isArray(matches) && matches.length > 0) itemsArray = matches as RawMatch[];
+  else if (matches && typeof matches === 'object') itemsArray = Object.values(matches as Record<string, unknown>) as RawMatch[];
+  else itemsArray = sampleMatches as RawMatch[];
 
   // helper to normalize fields from diverse backend shapes
-  const normalize = (m: any) => {
-    const eastName = m.east_shikona ?? m.eastshikona ?? m.east?.shikona ?? m.eastName ?? m.eastShikona ?? m.east?.name ?? m.east?.displayName ?? null;
-    const westName = m.west_shikona ?? m.westshikona ?? m.west?.shikona ?? m.westName ?? m.westShikona ?? m.west?.name ?? m.west?.displayName ?? null;
-    const eastRank = m.east_rank ?? m.eastRank ?? m.east?.rank ?? m.east?.banzuke ?? '';
-    const westRank = m.west_rank ?? m.westRank ?? m.west?.rank ?? m.west?.banzuke ?? '';
-    const kim = m.kimarite ?? m.kimarite_name ?? m.kimarite_display ?? m.kimariteName ?? m.method ?? undefined;
-    const eastVotes = Number(m.east_votes ?? m.eastVotes ?? m.east_votes_count ?? m.east?.votes ?? 0) || 0;
-    const westVotes = Number(m.west_votes ?? m.westVotes ?? m.west_votes_count ?? m.west?.votes ?? 0) || 0;
-    const winner = (m.winner ?? m.result ?? m.winning_side ?? null);
-    const winnerSide = (winner === 'east' || winner === 'west') ? winner : (winner === eastName ? 'east' : (winner === westName ? 'west' : null));
+  const normalize = (m: RawMatch): NormalizedMatch => {
+    const getString = (o: RawMatch | undefined, ...keys: string[]) => {
+      if (!o) return undefined;
+      for (const k of keys) {
+        const v = (o as RawMatch)[k];
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number') return String(v);
+      }
+      return undefined;
+    };
+
+    const getNumber = (o: RawMatch | undefined, ...keys: string[]) => {
+      const s = getString(o, ...keys);
+      if (typeof s === 'string') return Number(s) || 0;
+      return 0;
+    };
+
+    const eastName = getString(m, 'east_shikona', 'eastshikona', 'eastName') ?? ((m['east'] && typeof m['east'] === 'object') ? getString(m['east'] as RawMatch, 'shikona', 'name', 'displayName') : undefined);
+    const westName = getString(m, 'west_shikona', 'westshikona', 'westName') ?? ((m['west'] && typeof m['west'] === 'object') ? getString(m['west'] as RawMatch, 'shikona', 'name', 'displayName') : undefined);
+    const eastRank = getString(m, 'east_rank', 'eastRank') ?? ((m['east'] && typeof m['east'] === 'object') ? getString(m['east'] as RawMatch, 'rank', 'banzuke') : '') ?? '';
+    const westRank = getString(m, 'west_rank', 'westRank') ?? ((m['west'] && typeof m['west'] === 'object') ? getString(m['west'] as RawMatch, 'rank', 'banzuke') : '') ?? '';
+    const kim = getString(m, 'kimarite', 'kimarite_name', 'kimarite_display', 'kimariteName', 'method');
+    const eastVotes = getNumber(m, 'east_votes', 'eastVotes', 'east_votes_count') || ((m['east'] && typeof m['east'] === 'object') ? getNumber(m['east'] as RawMatch, 'votes') : 0);
+    const westVotes = getNumber(m, 'west_votes', 'westVotes', 'west_votes_count') || ((m['west'] && typeof m['west'] === 'object') ? getNumber(m['west'] as RawMatch, 'votes') : 0);
+    const winner = (m['winner'] ?? m['result'] ?? m['winning_side'] ?? null) as unknown;
+    const winnerSide = (winner === 'east' || winner === 'west') ? (winner as string) : ((String(winner) === String(eastName)) ? 'east' : ((String(winner) === String(westName)) ? 'west' : null));
 
     // match number / bout number
-    const matchNumber = Number(m.match_number ?? m.bout ?? m.bout_number ?? m.no ?? m.matchNo ?? NaN);
+    const matchNumber = Number(m['match_number'] ?? m['bout'] ?? m['bout_number'] ?? m['no'] ?? m['matchNo'] ?? NaN);
 
     // date grouping key: try ISO date, timestamp, or basho day
     let dateVal: string | null = null;
-    if (m.date) dateVal = m.date;
-    else if (m.timestamp) dateVal = new Date(Number(m.timestamp)).toISOString();
-    else if (m.match_time) dateVal = new Date(m.match_time).toISOString();
-    else if (m.basho_day) dateVal = `Day ${m.basho_day}`;
-    else if (m.day) dateVal = `Day ${m.day}`;
+    if (m['date']) dateVal = String(m['date']);
+    else if (m['timestamp']) dateVal = new Date(Number(m['timestamp'])).toISOString();
+    else if (m['match_time']) dateVal = new Date(String(m['match_time'])).toISOString();
+    else if (m['basho_day']) dateVal = `Day ${String(m['basho_day'])}`;
+    else if (m['day']) dateVal = `Day ${String(m['day'])}`;
 
     // friendly day label (use a deterministic YYYY-MM-DD to avoid SSR/CSR locale mismatches)
     let dayLabel = 'Unknown day';
@@ -73,22 +110,29 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
       const maybeDate = new Date(dateVal);
       if (!isNaN(maybeDate.getTime())) {
         const y = maybeDate.getUTCFullYear();
-        const m = String(maybeDate.getUTCMonth() + 1).padStart(2, '0');
+        const mm = String(maybeDate.getUTCMonth() + 1).padStart(2, '0');
         const d = String(maybeDate.getUTCDate()).padStart(2, '0');
-        dayLabel = `${y}-${m}-${d}`;
+        dayLabel = `${y}-${mm}-${d}`;
       } else {
         dayLabel = String(dateVal);
       }
     }
 
     // candidate avatar fields
-    const eastImage = m.east?.image ?? m.east_image ?? m.east_photo ?? m.east_profile ?? m.east?.avatar ?? null;
-    const westImage = m.west?.image ?? m.west_image ?? m.west_photo ?? m.west_profile ?? m.west?.avatar ?? null;
+    const eastImage = getString(m['east'] && typeof m['east'] === 'object' ? (m['east'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'east_image', 'east_photo', 'east_profile') ?? null;
+    const westImage = getString(m['west'] && typeof m['west'] === 'object' ? (m['west'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'west_image', 'west_photo', 'west_profile') ?? null;
 
     // build a safe fallback id only when at least one side has a name
-    const constructedId = (m.east_shikona ?? m.eastName ?? m.east?.name) && (m.west_shikona ?? m.westName ?? m.west?.name)
-      ? `${m.east_shikona ?? m.eastName ?? m.east?.name}-${m.west_shikona ?? m.westName ?? m.west?.name}-${m.bout ?? m.match_number ?? ''}`
+    const constructedId = (m['east_shikona'] ?? m['eastName'] ?? (m['east'] && (m['east'] as RawMatch)['name'])) && (m['west_shikona'] ?? m['westName'] ?? (m['west'] && (m['west'] as RawMatch)['name']))
+      ? `${m['east_shikona'] ?? m['eastName'] ?? (m['east'] && (m['east'] as RawMatch)['name'])}-${m['west_shikona'] ?? m['westName'] ?? (m['west'] && (m['west'] as RawMatch)['name'])}-${m['bout'] ?? m['match_number'] ?? ''}`
       : undefined;
+
+    const resolvedId = (() => {
+      const v = m['id'] ?? m['_id'] ?? m['match_id'] ?? constructedId;
+      if (typeof v === 'number' || typeof v === 'string') return v;
+      if (v != null) return String(v);
+      return undefined;
+    })();
 
     return {
       raw: m,
@@ -96,23 +140,74 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
       westName: westName ?? eastName ?? 'West',
       eastRank,
       westRank,
-      kim,
+      kim: kim ?? undefined,
       eastVotes,
       westVotes,
       winnerSide,
       matchNumber: isNaN(matchNumber) ? undefined : matchNumber,
       dayLabel,
-      timestamp: m.timestamp ? Number(m.timestamp) : (m.match_time ? Date.parse(m.match_time) : undefined),
+      timestamp: m['timestamp'] ? Number(m['timestamp']) : (m['match_time'] ? Date.parse(String(m['match_time'])) : undefined),
       eastImage,
       westImage,
-      id: m.id ?? m._id ?? m.match_id ?? constructedId,
+      id: resolvedId,
     };
   };
 
   const normalized = itemsArray.map(normalize);
 
+  // precompute serialized normalized data to use in effect deps (avoids complex expressions)
+  const serializedNormalized = React.useMemo(() => JSON.stringify(normalized), [normalized]);
+
+  // cache of rikishi id -> image url (s3_url preferred)
+  const [rikishiImages, setRikishiImages] = React.useState<Record<string, string>>({});
+
+  // serialized rikishi cache for effect deps
+  const serializedRikishi = React.useMemo(() => JSON.stringify(rikishiImages), [rikishiImages]);
+
+  // fetch rikishi docs for any matches that lack avatar urls but have rikishi id fields
+  React.useEffect(() => {
+    // Use serialized inputs so the dependency array stays simple and stable.
+    let mounted = true;
+    try {
+      const parsed: NormalizedMatch[] = JSON.parse(serializedNormalized || '[]');
+      const cached: Record<string, string> = JSON.parse(serializedRikishi || '{}');
+      const idsToFetch = new Set<string>();
+      parsed.forEach((nm) => {
+        const er = nm.raw?.east_rikishi_id ?? nm.raw?.east_id ?? nm.raw?.east_rikishi ?? null;
+        const wr = nm.raw?.west_rikishi_id ?? nm.raw?.west_id ?? nm.raw?.west_rikishi ?? null;
+        if (er && !nm.eastImage && !cached[String(er)]) idsToFetch.add(String(er));
+        if (wr && !nm.westImage && !cached[String(wr)]) idsToFetch.add(String(wr));
+      });
+      if (idsToFetch.size === 0) return () => { mounted = false };
+
+      (async () => {
+        const results: Record<string, string> = {};
+        await Promise.all(Array.from(idsToFetch).map(async (id) => {
+          try {
+            const res = await fetch(`/api/rikishi/${encodeURIComponent(id)}`);
+            if (!mounted) return;
+            if (!res.ok) return;
+            const doc = await res.json();
+            // try common shapes: doc.rikishi.s3_url, doc.s3_url, doc.rikishi?.pfp_url
+            const s = doc?.rikishi?.s3_url ?? doc?.s3_url ?? doc?.rikishi?.pfp_url ?? doc?.pfp_url ?? doc?.rikishi?.image_url ?? doc?.image_url ?? null;
+            if (s) results[id] = s;
+          } catch {
+            // ignore individual fetch failures
+          }
+        }));
+        if (!mounted) return;
+        if (Object.keys(results).length > 0) setRikishiImages(prev => ({ ...prev, ...results }));
+      })();
+    } catch {
+      // if JSON.parse fails, skip
+    }
+
+    return () => { mounted = false };
+  // include serialized deps so effect re-runs when normalized or rikishi cache updates
+  }, [serializedNormalized, serializedRikishi]);
+
   // group by dayLabel and sort
-  const groups = new Map<string, any[]>();
+  const groups = new Map<string, NormalizedMatch[]>();
   normalized.forEach((nm) => {
     const key = nm.dayLabel || 'Unknown day';
     if (!groups.has(key)) groups.set(key, []);
@@ -129,7 +224,7 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
 
   // sort matches inside each group by matchNumber (ascending) or timestamp
   groupArray.forEach(g => {
-    g.list.sort((x: any, y: any) => {
+    g.list.sort((x: NormalizedMatch, y: NormalizedMatch) => {
       if (x.matchNumber != null && y.matchNumber != null) return (x.matchNumber - y.matchNumber);
       if (x.timestamp && y.timestamp) return (x.timestamp - y.timestamp);
       return 0;
@@ -165,7 +260,7 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
           {groupArray.map((group, gi) => (
             <Box key={`${String(group.label ?? 'day')}-${gi}`} sx={{ mb: 2 }}>
               <Typography level="body-md" sx={{ fontWeight: 700, mb: 1, color: '#563861' }}>{group.label}</Typography>
-              {group.list.map((match: any, idx: number) => {
+              {group.list.map((match: NormalizedMatch, idx: number) => {
                 const eastName = match.eastName;
                 const westName = match.westName;
                 const eastRank = match.eastRank ?? match.eastRank;
@@ -178,8 +273,8 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                 const westPercent = Math.round(((match.westVotes ?? 0) / total) * 100);
                 const progressValue = Math.max(eastPercent, westPercent);
                 const winnerSide = match.winnerSide;
-                const avatarEast = match.eastImage ?? null;
-                const avatarWest = match.westImage ?? null;
+                const avatarEast = match.eastImage ?? rikishiImages[String(match.raw?.east_rikishi_id ?? match.raw?.east_id ?? '')] ?? null;
+                const avatarWest = match.westImage ?? rikishiImages[String(match.raw?.west_rikishi_id ?? match.raw?.west_id ?? '')] ?? null;
                 const initials = (n?: string) => {
                   if (!n) return '';
                   const parts = String(n).trim().split(/\s+/);
@@ -216,8 +311,15 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                         },
                       }}
                     >
-                      <Box sx={{ position: 'relative' }}>
-                        {avatarWest ? <Avatar size="sm" src={avatarWest} /> : <Avatar size="sm">{initials(westName)}</Avatar>}
+                      <Box sx={{ position: 'relative', width: 32, height: 32 }}>
+                        {avatarWest ? (
+                          <div style={{ width: 32, height: 32, position: 'relative', borderRadius: '50%', overflow: 'hidden' }}>
+                            <Image src={avatarWest} alt={westName} fill style={{ objectFit: 'cover', borderRadius: '50%' }} />
+                          </div>
+                        ) : (
+                          <Avatar size="sm">{initials(westName)}</Avatar>
+                        )}
+                      </Box>
                         {winnerSide === 'west' && (
                           <Box
                             sx={{
@@ -240,7 +342,6 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                             W
                           </Box>
                         )}
-                      </Box>
 
                       <Box sx={{ textAlign: 'center', flex: 1 }}>
                         <Typography
@@ -269,7 +370,7 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                             maxWidth: '100%'
                           }}
                         >
-                          {match.westRank ?? ''} vs {match.eastRank ?? ''}
+                          {westRank ?? ''} vs {eastRank ?? ''}
                         </Typography>
                         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
                           <Box sx={{ width: 160 }}>
@@ -278,8 +379,14 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                         </Box>
                       </Box>
 
-                      <Box sx={{ position: 'relative' }}>
-                        {avatarEast ? <Avatar size="sm" src={avatarEast} /> : <Avatar size="sm">{initials(eastName)}</Avatar>}
+                      <Box sx={{ position: 'relative', width: 32, height: 32 }}>
+                        {avatarEast ? (
+                          <div style={{ width: 32, height: 32, position: 'relative', borderRadius: '50%', overflow: 'hidden' }}>
+                            <Image src={avatarEast} alt={eastName} fill style={{ objectFit: 'cover', borderRadius: '50%' }} />
+                          </div>
+                        ) : (
+                          <Avatar size="sm">{initials(eastName)}</Avatar>
+                        )}
                         {winnerSide === 'east' && (
                           <Box
                             sx={{

@@ -1,29 +1,48 @@
 "use client";
 
 import React from "react";
+import Image from 'next/image';
 import RikishiWinLossSparkline from '../components/sparkline';
 
+interface RikishiInfo {
+  shikona?: string;
+  name?: string;
+  current_rank?: string;
+  rank?: string;
+  recent_form?: unknown;
+  win_series?: unknown;
+  trend?: unknown;
+  recent_matches?: unknown;
+  form?: unknown;
+  s3_url?: string;
+  pfp_url?: string;
+  image_url?: string;
+  profile_image?: string;
+  photo?: string;
+  [k: string]: unknown;
+}
+
 interface ClimbingRikishiCardProps {
-  rikishi?: any;
+  rikishi?: RikishiInfo;
 }
 
 const ClimbingRikishiCard: React.FC<ClimbingRikishiCardProps> = ({ rikishi }) => {
-  const r = rikishi ?? { shikona: 'Kotonowaka', current_rank: 'Komusubi' };
-  const name = r.shikona ?? r.name ?? 'Unknown';
-  const rank = r.current_rank ?? r.rank ?? '';
+  const r: RikishiInfo = rikishi ?? { shikona: 'Kotonowaka', current_rank: 'Komusubi' };
+  const name = String(r.shikona ?? r.name ?? 'Unknown');
+  const rank = String(r.current_rank ?? r.rank ?? '');
   // try to extract a recent form series (array of 0/1) from common keys
-  const series = (r.recent_form ?? r.win_series ?? r.trend ?? r.recent_matches ?? r.form) as any;
+  const series = r.recent_form ?? r.win_series ?? r.trend ?? r.recent_matches ?? r.form;
   let sparkData: number[] | undefined = undefined;
   try {
-    if (Array.isArray(series) && series.length > 0) {
+    if (Array.isArray(series) && (series as unknown[]).length > 0) {
       // if array of objects, map known keys
-      if (typeof series[0] === 'object') {
-        sparkData = (series as any[]).map(s => Number(s.win ?? s.won ?? s.result ?? s.value ?? 0));
+      if (typeof (series as unknown[])[0] === 'object') {
+        sparkData = (series as Array<Record<string, unknown>>).map(s => Number(s['win'] ?? s['won'] ?? s['result'] ?? s['value'] ?? 0));
       } else {
-        sparkData = (series as any[]).map((v: any) => Number(v) || 0);
+        sparkData = (series as unknown[]).map((v) => Number(v as unknown) || 0);
       }
     }
-  } catch (e) {
+  } catch {
     sparkData = undefined;
   }
 
@@ -102,19 +121,15 @@ const ClimbingRikishiCard: React.FC<ClimbingRikishiCardProps> = ({ rikishi }) =>
         }}
       >
         {/* profile image: prefer backend-provided keys */}
-        <img
-          src={r.image_url ?? r.profile_image ?? r.photo ?? '/sumo_logo.png'}
-          alt={`${name} profile`}
-          onError={(e) => { (e.target as HTMLImageElement).src = '/sumo_logo.png'; }}
-          style={{
-            width: 70,
-            height: 70,
-            borderRadius: '50%',
-            border: '3px solid #388eec',
-            background: '#fff',
-            objectFit: 'cover',
-          }}
-        />
+        <div style={{ width: 70, height: 70, position: 'relative', borderRadius: '50%', overflow: 'hidden', border: '3px solid #388eec', background: '#fff' }}>
+          <Image
+            src={String(r.s3_url ?? r.pfp_url ?? r.image_url ?? r.profile_image ?? r.photo ?? '/sumo_logo.png')}
+            alt={`${name} profile`}
+            fill
+            style={{ objectFit: 'cover', borderRadius: '50%' }}
+            sizes="70px"
+          />
+        </div>
         <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#563861', textAlign: 'center' }}>{name}</div>
         <div style={{ fontSize: '0.95rem', color: '#388eec', textAlign: 'center' }}>{rank}</div>
         {/* Rikishi Stats removed */}

@@ -2,6 +2,7 @@
 'use client';
 
 import { PropsWithChildren, useCallback } from 'react';
+import React from 'react';
 import { RouterProvider } from 'react-aria-components';
 import { useRouter } from 'next/navigation';
 
@@ -26,8 +27,9 @@ export function RouteProvider({ children }: PropsWithChildren) {
   // Next doesn’t need a custom `useHref`; returning `to` is fine for RAC
   const useHref = useCallback((to: string) => to, []);
 
+  const providerProps = { navigate, useHref, children };
   return (
-    <RouterProvider navigate={navigate as any} useHref={useHref as any}>
+    <RouterProvider {...(providerProps as React.ComponentProps<typeof RouterProvider>)}>
       {children}
     </RouterProvider>
   );

@@ -2,6 +2,7 @@
 
 //import React from "react";
 import { Table, TableCard } from "./table/table"; // adjust import if path differs
+import Image from 'next/image';
 
 const columns = [
   { id: "profile", label: "Profile" },
@@ -11,8 +12,18 @@ const columns = [
 ];
 
 interface RikishiTableProps {
-  topRikishiOrdered?: any[];
+  topRikishiOrdered?: Record<string, unknown>[] | Record<string, Record<string, unknown>>;
 }
+
+type IncomingRikishi = Record<string, unknown>;
+type RikishiRow = {
+  id: string | number;
+  name: string;
+  rank: string;
+  wins: number;
+  profile: string;
+  index: number;
+};
 
 const defaultRawData = [
   {
@@ -20,39 +31,57 @@ const defaultRawData = [
     name: "Hakuho",
     rank: "Yokozuna",
     wins: 45,
-    profile: "../../../../sumo_logo.png",
+    profile: "/sumo_logo.png",
   },
   {
     id: 2,
     name: "Asanoyama",
     rank: "Ozeki",
     wins: 12,
-    profile: "../../../../sumo_logo.png",
+    profile: "/sumo_logo.png",
   },
 ];
 
 export function RikishiTable({ topRikishiOrdered }: RikishiTableProps) {
   // map incoming ordered list (from homepage.top_rikishi_ordered) to table rows
-  let sourceList: any[] = [];
+  let sourceList: IncomingRikishi[] = [];
   if (topRikishiOrdered) {
     if (Array.isArray(topRikishiOrdered)) {
-      sourceList = topRikishiOrdered;
+      sourceList = topRikishiOrdered as IncomingRikishi[];
     } else if (typeof topRikishiOrdered === 'object') {
       // sometimes the backend stores ordered rikishi as an object/map — take values
-      sourceList = Object.values(topRikishiOrdered as any);
+      sourceList = Object.values(topRikishiOrdered as Record<string, IncomingRikishi>);
     }
   }
 
-  const data = (sourceList && sourceList.length > 0)
-    ? sourceList.map((r: any, idx: number) => ({
-      id: r.id ?? r._id ?? idx,
-      name: r.shikona ?? r.name ?? r.display_name ?? 'Unknown',
-      rank: r.current_rank ?? r.rank ?? r.rank_label ?? '',
-      wins: r.wins ?? r.win_count ?? 0,
-      profile: (r.photo_url ?? r.profile ?? '/sumo_logo.png'),
+  // helper to read possibly-unknown keys safely
+  const getString = (o: IncomingRikishi | undefined, ...keys: string[]) => {
+    if (!o) return undefined;
+    for (const k of keys) {
+      const v = o[k];
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number') return String(v);
+    }
+    return undefined;
+  };
+
+  const getNumber = (o: IncomingRikishi | undefined, ...keys: string[]) => {
+    const s = getString(o, ...keys);
+    if (typeof s === 'string') return Number(s) || 0;
+    return 0;
+  };
+
+  const data: RikishiRow[] = (sourceList && sourceList.length > 0)
+    ? sourceList.map((r: IncomingRikishi, idx: number) => ({
+      id: getString(r, 'id', '_id') ?? idx,
+      name: getString(r, 'shikona', 'name', 'display_name') ?? 'Unknown',
+      rank: getString(r, 'current_rank', 'rank', 'rank_label') ?? '',
+      wins: getNumber(r, 'wins', 'win_count'),
+      // prefer S3-hosted image if available (backend may include s3_url), then common keys
+      profile: getString(r, 's3_url', 'photo_url', 'profile') ?? '/sumo_logo.png',
       index: idx,
     }))
-    : defaultRawData.map((item, idx) => ({ ...item, index: idx }));
+    : defaultRawData.map((item, idx) => ({ ...item, index: idx })) as RikishiRow[];
   return (
     <div className="w-full h-full app-text text-[1.15rem]">
       <TableCard.Root size="sm" className="bg-[#A3E0B8] border-3 border-[#563861]">
@@ -81,13 +110,10 @@ export function RikishiTable({ topRikishiOrdered }: RikishiTableProps) {
                   if (column.id === "profile") {
                     return (
                       <Table.Cell className={`${cellBg} ${cellBorder}`}>
-                        <img
-                          src={(item as any).profile ?? '/sumo_logo.png'}
-                          alt={(item as any).name}
-                          className="h-8 w-8 rounded-full object-cover"
-                          style={{ width: 32, height: 32 }}
-                        />
-                      </Table.Cell>
+                          <div style={{ width: 32, height: 32, position: 'relative', borderRadius: '50%', overflow: 'hidden' }}>
+                            <Image src={String(item.profile ?? '/sumo_logo.png')} alt={String(item.name)} fill style={{ objectFit: 'cover' }} />
+                          </div>
+                        </Table.Cell>
                     );
                   }
                   if (column.id === 'name') {
@@ -97,18 +123,18 @@ export function RikishiTable({ topRikishiOrdered }: RikishiTableProps) {
                           <a
                             href={`/rikishi/${item.id}`}
                             style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}
-                            title={`View profile for ${(item as any).name}`}
+                            title={`View profile for ${String(item.name)}`}
                           >
-                            <span style={{ fontWeight: 700 }}>{(item as any).name}</span>
+                            <span style={{ fontWeight: 700 }}>{String(item.name)}</span>
                           </a>
-                          <span style={{ fontSize: 12, color: '#563861', background: '#fff2f6', padding: '2px 6px', borderRadius: 8 }}>{(item as any).rank}</span>
+                          <span style={{ fontSize: 12, color: '#563861', background: '#fff2f6', padding: '2px 6px', borderRadius: 8 }}>{String(item.rank)}</span>
                         </div>
                       </Table.Cell>
                     );
                   }
                   return (
                     <Table.Cell className={`${cellBg} ${cellBorder}`}>
-                      {(item as any)[column.id]}
+                      {(item as RikishiRow)[column.id as keyof RikishiRow]}
                     </Table.Cell>
                   );
                 }}

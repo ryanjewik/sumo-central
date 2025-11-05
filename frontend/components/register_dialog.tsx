@@ -10,11 +10,12 @@ import Box from '@mui/material/Box';
 import DialogTitle from '@mui/material/DialogTitle';
 import Slide from '@mui/material/Slide';
 import type { TransitionProps } from '@mui/material/transitions';
+import Image from 'next/image';
 
 
 const Transition = React.forwardRef(function Transition(
   props: TransitionProps & {
-    children: React.ReactElement<any, any>;
+    children: React.ReactElement;
   },
   ref: React.Ref<unknown>,
 ) {
@@ -80,7 +81,7 @@ const RegisterDialog: React.FC<RegisterDialogProps> = ({ open, onClose }) => {
       } else {
         setError(result.error || 'Registration failed.');
       }
-    } catch (err) {
+    } catch {
       setError('Registration failed.');
     }
   };
@@ -120,7 +121,7 @@ const RegisterDialog: React.FC<RegisterDialogProps> = ({ open, onClose }) => {
     >
       <DialogTitle sx={{ textAlign: 'center', pb: 0 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-          <img src="/sumo_logo.png" alt="Sumo App Logo" style={{ width: 56, height: 56, marginBottom: 2 }} />
+          <Image src="/sumo_logo.png" alt="Sumo App Logo" width={56} height={56} style={{ width: 56, height: 56, marginBottom: 2 }} />
           <span style={{ fontWeight: 900, fontSize: '1.6rem', color: '#563861', letterSpacing: '0.04em', fontFamily: `'Courier New', Courier, monospace` }}>Sumo App</span>
           <span style={{ fontWeight: 700, fontSize: '1.18rem', color: '#563861', opacity: 0.88, fontFamily: `'Courier New', Courier, monospace` }}>Register for Sumo App</span>
         </Box>
