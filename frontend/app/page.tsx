@@ -47,6 +47,25 @@ function InnerApp() {
     { username: 'kimariteKing', correctPredictions: 24 },
     // ...more users
   ];
+  const [leaderboard, setLeaderboard] = useState<{ username: string; correctPredictions: number }[] | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/leaderboard', { credentials: 'include' });
+        if (!mounted) return;
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted && data && Array.isArray(data.leaderboard)) {
+          setLeaderboard(data.leaderboard);
+        }
+      } catch (err) {
+        // ignore
+      }
+    })();
+    return () => { mounted = false };
+  }, []);
 
 
   const sampleUpcomingMatches = [
@@ -122,6 +141,13 @@ function InnerApp() {
   const [bashoUpcomingMatches, setBashoUpcomingMatches] = useState<any[] | null>(null);
   const [bashoLoading, setBashoLoading] = useState(false);
   const [bashoError, setBashoError] = useState<string | null>(null);
+
+  // derived stats from homepage
+  const avgStats = homepage?.avg_stats ?? {};
+  const avgWeightTotal = Number(avgStats.average_weight_kg ?? avgStats.average_weight ?? 157.42);
+  const avgHeightTotal = Number(avgStats.average_height_cm ?? avgStats.average_height ?? 185.27);
+  const yushoWeight = Number(avgStats.makuuchi_yusho_avg_weight_kg ?? avgWeightTotal);
+  const yushoHeight = Number(avgStats.makuuchi_yusho_avg_height_cm ?? avgHeightTotal);
 
   // load homepage document from backend (Mongo)
   useEffect(() => {
@@ -394,7 +420,7 @@ function InnerApp() {
       </div>
             <div style={{ flex: 1, gap: '1rem', display: 'flex', flexDirection: 'column' }}>
               <KimariteRadarChart kimariteCounts={homepage?.kimarite_usage_most_recent_basho} />
-              <LeaderboardTable leaderboard={sampleLeaderboard} />
+              <LeaderboardTable leaderboard={leaderboard ?? sampleLeaderboard} />
               <SumoTicketsCard />
             </div>
           </div>
@@ -504,8 +530,8 @@ function InnerApp() {
                     >
                       Average Yusho Weight
                     </span>
-                    <span style={{ fontWeight: 600, fontSize: '2rem', color: '#563861', fontFamily: 'inherit' }}>
-                      157.42kg
+                    <span style={{ fontWeight: 700, fontSize: '1.6rem', color: '#563861', fontFamily: 'inherit' }}>
+                      {yushoWeight.toFixed(2)}kg
                     </span>
                   </div>
 
@@ -549,8 +575,8 @@ function InnerApp() {
                     >
                       Average Yusho Height
                     </span>
-                    <span style={{ fontWeight: 600, fontSize: '2rem', color: '#563861', fontFamily: 'inherit' }}>
-                      185.27cm
+                    <span style={{ fontWeight: 700, fontSize: '1.6rem', color: '#563861', fontFamily: 'inherit' }}>
+                      {yushoHeight.toFixed(2)}cm
                     </span>
                   </div>
 

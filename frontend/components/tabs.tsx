@@ -23,7 +23,6 @@ export default function TabsSegmentedControls() {
       >
         <Tab disableIndicator>Sumo</Tab>
         <Tab disableIndicator>Discussions</Tab>
-        <Tab disableIndicator>Brackets</Tab>
         <Tab disableIndicator>Resources</Tab>
         <Tab disableIndicator>About</Tab>
       </TabList>

@@ -123,6 +123,9 @@ export function ChartBarInteractive({ heyaAvgRank, heyaRikishiCount }: ChartBarI
   const rikishiCounts = chartDataComputed.map(d => d.rikishiCount);
   const minCount = Math.min(...rikishiCounts);
   const maxCount = Math.max(...rikishiCounts);
+  // Determine XAxis tick interval to limit clutter. Aim for at most ~8 ticks.
+  const maxXTicks = 8;
+  const computedInterval = Math.max(0, Math.floor(chartDataComputed.length / maxXTicks));
   return (
     <Card
       className="flex flex-col gap-1 bg-[#F5E6C8] border-2  rounded-xl shadow w-full"
@@ -132,7 +135,8 @@ export function ChartBarInteractive({ heyaAvgRank, heyaRikishiCount }: ChartBarI
       <div className="w-full">
         <ChartContainer
           config={chartConfig}
-          className="aspect-auto h-full w-full min-h-[180px]"
+          // increase min height so the chart lines up better with the upcoming rikishi card
+          className="aspect-auto h-full w-full min-h-[260px]"
         >
           <BarChart
             accessibilityLayer
@@ -140,7 +144,7 @@ export function ChartBarInteractive({ heyaAvgRank, heyaRikishiCount }: ChartBarI
             margin={{
               left: 12,
               right: 12,
-              bottom: 40,
+              bottom: 60,
             }}
           >
             <CartesianGrid vertical={false} stroke="#e0a3c2" />
@@ -150,10 +154,11 @@ export function ChartBarInteractive({ heyaAvgRank, heyaRikishiCount }: ChartBarI
               axisLine={false}
               tickMargin={8}
               minTickGap={12}
-              angle={-45}
+              // reduce tilt slightly and limit ticks to avoid overlap
+              angle={-30}
               textAnchor="end"
-              interval={0}
-              height={60}
+              interval={computedInterval}
+              height={70}
               tick={{ fill: '#563861', fontWeight: 600, fontSize: 13 }}
             />
             {/* Add YAxis to start at 2300 */}
