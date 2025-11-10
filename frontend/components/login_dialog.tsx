@@ -94,12 +94,12 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ open, onClose }) => {
       >
         <DialogTitle sx={{ textAlign: 'center', pb: 0 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-            <Image src="/sumo_logo.png" alt="Sumo App Logo" width={56} height={56} style={{ marginBottom: 2 }} />
+            <Image src="/sumo_logo.png" alt="Sumopedia Logo" width={56} height={56} style={{ marginBottom: 2 }} />
             <span style={{ fontWeight: 900, fontSize: '1.6rem', color: '#563861', letterSpacing: '0.04em', fontFamily: `'Courier New', Courier, monospace` }}>
-              Sumo App
+              Sumopedia
             </span>
             <span style={{ fontWeight: 700, fontSize: '1.18rem', color: '#563861', opacity: 0.88, fontFamily: `'Courier New', Courier, monospace` }}>
-              Login to Your Account
+              Login to Your Sumopedia Account
             </span>
           </Box>
         </DialogTitle>

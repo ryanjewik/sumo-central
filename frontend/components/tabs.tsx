@@ -21,7 +21,7 @@ export default function TabsSegmentedControls() {
           },
         }}
       >
-        <Tab disableIndicator>Sumo</Tab>
+  <Tab disableIndicator>Sumopedia</Tab>
         <Tab disableIndicator>Discussions</Tab>
         <Tab disableIndicator>Resources</Tab>
         <Tab disableIndicator>About</Tab>
