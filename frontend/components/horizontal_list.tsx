@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from 'react';
+import Link from 'next/link';
 import Box from '@mui/joy/Box';
 import List from '@mui/joy/List';
 import ListDivider from '@mui/joy/ListDivider';
@@ -166,7 +167,7 @@ const SumoMenu = React.forwardRef(
               }
             ]}
           >
-            Sumo <KeyboardArrowDown />
+            Sumopedia <KeyboardArrowDown />
           </ListItemButton>
           <Popper id={id} open={open} anchorEl={anchorEl} disablePortal keepMounted>
             <List
@@ -193,20 +194,28 @@ const SumoMenu = React.forwardRef(
                className="app-text"
             >
               <ListItem role="none">
-                <ListItemButton role="menuitem" {...getTargetProps(0)}>
-                  <ListItemDecorator>
-                    <Person />
-                  </ListItemDecorator>
-                  Rikishi
-                </ListItemButton>
+                <Link href="/rikishi" legacyBehavior>
+                  <a {...getTargetProps(0)} style={{ textDecoration: 'none', color: 'inherit', width: '100%' }}>
+                    <ListItemButton role="menuitem" component="div">
+                      <ListItemDecorator>
+                        <Person />
+                      </ListItemDecorator>
+                      Rikishi
+                    </ListItemButton>
+                  </a>
+                </Link>
               </ListItem>
               <ListItem role="none">
-                <ListItemButton role="menuitem" {...getTargetProps(1)}>
-                  <ListItemDecorator>
-                    <Apps />
-                  </ListItemDecorator>
-                  Basho
-                </ListItemButton>
+                <Link href="/basho" legacyBehavior>
+                  <a {...getTargetProps(1)} style={{ textDecoration: 'none', color: 'inherit', width: '100%' }}>
+                    <ListItemButton role="menuitem" component="div">
+                      <ListItemDecorator>
+                        <Apps />
+                      </ListItemDecorator>
+                      Basho
+                    </ListItemButton>
+                  </a>
+                </Link>
               </ListItem>
             </List>
           </Popper>
@@ -250,120 +259,126 @@ export default function HorizontalList() {
         </ListItem>
         <ListDivider orientation="vertical" />
         <ListItem role="none" className="flex-1 flex justify-center">
-          <ListItemButton
-            role="menuitem"
-            component="a"
-            href="#horizontal-list"
-            className="modern-navbar-link"
-            sx={{
-              position: 'relative',
-              color: '#563861',
-              fontSize: '1.25rem',
-              fontWeight: 500,
-              pb: '2px',
-              overflow: 'hidden',
-              borderRadius: '0.75rem',
-              transition: 'background 0.22s, color 0.22s',
-              '::after': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                bottom: 0,
-                width: 0,
-                height: '2px',
-                background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
-                transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
-              },
-              '&:hover::after': {
-                width: '100%',
-              },
-              '&:hover': {
-                color: '#563861',
-                background: '#f5e6c8',
-                borderRadius: '0.75rem',
-              },
-            }}
-          >
-            Discussions
-          </ListItemButton>
+          <Link href="/discussions" legacyBehavior>
+            <a className="modern-navbar-link" style={{ textDecoration: 'none' }}>
+              <ListItemButton
+                role="menuitem"
+                component="div"
+                sx={{
+                  position: 'relative',
+                  color: '#563861',
+                  fontSize: '1.25rem',
+                  fontWeight: 500,
+                  pb: '2px',
+                  overflow: 'hidden',
+                  borderRadius: '0.75rem',
+                  transition: 'background 0.22s, color 0.22s',
+                  '::after': {
+                    content: '""',
+                    position: 'absolute',
+                    left: 0,
+                    bottom: 0,
+                    width: 0,
+                    height: '2px',
+                    background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
+                    transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
+                  },
+                  '&:hover::after': {
+                    width: '100%',
+                  },
+                  '&:hover': {
+                    color: '#563861',
+                    background: '#f5e6c8',
+                    borderRadius: '0.75rem',
+                  },
+                }}
+              >
+                Discussions
+              </ListItemButton>
+            </a>
+          </Link>
         </ListItem>
         
         <ListItem role="none" className="flex-1 flex justify-center">
-          <ListItemButton
-            role="menuitem"
-            component="a"
-            href="#horizontal-list"
-            className="modern-navbar-link"
-            sx={{
-              position: 'relative',
-              color: '#563861',
-              fontSize: '1.25rem',
-              fontWeight: 500,
-              pb: '2px',
-              overflow: 'hidden',
-              borderRadius: '0.75rem',
-              transition: 'background 0.22s, color 0.22s',
-              '::after': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                bottom: 0,
-                width: 0,
-                height: '2px',
-                background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
-                transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
-              },
-              '&:hover::after': {
-                width: '100%',
-              },
-              '&:hover': {
-                color: '#563861',
-                background: '#f5e6c8',
-                borderRadius: '0.75rem',
-              },
-            }}
-          >
-            Resources
-          </ListItemButton>
+          <Link href="/resources" legacyBehavior>
+            <a className="modern-navbar-link" style={{ textDecoration: 'none' }}>
+              <ListItemButton
+                role="menuitem"
+                component="div"
+                sx={{
+                  position: 'relative',
+                  color: '#563861',
+                  fontSize: '1.25rem',
+                  fontWeight: 500,
+                  pb: '2px',
+                  overflow: 'hidden',
+                  borderRadius: '0.75rem',
+                  transition: 'background 0.22s, color 0.22s',
+                  '::after': {
+                    content: '""',
+                    position: 'absolute',
+                    left: 0,
+                    bottom: 0,
+                    width: 0,
+                    height: '2px',
+                    background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
+                    transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
+                  },
+                  '&:hover::after': {
+                    width: '100%',
+                  },
+                  '&:hover': {
+                    color: '#563861',
+                    background: '#f5e6c8',
+                    borderRadius: '0.75rem',
+                  },
+                }}
+              >
+                Resources
+              </ListItemButton>
+            </a>
+          </Link>
         </ListItem>
         <ListDivider orientation="vertical" />
         <ListItem role="none" className="flex-1 flex justify-center">
-          <ListItemButton
-            role="menuitem"
-            component="a"
-            href="#horizontal-list"
-            className="modern-navbar-link"
-            sx={{
-              position: 'relative',
-              color: '#563861',
-              fontSize: '1.25rem',
-              fontWeight: 500,
-              pb: '2px',
-              overflow: 'hidden',
-              borderRadius: '0.75rem',
-              transition: 'background 0.22s, color 0.22s',
-              '::after': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                bottom: 0,
-                width: 0,
-                height: '2px',
-                background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
-                transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
-              },
-              '&:hover::after': {
-                width: '100%',
-              },
-              '&:hover': {
-                color: '#563861',
-                background: '#f5e6c8',
-                borderRadius: '0.75rem',
-              },
-            }}
-          >
-            About
-          </ListItemButton>
+          <Link href="/about" legacyBehavior>
+            <a className="modern-navbar-link" style={{ textDecoration: 'none' }}>
+              <ListItemButton
+                role="menuitem"
+                component="div"
+                sx={{
+                  position: 'relative',
+                  color: '#563861',
+                  fontSize: '1.25rem',
+                  fontWeight: 500,
+                  pb: '2px',
+                  overflow: 'hidden',
+                  borderRadius: '0.75rem',
+                  transition: 'background 0.22s, color 0.22s',
+                  '::after': {
+                    content: '""',
+                    position: 'absolute',
+                    left: 0,
+                    bottom: 0,
+                    width: 0,
+                    height: '2px',
+                    background: 'linear-gradient(90deg, #e0a3c2 0%, #563861 100%)',
+                    transition: 'width 0.35s cubic-bezier(0.77,0,0.175,1)',
+                  },
+                  '&:hover::after': {
+                    width: '100%',
+                  },
+                  '&:hover': {
+                    color: '#563861',
+                    background: '#f5e6c8',
+                    borderRadius: '0.75rem',
+                  },
+                }}
+              >
+                About
+              </ListItemButton>
+            </a>
+          </Link>
         </ListItem>
         <ListDivider orientation="vertical" />
       </List>

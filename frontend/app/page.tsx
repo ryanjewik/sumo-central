@@ -323,8 +323,10 @@ function InnerApp() {
       >
         <div className="navbar-row navbar-row-top">
             <div className="navbar-left">
-            <Image src="/sumo_logo.png" alt="Sumo Logo" width={40} height={40} className="navbar-logo" />
-            <span className="navbar-title">Sumo App</span>
+            <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
+              <Image src="/sumo_logo.png" alt="Sumopedia Logo" width={40} height={40} className="navbar-logo" />
+              <span className="navbar-title">Sumopedia</span>
+            </a>
           </div>
           <div
             style={{

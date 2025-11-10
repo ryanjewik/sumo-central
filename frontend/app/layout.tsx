@@ -5,13 +5,15 @@ import "@/styles/globals.css";
 
 import { ThemeProvider } from "@/providers/theme-provider";
 import { RouteProvider } from "@/providers/route-provider";
+import ClientProviders from '@/components/ClientProviders';
+import Header from '@/components/Header';
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Sumopedia",
-  description: "Sumo analytics",
+  description: "Sumopedia analytics",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -20,7 +22,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="antialiased">
         <RouteProvider>
           <ThemeProvider>
-            {children}
+            <ClientProviders>
+              <Header />
+              {children}
+            </ClientProviders>
           </ThemeProvider>
         </RouteProvider>
       </body>
