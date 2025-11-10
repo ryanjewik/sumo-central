@@ -28,8 +28,26 @@ def download_all(prefixes):
         for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix):
             for obj in page.get("Contents", []):
                 key = obj["Key"]
+
+                # Skip common "directory" objects or empty keys
+                if not key or key.endswith("/"):
+                    continue
+
+                # Ignore keys that reference banzuke or torikumi datasets
+                k_low = key.lower()
+                if "banzuke" in k_low or "torikumi" in k_low:
+                    print(f"Skipping (filtered): {key}")
+                    continue
+
+                # Build local path mirroring the S3 key under LOCAL_BASE/<prefix>/<relpath>
                 rel_path = os.path.relpath(key, prefix)
                 local_path = LOCAL_BASE / prefix.strip("/") / rel_path if rel_path != '.' else LOCAL_BASE / prefix.strip("/")
+
+                # If file already exists locally, skip download
+                if local_path.exists():
+                    print(f"Skipping (exists): {key} -> {local_path}")
+                    continue
+
                 local_path.parent.mkdir(parents=True, exist_ok=True)
                 print(f"Downloading {key} -> {local_path}")
                 s3.download_file(S3_BUCKET, key, str(local_path))

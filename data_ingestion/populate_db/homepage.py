@@ -280,9 +280,7 @@ for h, ranks in heya_ranks.items():
 heya_counts_clean = {str(k) if k is not None else "Unknown": v for k, v in heya_counts.items()}
 shusshin_counts_clean = {str(k) if k is not None else "Unknown": v for k, v in shusshin_counts.items()}
 
-#collection.insert_one({"heya_counts": heya_counts_clean})
-#collection.insert_one({"shusshin_counts": shusshin_counts_clean})
-collection.insert_one({"heya_avg_rank": heya_avg_rank})
+# We'll assemble a single homepage document later and insert it once.
 
 cursor.execute("""
     SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division FROM matches WHERE basho_id = %s;
@@ -379,8 +377,33 @@ if rank_dates:
         fast_climber_dict = dict(zip(fast_climber_colnames, fast_climber_row))
         fast_climber_dict = convert_dates(fast_climber_dict)
         fast_climber_dict['upward_movement_past_year'] = max_upward
-        collection.insert_one({"fast_climbing_rikishi": fast_climber_dict})
 
+
+# Build a single homepage document and insert into MongoDB
+homepage_doc = {
+    "_homepage_doc": True,
+    "most_recent_basho": most_recent_basho,
+    "most_recent_basho_date": date,
+    "top_rikishi_ordered": ordered_top_rikishi,
+    "top_rikishi": top_rikishi,
+    "kimarite_counts": kimarite_counts,
+    "recent_matches": recent_matches,
+    "highlighted_match": highlighted_match,
+    "heya_counts": heya_counts_clean,
+    "shusshin_counts": shusshin_counts_clean,
+    "heya_avg_rank": heya_avg_rank,
+    "kimarite_usage_most_recent_basho": kimarite_usage_dict,
+    "avg_stats": avg_stats,
+}
+
+if locals().get('fast_climber_dict') is not None:
+    homepage_doc['fast_climber'] = fast_climber_dict
+
+# sanitize and insert
+homepage_doc = convert_dates(convert_decimals(homepage_doc))
+# Upsert so we always have exactly one homepage doc
+collection.replace_one({"_homepage_doc": True}, homepage_doc, upsert=True)
+print("Upserted homepage document into MongoDB (one document with _homepage_doc: True)")
 
 cursor.close()
 conn.close()

@@ -8,6 +8,9 @@ import mimetypes
 import urllib.parse as ul
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, Tuple, Iterable
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 
 from dotenv import load_dotenv
 import requests
@@ -75,6 +78,15 @@ SESSION.headers.update({
     "Accept-Encoding": "gzip, deflate, br",
 })
 
+# Parallelism/config
+WORKER_THREADS = int(os.getenv("WORKER_THREADS", str(max(4, (os.cpu_count() or 2) * 2))))
+
+# Thread-local storage for per-thread DB connections
+_thread_local = threading.local()
+
+# Lock to protect shared _last_request_ts updates (thread-safety)
+_last_request_ts_lock = threading.Lock()
+
 class WikimediaTokenManager:
     TOKEN_URL = "https://meta.wikimedia.org/w/rest.php/oauth2/access_token"
     def __init__(self, client_id: Optional[str], client_secret: Optional[str]):
@@ -131,8 +143,9 @@ def _respect_rps(url: str, per_host_rps: float):
         return
     host = ul.urlparse(url).netloc
     min_interval = 1.0 / per_host_rps
-    last = _last_request_ts.get(host, 0.0)
-    since = time.time() - last
+    with _last_request_ts_lock:
+        last = _last_request_ts.get(host, 0.0)
+        since = time.time() - last
     if since < min_interval:
         time.sleep(min_interval - since + random.uniform(0, 0.05))
 
@@ -143,7 +156,8 @@ def polite_get(url: str, params: Dict[str, Any] = None, max_retries: int = 7, ti
         headers = {"User-Agent": USER_AGENT}
         headers.update(auth_headers_for(url))
         r = SESSION.get(url, params=params, headers=headers, timeout=timeout)
-        _last_request_ts[ul.urlparse(url).netloc] = time.time()
+        with _last_request_ts_lock:
+            _last_request_ts[ul.urlparse(url).netloc] = time.time()
         if r.status_code in (429, 503):
             ra = r.headers.get("Retry-After")
             sleep_s = float(ra) if ra else delay * (2 ** attempt) + random.uniform(0, 0.8)
@@ -248,6 +262,10 @@ def wikidata_search_item(term: str, lang: str = "en") -> Optional[str]:
     hits.sort(key=score)
     return hits[0]["id"]
 
+
+# Cache wikidata lookups (term,lang) to avoid repeated network calls for the same terms
+wikidata_search_item = lru_cache(maxsize=4096)(wikidata_search_item)
+
 def wikidata_get_p18_filename(qid: str) -> Optional[str]:
     url = "https://www.wikidata.org/w/api.php"
     params = {"action": "wbgetentities", "ids": qid, "props": "claims", "format": "json"}
@@ -258,6 +276,10 @@ def wikidata_get_p18_filename(qid: str) -> Optional[str]:
         return None
     mainsnak = p18[0].get("mainsnak", {})
     return (mainsnak.get("datavalue") or {}).get("value")
+
+
+# Cache p18 filename lookups per QID
+wikidata_get_p18_filename = lru_cache(maxsize=8192)(wikidata_get_p18_filename)
 
 def commons_imageinfo(filename: str, thumb_px: int = 800) -> Optional[Dict[str, Any]]:
     url = "https://commons.wikimedia.org/w/api.php"
@@ -273,6 +295,10 @@ def commons_imageinfo(filename: str, thumb_px: int = 800) -> Optional[Dict[str, 
     page = next(iter(r.json().get("query", {}).get("pages", {}).values()), {})
     ii = (page.get("imageinfo") or [])
     return ii[0] if ii else None
+
+
+# Cache commons imageinfo (filename,thumb_px). Thumb size unlikely to change during a run.
+commons_imageinfo = lru_cache(maxsize=8192)(commons_imageinfo)
 
 def download_bytes(url: str) -> Tuple[bytes, Optional[str]]:
     r = polite_get(url)
@@ -424,6 +450,38 @@ def pg_conn():
         connect_timeout=10,
     )
 
+
+def get_thread_conn():
+    """Return a per-thread persistent psycopg2 connection (created lazily).
+
+    This avoids creating/closing connections for every row while staying safe
+    under Threads. Connections are left open until process exit, which is
+    fine for short-lived batch runs. If you want explicit cleanup, call
+    `close_thread_conn()` from the main thread after workers shutdown.
+    """
+    conn = getattr(_thread_local, "conn", None)
+    if conn is None:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            dbname=DB_NAME,
+            user=DB_USERNAME,
+            password=DB_PASSWORD,
+            connect_timeout=10,
+        )
+        _thread_local.conn = conn
+    return conn
+
+
+def close_thread_conn():
+    conn = getattr(_thread_local, "conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        _thread_local.conn = None
+
 def load_shikona_list(limit: int = 0, start_from: int = 0) -> list:
     q = "SELECT id, shikona FROM rikishi WHERE shikona IS NOT NULL"
     params = []
@@ -450,24 +508,40 @@ def update_rikishi_image(pg_id: int, rec: ImageRecord):
     """Update the Postgres rikishi row by id with the S3 URL and metadata."""
     q = """
         UPDATE rikishi
-        SET image_url = %s,
+        SET
+            -- store uploaded S3 URL and key
+            s3_url = %s,
+            s3_key = %s,
+            -- original/Commons image URL
+            image_url = %s,
             commons_source_url = %s,
+            -- basic metadata
+            width = %s,
+            height = %s,
+            mime = %s,
             license = %s,
             license_url = %s,
-            attribution_html = %s
+            attribution_html = %s,
+            credit_html = %s
         WHERE id = %s
     """
-    with pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(q, (
-                rec.s3_url,
-                rec.commons_source_url,
-                rec.license,
-                rec.license_url,
-                rec.attribution_html,
-                pg_id,
-            ))
-        conn.commit()
+    conn = get_thread_conn()
+    with conn.cursor() as cur:
+        cur.execute(q, (
+            rec.s3_url,
+            rec.s3_key,
+            rec.image_url,
+            rec.commons_source_url,
+            rec.width,
+            rec.height,
+            rec.mime,
+            rec.license,
+            rec.license_url,
+            rec.attribution_html,
+            rec.credit_html,
+            pg_id,
+        ))
+    conn.commit()
 
 
 def update_mongo_pfp(pg_id, s3_url: str):
@@ -501,11 +575,12 @@ def main():
     shikonas = load_shikona_list(BATCH_LIMIT, start_from=START_FROM)
     total = len(shikonas)
     print(f"Loaded {total} shikona rows (starting from {START_FROM})")
+    # Thread-safe counters
+    counters = {"success": 0, "misses": 0}
+    counters_lock = threading.Lock()
 
-    success = 0
-    misses = 0
-
-    for idx, row in enumerate(shikonas, 1):
+    def process_row(idx_row_tuple):
+        idx, row = idx_row_tuple
         pg_id, s = row
         variants = list(extract_name_variants(s))
         if not variants:
@@ -513,7 +588,8 @@ def main():
         try:
             rec = fetch_headshot_to_s3_for_terms(variants)
             if rec and rec.s3_url:
-                success += 1
+                with counters_lock:
+                    counters["success"] += 1
                 print(f"[{idx}/{total}] OK  {s}  → {rec.s3_url}  (license: {rec.license})")
                 try:
                     update_rikishi_image(pg_id, rec)
@@ -525,17 +601,39 @@ def main():
                 except Exception as e:
                     print(f"Mongo update error for id {pg_id}: {e}")
             else:
-                misses += 1
+                with counters_lock:
+                    counters["misses"] += 1
                 tried = ", ".join(variants[:3]) + ("..." if len(variants) > 3 else "")
                 print(f"[{idx}/{total}] MISS {s} (tried: {tried})")
         except Exception as e:
-            misses += 1
+            with counters_lock:
+                counters["misses"] += 1
             print(f"[{idx}/{total}] ERROR {s}: {e}")
 
         if SLEEP_BETWEEN_ROWS > 0:
             time.sleep(SLEEP_BETWEEN_ROWS)
 
-    print(f"Done. success={success} misses={misses} total={total}")
+    # Run workers concurrently; enumerate rows starting at 1 for nicer logging
+    with ThreadPoolExecutor(max_workers=WORKER_THREADS) as ex:
+        futures = {ex.submit(process_row, (i + 1, r)): (i + 1, r) for i, r in enumerate(shikonas)}
+        for fut in as_completed(futures):
+            # propagate exceptions if needed (already printed in worker)
+            try:
+                fut.result()
+            except Exception as e:
+                idx, _ = futures[fut]
+                print(f"Worker exception processing row {idx}: {e}")
+
+    # Optionally attempt to close the thread-local connection in the main thread
+    try:
+        # This only closes the main thread's connection if one was created; worker threads'
+        # connections will be cleaned up by process exit. For long-running services you
+        # may wish to implement a stronger cleanup strategy.
+        close_thread_conn()
+    except Exception:
+        pass
+
+    print(f"Done. success={counters['success']} misses={counters['misses']} total={total}")
 
 if __name__ == "__main__":
     main()

@@ -34,4 +34,16 @@ ENV PYSPARK_DRIVER_PYTHON=python
 # ---- Python deps installed as airflow (not root) ----
 USER airflow
 COPY --chown=airflow:root requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+# Retry pip install a few times to tolerate transient network issues (PyPI timeouts during docker build)
+RUN bash -lc '\
+    set -euo pipefail; \
+    n=0; \
+    until [ $n -ge 5 ]; do \
+        if pip install --no-cache-dir -r /tmp/requirements.txt; then \
+            echo "pip install succeeded"; break; \
+        else \
+            n=$((n+1)); \
+            echo "pip install failed (attempt $n), retrying in 10s..."; sleep 10; \
+        fi; \
+    done; \
+    if [ $n -ge 5 ]; then echo "pip install failed after $n attempts"; exit 1; fi'
