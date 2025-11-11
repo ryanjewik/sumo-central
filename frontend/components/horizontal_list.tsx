@@ -194,27 +194,23 @@ const SumoMenu = React.forwardRef(
                className="app-text"
             >
               <ListItem role="none">
-                <Link href="/rikishi" legacyBehavior>
-                  <a {...getTargetProps(0)} style={{ textDecoration: 'none', color: 'inherit', width: '100%' }}>
-                    <ListItemButton role="menuitem" component="div">
-                      <ListItemDecorator>
-                        <Person />
-                      </ListItemDecorator>
-                      Rikishi
-                    </ListItemButton>
-                  </a>
+                <Link href="/rikishi" {...getTargetProps(0)} style={{ textDecoration: 'none', color: 'inherit', width: '100%' }}>
+                  <ListItemButton role="menuitem" component="div">
+                    <ListItemDecorator>
+                      <Person />
+                    </ListItemDecorator>
+                    Rikishi
+                  </ListItemButton>
                 </Link>
               </ListItem>
               <ListItem role="none">
-                <Link href="/basho" legacyBehavior>
-                  <a {...getTargetProps(1)} style={{ textDecoration: 'none', color: 'inherit', width: '100%' }}>
-                    <ListItemButton role="menuitem" component="div">
-                      <ListItemDecorator>
-                        <Apps />
-                      </ListItemDecorator>
-                      Basho
-                    </ListItemButton>
-                  </a>
+                <Link href="/basho" {...getTargetProps(1)} style={{ textDecoration: 'none', color: 'inherit', width: '100%' }}>
+                  <ListItemButton role="menuitem" component="div">
+                    <ListItemDecorator>
+                      <Apps />
+                    </ListItemDecorator>
+                    Basho
+                  </ListItemButton>
                 </Link>
               </ListItem>
             </List>
@@ -259,9 +255,8 @@ export default function HorizontalList() {
         </ListItem>
         <ListDivider orientation="vertical" />
         <ListItem role="none" className="flex-1 flex justify-center">
-          <Link href="/discussions" legacyBehavior>
-            <a className="modern-navbar-link" style={{ textDecoration: 'none' }}>
-              <ListItemButton
+          <Link href="/discussions" className="modern-navbar-link" style={{ textDecoration: 'none' }}>
+            <ListItemButton
                 role="menuitem"
                 component="div"
                 sx={{
@@ -295,14 +290,12 @@ export default function HorizontalList() {
               >
                 Discussions
               </ListItemButton>
-            </a>
           </Link>
         </ListItem>
         
         <ListItem role="none" className="flex-1 flex justify-center">
-          <Link href="/resources" legacyBehavior>
-            <a className="modern-navbar-link" style={{ textDecoration: 'none' }}>
-              <ListItemButton
+          <Link href="/resources" className="modern-navbar-link" style={{ textDecoration: 'none' }}>
+            <ListItemButton
                 role="menuitem"
                 component="div"
                 sx={{
@@ -336,14 +329,12 @@ export default function HorizontalList() {
               >
                 Resources
               </ListItemButton>
-            </a>
           </Link>
         </ListItem>
         <ListDivider orientation="vertical" />
         <ListItem role="none" className="flex-1 flex justify-center">
-          <Link href="/about" legacyBehavior>
-            <a className="modern-navbar-link" style={{ textDecoration: 'none' }}>
-              <ListItemButton
+          <Link href="/about" className="modern-navbar-link" style={{ textDecoration: 'none' }}>
+            <ListItemButton
                 role="menuitem"
                 component="div"
                 sx={{
@@ -377,7 +368,6 @@ export default function HorizontalList() {
               >
                 About
               </ListItemButton>
-            </a>
           </Link>
         </ListItem>
         <ListDivider orientation="vertical" />

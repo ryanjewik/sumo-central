@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"strconv"
 	"time"
@@ -39,4 +40,33 @@ func (a *App) GetRikishi(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, doc)
+}
+
+// ListRikishi returns a list of rikishi ids from Postgres (table: rikishi)
+func (a *App) ListRikishi(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	// select id + shikona (display name) when available
+	rows, err := a.PG.Query(ctx, "SELECT id, shikona FROM rikishi ORDER BY id")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+		return
+	}
+	defer rows.Close()
+
+	var items []gin.H
+	for rows.Next() {
+		var id int64
+		var shikona sql.NullString
+		if err := rows.Scan(&id, &shikona); err != nil {
+			continue
+		}
+		items = append(items, gin.H{
+			"id":      strconv.FormatInt(id, 10),
+			"shikona": shikona.String,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
