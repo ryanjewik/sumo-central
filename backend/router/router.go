@@ -19,6 +19,10 @@ func Register(r *gin.Engine, app *handlers.App) {
 	r.GET("/homepage", app.Home)
 	r.GET("/leaderboard", app.Leaderboard)
 
+	// Rikishi and Basho listing endpoints (Postgres)
+	r.GET("/rikishi", app.ListRikishi)
+	r.GET("/basho", app.ListBasho)
+
 	// Rikishi and Basho individual pages (fetch by `id` field in Mongo)
 	r.GET("/rikishi/:id", app.GetRikishi)
 	r.GET("/basho/:id", app.GetBasho)

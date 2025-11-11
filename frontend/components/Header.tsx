@@ -45,11 +45,9 @@ export default function Header() {
     >
       <div className="navbar-row navbar-row-top">
         <div className="navbar-left">
-          <Link href="/" legacyBehavior>
-            <a style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-              <Image src="/sumo_logo.png" alt="Sumopedia Logo" width={40} height={40} className="navbar-logo" />
-              <span className="navbar-title">Sumopedia</span>
-            </a>
+          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
+            <Image src="/sumo_logo.png" alt="Sumopedia Logo" width={40} height={40} className="navbar-logo" />
+            <span className="navbar-title">Sumopedia</span>
           </Link>
         </div>
 
