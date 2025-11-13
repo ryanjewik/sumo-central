@@ -303,19 +303,47 @@ def process_match_results(webhook_payload):
 
 
 def main():
-    if len(sys.argv) <= 1:
-        print("[spark_mongoNewMatches] no args passed from Airflow")
-        return {}
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--payload-file", dest="payload_file", help="Local file path containing webhook JSON")
+    parser.add_argument("--payload-s3", dest="payload_s3", help="S3 a URI (s3a://bucket/key) containing webhook JSON")
+    parser.add_argument("legacy", nargs="*", help="Legacy positional JSON parts")
+    args = parser.parse_args()
 
-    # 👇 Airflow / shell may have split the JSON into many parts.
-    raw = " ".join(sys.argv[1:]).strip()
-    print("[spark_mongoNewMatches] raw arg:", raw[:300], "...")
-    try:
-        payload = json.loads(raw)
-    except Exception as e:
-        print("[spark_mongoNewMatches] failed to parse JSON:", e)
-        payload = {}
-        raise
+    payload = None
+    if args.payload_file:
+        try:
+            with open(args.payload_file, "r", encoding="utf-8") as fh:
+                raw = fh.read()
+            payload = json.loads(raw)
+        except Exception as e:
+            print(f"[spark_mongoMatchResults] failed to read/parse --payload-file {args.payload_file}: {e}")
+            raise
+    elif args.payload_s3:
+        try:
+            s3uri = args.payload_s3
+            s3_norm = s3uri.replace("s3a://", "s3://")
+            if s3_norm.startswith("s3://"):
+                s3_norm = s3_norm[5:]
+            parts = s3_norm.split("/", 1)
+            bucket = parts[0]
+            key = parts[1] if len(parts) > 1 else ""
+            import boto3
+            client = boto3.client("s3")
+            resp = client.get_object(Bucket=bucket, Key=key)
+            raw = resp["Body"].read().decode("utf-8")
+            payload = json.loads(raw)
+        except Exception as e:
+            print(f"[spark_mongoMatchResults] failed to fetch/parse --payload-s3 {args.payload_s3}: {e}")
+            raise
+    else:
+        raw = " ".join(args.legacy or []).strip()
+        try:
+            payload = json.loads(raw) if raw else {}
+        except Exception as e:
+            print("[spark_mongoMatchResults] failed to parse JSON (legacy):", e)
+            raise
+
     res = process_match_results(payload)
     print("Processed result type:", type(res))
 

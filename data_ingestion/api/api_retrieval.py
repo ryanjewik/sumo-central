@@ -147,7 +147,7 @@ def upload_rikishi_files():
 upload_rikishi_files()
 
 # Generate all basho IDs from 195801 to 202509 (months 1,3,5,7,9,11), always 6 digits
-def generate_basho_ids(start_year=1958, end_year=2025, end_month=9):
+def generate_basho_ids(start_year=1958, end_year=2025, end_month=11):
     months = [1, 3, 5, 7, 9, 11]
     basho_ids = []
     for year in range(start_year, end_year + 1):

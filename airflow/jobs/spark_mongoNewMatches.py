@@ -41,16 +41,58 @@ def main():
         print("[spark_mongoNewMatches] no args passed from Airflow")
         return {}
 
-    # 👇 Airflow / shell may have split the JSON into many parts.
-    raw = " ".join(sys.argv[1:]).strip()
-    print("[spark_mongoNewMatches] raw arg:", raw[:300], "...")
-    try:
-        webhook_payload = _json.loads(raw)
-    except Exception as e:
-        print("[spark_mongoNewMatches] failed to parse JSON:", e)
-        webhook_payload = {}
-        sys.exit(2)
-        raise
+    # Accept arguments in multiple ways for robustness:
+    #  - --payload-file <local_path>
+    #  - --payload-s3 <s3a://bucket/key.json>
+    #  - legacy: a single (possibly very long) JSON payload passed as CLI args
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--payload-file", dest="payload_file", help="Local file path containing webhook JSON")
+    parser.add_argument("--payload-s3", dest="payload_s3", help="S3 a URI (s3a://bucket/key) containing webhook JSON")
+    parser.add_argument("legacy", nargs="*", help="Legacy positional JSON parts")
+    args = parser.parse_args()
+
+    webhook_payload = None
+    # 1) payload-file (local)
+    if args.payload_file:
+        try:
+            with open(args.payload_file, "r", encoding="utf-8") as fh:
+                raw = fh.read()
+            webhook_payload = _json.loads(raw)
+        except Exception as e:
+            print(f"[spark_mongoNewMatches] failed to read/parse --payload-file {args.payload_file}: {e}")
+            sys.exit(2)
+
+    # 2) payload-s3 (fetch via boto3)
+    elif args.payload_s3:
+        try:
+            # normalize s3a:// or s3:// → bucket/key
+            s3uri = args.payload_s3
+            s3_norm = s3uri.replace("s3a://", "s3://")
+            if s3_norm.startswith("s3://"):
+                s3_norm = s3_norm[5:]
+            parts = s3_norm.split("/", 1)
+            bucket = parts[0]
+            key = parts[1] if len(parts) > 1 else ""
+            import boto3
+            client = boto3.client("s3")
+            resp = client.get_object(Bucket=bucket, Key=key)
+            raw = resp["Body"].read().decode("utf-8")
+            webhook_payload = _json.loads(raw)
+        except Exception as e:
+            print(f"[spark_mongoNewMatches] failed to fetch/parse --payload-s3 {args.payload_s3}: {e}")
+            sys.exit(2)
+
+    # 3) legacy: join CLI parts and parse JSON (backwards compatibility)
+    else:
+        raw = " ".join(args.legacy or []).strip()
+        print("[spark_mongoNewMatches] legacy raw arg:", raw[:300], "...")
+        try:
+            webhook_payload = _json.loads(raw) if raw else {}
+        except Exception as e:
+            print("[spark_mongoNewMatches] failed to parse JSON (legacy):", e)
+            webhook_payload = {}
+            sys.exit(2)
 
     mongo_uri = os.environ.get("MONGO_URI")
     mongo_db = os.environ.get("MONGO_DB_NAME")
@@ -143,6 +185,193 @@ def main():
                 # small pymongo driver fetch as a last-resort fallback.
                 msg = str(e)
                 print(f"Mongo connector read failed: {msg}")
+
+            # If we attempted to read a specific basho by numeric id but got
+            # an empty result, proactively create the minimal basho_pages
+            # document on the Mongo server so later upserts can assume it
+            # exists. This matches the structure produced by mongoNewBasho.
+            try:
+                if pipeline_clauses and numeric_id is not None:
+                    empty = False
+                    try:
+                        # If reader.load succeeded above, basho_pages will be a DF.
+                        # Check if it's empty. Use rdd.isEmpty() to avoid expensive
+                        # full-count where possible.
+                        if 'basho_pages' in locals() and hasattr(basho_pages, 'rdd'):
+                            empty = basho_pages.rdd.isEmpty()
+                        else:
+                            empty = True
+                    except Exception:
+                        # If checking emptiness fails, fall back to treating as empty
+                        empty = True
+
+                    if empty:
+                        try:
+                            from pymongo import MongoClient
+
+                            client = MongoClient(mongo_uri)
+                            db = client[mongo_db]
+                            coll = db.get_collection('basho_pages')
+
+                            existing = coll.find_one({'id': numeric_id})
+                            if not existing:
+                                # Build minimal basho document. Prefer authoritative
+                                # values from Postgres, falling back to webhook values.
+                                start_date = None
+                                end_date = None
+                                location = None
+
+                                # Try to fetch basho metadata from Postgres first
+                                try:
+                                    # Try PostgresHook first (Airflow environment). We only
+                                    # query using the numeric id (integer) as configured.
+                                    start_date = None
+                                    end_date = None
+                                    location = None
+                                    try:
+                                        from airflow.providers.postgres.hooks.postgres import PostgresHook
+                                        pg_conn_id = os.getenv('POSTGRES_CONN_ID', 'postgres_default')
+                                        ph = PostgresHook(postgres_conn_id=pg_conn_id)
+                                        pconn = ph.get_conn()
+                                        pcur = pconn.cursor()
+                                        pcur.execute('SELECT start_date, end_date, location FROM basho WHERE id = %s', (numeric_id,))
+                                        row = pcur.fetchone()
+                                        try:
+                                            pcur.close()
+                                        except Exception:
+                                            pass
+                                        try:
+                                            pconn.close()
+                                        except Exception:
+                                            pass
+                                        if row:
+                                            start_date, end_date, location = row[0], row[1], row[2]
+                                            print(f"Postgres lookup returned row for basho id={numeric_id}: start_date={start_date}, end_date={end_date}, location={location}")
+                                        else:
+                                            print(f"Postgres lookup returned no row for basho id={numeric_id}")
+                                    except Exception:
+                                        # Fall back to psycopg2 using env vars / DATABASE_URL
+                                        import psycopg2
+                                        pg_urls = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL')
+                                        if pg_urls:
+                                            pconn = psycopg2.connect(pg_urls)
+                                        else:
+                                            pg_host = os.getenv('POSTGRES_HOST')
+                                            pg_port = os.getenv('POSTGRES_PORT')
+                                            pg_db = os.getenv('POSTGRES_DB') or os.getenv('POSTGRES_DATABASE')
+                                            pg_user = os.getenv('POSTGRES_USER')
+                                            pg_pass = os.getenv('POSTGRES_PASSWORD')
+                                            conn_args = {}
+                                            if pg_host:
+                                                conn_args['host'] = pg_host
+                                            if pg_port:
+                                                conn_args['port'] = pg_port
+                                            if pg_db:
+                                                conn_args['dbname'] = pg_db
+                                            if pg_user:
+                                                conn_args['user'] = pg_user
+                                            if pg_pass:
+                                                conn_args['password'] = pg_pass
+                                            pconn = psycopg2.connect(**conn_args)
+                                        pcur = pconn.cursor()
+                                        pcur.execute('SELECT start_date, end_date, location FROM basho WHERE id = %s', (numeric_id,))
+                                        row = pcur.fetchone()
+                                        try:
+                                            pcur.close()
+                                        except Exception:
+                                            pass
+                                        try:
+                                            pconn.close()
+                                        except Exception:
+                                            pass
+                                        if row:
+                                            start_date, end_date, location = row[0], row[1], row[2]
+                                            print(f"Postgres lookup returned row for basho id={numeric_id}: start_date={start_date}, end_date={end_date}, location={location}")
+                                        else:
+                                            print(f"Postgres lookup returned no row for basho id={numeric_id}")
+                                except Exception:
+                                    # Ignore DB lookup failures and fall back to webhook values below
+                                    print(f"Postgres lookup failed for basho id={numeric_id}; falling back to webhook/api")
+
+                                # webhook may contain top-level payload with startDate/location fields
+                                try:
+                                    if (not start_date or not end_date or not location) and isinstance(webhook, dict):
+                                        raw_payload = None
+                                        if 'payload_decoded' in webhook:
+                                            raw_payload = webhook.get('payload_decoded')
+                                        elif 'payload' in webhook:
+                                            raw_payload = webhook.get('payload')
+                                        else:
+                                            raw_payload = webhook
+
+                                        # raw_payload may be dict or list
+                                        if isinstance(raw_payload, dict):
+                                            start_date = start_date or raw_payload.get('startDate') or raw_payload.get('start_date')
+                                            end_date = end_date or raw_payload.get('endDate') or raw_payload.get('end_date')
+                                            location = location or raw_payload.get('location')
+                                        elif isinstance(raw_payload, list) and len(raw_payload) > 0 and isinstance(raw_payload[0], dict):
+                                            first = raw_payload[0]
+                                            start_date = start_date or first.get('startDate') or first.get('start_date')
+                                            end_date = end_date or first.get('endDate') or first.get('end_date')
+                                            location = location or first.get('location')
+                                except Exception:
+                                    pass
+
+                                # fallback to first match entry if still missing
+                                try:
+                                    if (not start_date or not end_date or not location) and isinstance(matches, list) and len(matches) > 0:
+                                        firstm = matches[0]
+                                        start_date = start_date or firstm.get('startDate') or firstm.get('start_date')
+                                        end_date = end_date or firstm.get('endDate') or firstm.get('end_date')
+                                        location = location or firstm.get('location')
+                                except Exception:
+                                    pass
+
+                                # Normalize dates to YYYY-MM-DD when present
+                                try:
+                                    if start_date:
+                                        start_date = str(start_date)[:10]
+                                except Exception:
+                                    start_date = None
+                                try:
+                                    if end_date:
+                                        end_date = str(end_date)[:10]
+                                except Exception:
+                                    end_date = None
+
+                                basho_name = f"Basho {first_basho}" if first_basho is not None else f"Basho {numeric_id}"
+
+                                payload = {
+                                    'id': numeric_id,
+                                    'basho': {
+                                        'basho_id': numeric_id,
+                                        'basho_name': basho_name,
+                                        'location': location,
+                                        'start_date': start_date,
+                                        'end_date': end_date,
+                                        'makuuchi_yusho': None,
+                                        'juryo_yusho': None,
+                                        'sandanme_yusho': None,
+                                        'makushita_yusho': None,
+                                        'jonidan_yusho': None,
+                                        'jonokuchi_yusho': None,
+                                    },
+                                    'days': {},
+                                }
+
+                                # Insert only the minimal basho_pages skeleton (no matches).
+                                try:
+                                    coll.insert_one(payload)
+                                    print(f"Inserted initial basho_pages document for id={numeric_id}")
+                                except Exception as exc:
+                                    print(f"Failed to insert basho_pages doc for id={numeric_id}: {exc}")
+
+                            client.close()
+                        except Exception as exc:
+                            print(f"Failed to create basho_pages document: {exc}")
+            except Exception:
+                # non-fatal; continue without creating a doc
+                raise
 
             # Normalize possible locations for basho id and start_date and coalesce them
             from pyspark.sql.functions import coalesce, trim
@@ -628,8 +857,11 @@ def main():
                                         except Exception:
                                             pass
 
+                            # Executor no longer pushes matches into basho_pages; driver will perform
+                            # the final insertion so that AI_prediction values are included.
                             if ops:
-                                coll.bulk_write(ops, ordered=False)
+                                # skip executor-side bulk write to avoid duplicate inserts
+                                pass
                             if rikishi_ops:
                                 try:
                                     rikishi_coll.bulk_write(rikishi_ops, ordered=False)
@@ -652,6 +884,86 @@ def main():
                 print(f"Executor-side pymongo: scheduled partitioned updates for basho_pages.id={numeric_id_for_update}")
             except Exception as e:
                 print(f"Executor-side pymongo write failed to schedule/execute: {e}")
+
+            # --- DRIVER-SIDE: Update homepage with matches including AI predictions ---
+            try:
+                from pymongo import MongoClient
+                client = MongoClient(mongo_uri)
+                db = client.get_database(mongo_db)
+                hp_coll = db.get_collection('homepage')
+                # Ensure homepage doc exists
+                hp_coll.update_one({'_homepage_doc': True}, {'$setOnInsert': {'_homepage_doc': True, 'upcoming_matches': []}}, upsert=True)
+
+                # Collect normalized matches from df (include AI_prediction)
+                selected = []
+                try:
+                    # Prefer columns that exist in the DataFrame
+                    wanted = ['match_date', 'matchNo', 'eastShikona', 'westShikona', 'division', 'winnerId', 'kimarite', 'eastId', 'westId', 'AI_prediction']
+                    cols = [c for c in wanted if c in df.columns]
+                    rows = df.select(*cols).collect()
+                    for r in rows:
+                        d = r.asDict()
+                        try:
+                            mobj = {
+                                'match_date': d.get('match_date'),
+                                'match_number': int(d.get('matchNo')) if d.get('matchNo') not in (None, '') else None,
+                                'eastshikona': d.get('eastShikona') or d.get('eastshikona'),
+                                'westshikona': d.get('westShikona') or d.get('westshikona'),
+                                'division': d.get('division'),
+                                'winner': int(d.get('winnerId')) if d.get('winnerId') not in (None, '') else None,
+                                'kimarite': d.get('kimarite'),
+                                'east_rikishi_id': int(d.get('eastId')) if d.get('eastId') not in (None, '') else None,
+                                'west_rikishi_id': int(d.get('westId')) if d.get('westId') not in (None, '') else None,
+                                'AI_prediction': float(d.get('AI_prediction')) if d.get('AI_prediction') is not None else None,
+                            }
+                            selected.append(mobj)
+                        except Exception:
+                            continue
+                except Exception as exc:
+                    print(f"Failed to collect matches for homepage update: {exc}")
+
+                # Replace existing upcoming_matches with the canonical set for this webhook.
+                # The user asked that we replace any existing contents rather than append.
+                try:
+                    hp_coll.update_one({'_homepage_doc': True}, {'$set': {'upcoming_matches': selected}})
+                    print(f"Replaced upcoming_matches on homepage document with {len(selected)} match(es) (driver)")
+
+                    # Also push matches into basho_pages in nested days -> division -> date
+                    try:
+                        if numeric_id_for_update is not None:
+                            bp_coll = db.get_collection('basho_pages')
+                            groups = {}
+                            for m in selected:
+                                dkey = None
+                                try:
+                                    if m.get('match_date'):
+                                        dkey = m.get('match_date')[:10]
+                                except Exception:
+                                    dkey = None
+                                if not dkey:
+                                    continue
+                                division = m.get('division') or 'Unknown'
+                                groups.setdefault((division, dkey), []).append(m)
+
+                            ops = []
+                            from pymongo import UpdateOne as _UpdateOne
+                            for (division_k, date_k), matches_list in groups.items():
+                                update_path = f"days.{division_k}.{date_k}"
+                                ops.append(_UpdateOne({'id': numeric_id_for_update}, {'$push': {update_path: {'$each': matches_list}}}))
+                            if ops:
+                                try:
+                                    bp_coll.bulk_write(ops, ordered=False)
+                                    print(f"Pushed {sum(len(v) for v in groups.values())} match(es) into basho_pages.id={numeric_id_for_update} (driver)")
+                                except Exception as exc:
+                                    print(f"Failed to push matches to basho_pages: {exc}")
+                    except Exception as exc:
+                        print(f"Failed to prepare basho_pages driver updates: {exc}")
+                except Exception as exc:
+                    print(f"Failed to push upcoming_matches to homepage: {exc}")
+
+                client.close()
+            except Exception as exc:
+                print(f"Driver-side homepage update failed: {exc}")
 
     else:
         print("MONGO_URI not set; skipping write to MongoDB. Sample output:")

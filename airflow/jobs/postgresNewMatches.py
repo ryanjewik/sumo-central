@@ -45,6 +45,44 @@ def rikishi_exists(cursor, rikishi_id):
   return cursor.fetchone() is not None
 
 
+def basho_exists(cursor, basho_id):
+  if not basho_id:
+    return True
+  cursor.execute('SELECT 1 FROM basho WHERE id = %s', (basho_id,))
+  return cursor.fetchone() is not None
+
+
+def insert_basho(cursor, basho_id, name, location, start_date, end_date):
+  # Normalize basho id to int when possible (basho.id is an integer in the DB)
+  try:
+    bid = int(basho_id)
+  except Exception:
+    bid = basho_id
+
+  # Normalize dates to YYYY-MM-DD (Postgres date fields expect date-like values)
+  def _norm_date(d):
+    if not d:
+      return None
+    s = str(d)
+    # API may return ISO timestamps like 2025-11-09T00:00:00Z; keep only date portion
+    if len(s) >= 10:
+      return s[:10]
+    return s
+
+  s_date = _norm_date(start_date)
+  e_date = _norm_date(end_date)
+
+  cursor.execute(
+    '''
+    INSERT INTO basho (
+      id, name, location, start_date, end_date, makuuchi_yusho, juryo_yusho, makushita_yusho, jonidan_yusho, sandanme_yusho
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (id) DO NOTHING;
+    ''',
+    (bid, name, location, s_date, e_date, None, None, None, None, None)
+  )
+
+
 def process_new_matches(webhook: dict):
   if not webhook or webhook.get('type') != 'newMatches':
     return
@@ -76,6 +114,36 @@ def process_new_matches(webhook: dict):
       if not match_id:
         print(f"Skipping match with missing id: {match}")
         continue
+
+      # Ensure the referenced basho exists in the database. If not, try to fetch
+      # the minimal basho payload from the API and insert it (date, start/end,
+      # optional location). This mirrors the behavior in postgresNewBasho.
+      basho_id = match.get('bashoId')
+      if not basho_exists(cur, basho_id):
+        print(f"Basho {basho_id} not found in DB; fetching from API and inserting minimal row.")
+        try:
+          basho = get_json(f"/basho/{basho_id}")
+        except Exception as exc:
+          print(f"Failed to fetch basho {basho_id} from API: {exc}")
+          basho = None
+
+        if basho:
+          date = basho.get('date') or basho_id
+          start_date = basho.get('startDate')
+          end_date = basho.get('endDate')
+          location = basho.get('location') if 'location' in basho else None
+        else:
+          # Use whatever minimal info we have from the match payload
+          date = basho_id
+          start_date = None
+          end_date = None
+          location = None
+
+        try:
+          insert_basho(cur, date, f"Basho {date}", location, start_date, end_date)
+          print(f"Inserted basho {date} into DB (or it already existed).")
+        except Exception as exc:
+          print(f"Failed to insert basho {basho_id}: {exc}")
 
       east_id = match.get('eastId')
       west_id = match.get('westId')

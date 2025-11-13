@@ -147,12 +147,33 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
         rikishi_rows = df_to_list("rikishi")
         matches_rows = df_to_list("matches")
 
+        # Debug: surface counts so we can see if any table read returned empty
+        try:
+            print(f"[spark_homepage] rows read: basho={len(basho_rows)}, rikishi_rank={len(rikishi_rank_rows)}, rikishi={len(rikishi_rows)}, matches={len(matches_rows)}")
+            if len(basho_rows) == 0:
+                print("[spark_homepage] WARNING: no rows read from 'basho' table")
+        except Exception:
+            pass
+
         # Reuse original processing logic but operating on Python lists
         # getting the most recent basho
         most_recent_basho = max([r.get("id") for r in basho_rows if r.get("id") is not None])
         year = int(str(most_recent_basho)[:4])
         month = int(str(most_recent_basho)[4:6])
         date = f"{year}-{month:02d}-01"
+
+        # Compute a target basho id representing (month - 2) for kimarite usage.
+        # Example: most_recent_basho 202511 -> target 202509
+        try:
+            kim_month = month - 2
+            kim_year = year
+            if kim_month <= 0:
+                kim_month += 12
+                kim_year -= 1
+            target_basho_for_kimarite = int(f"{kim_year}{kim_month:02d}")
+        except Exception:
+            # Fallback to most_recent_basho if anything goes wrong
+            target_basho_for_kimarite = most_recent_basho
 
         # map the rank names and values
         rank_mapping = {r.get("rank_name"): r.get("rank_value") for r in rikishi_rank_rows if r.get("rank_name") is not None}
@@ -161,14 +182,113 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
         # getting the top rikishi from the most recent basho
         # Normalize comparisons: rank_value may be string/decimal and rank_date may be date object
         date_obj = datetime.date(year, month, 1)
-        def _rank_date_matches(rd):
+        def _rank_date_matches(rd, allow_fallback=False):
+            """Return True when a rank_date falls within the target month.
+
+            If allow_fallback is True, also accept dates from two months prior
+            (month - 2) to accommodate rank rows recorded earlier than the
+            basho month. The user requested that the month-2 fallback only be
+            applied when retrieving top rikishi; other searches should use the
+            canonical basho month only.
+            """
             if rd is None:
                 return False
-            if isinstance(rd, str):
-                return rd == date
+
+            # compute fallback month/year (month - 2) with year wrap
             try:
-                # rd is likely a datetime.date/datetime
-                return rd.year == date_obj.year and rd.month == date_obj.month and rd.day == date_obj.day
+                fallback_month = month - 2
+                fallback_year = year
+                if fallback_month <= 0:
+                    fallback_month += 12
+                    fallback_year -= 1
+            except Exception:
+                return False
+
+        def _rank_date_is_fallback(rd):
+            """Return True only when rd matches the fallback month (month - 2).
+
+            This enforces selecting rank rows that are recorded in the month two
+            months prior to the most recent basho. It mirrors the parsing logic
+            from _rank_date_matches but only checks the fallback month/year.
+            """
+            if rd is None:
+                return False
+            try:
+                fallback_month = month - 2
+                fallback_year = year
+                if fallback_month <= 0:
+                    fallback_month += 12
+                    fallback_year -= 1
+            except Exception:
+                return False
+
+            def _check_year_month(y, m, target):
+                try:
+                    return getattr(target, 'year', None) == y and getattr(target, 'month', None) == m
+                except Exception:
+                    return False
+
+            try:
+                if hasattr(rd, 'year') and hasattr(rd, 'month'):
+                    return _check_year_month(fallback_year, fallback_month, rd)
+
+                s = str(rd)
+                try:
+                    dt = datetime.datetime.fromisoformat(s)
+                    return _check_year_month(fallback_year, fallback_month, dt)
+                except Exception:
+                    pass
+
+                try:
+                    from dateutil import parser as dateutil_parser
+                    dt = dateutil_parser.parse(s)
+                    return _check_year_month(fallback_year, fallback_month, dt)
+                except Exception:
+                    pass
+
+                # Last-resort prefix match for fallback YYYY-MM
+                return s.startswith(f"{fallback_year}-{fallback_month:02d}")
+            except Exception:
+                return False
+
+            def _check_year_month(y, m, target):
+                try:
+                    return getattr(target, 'year', None) == y and getattr(target, 'month', None) == m
+                except Exception:
+                    return False
+
+            try:
+                # If it's a date/datetime object
+                if hasattr(rd, 'year') and hasattr(rd, 'month'):
+                    if allow_fallback:
+                        return _check_year_month(year, month, rd) or _check_year_month(fallback_year, fallback_month, rd)
+                    return _check_year_month(year, month, rd)
+
+                # If string, try iso parse then prefix fallbacks
+                s = str(rd)
+                # Try datetime.fromisoformat first (handles YYYY-MM-DD and full ISO without 'Z')
+                try:
+                    dt = datetime.datetime.fromisoformat(s)
+                    if allow_fallback:
+                        return _check_year_month(year, month, dt) or _check_year_month(fallback_year, fallback_month, dt)
+                    return _check_year_month(year, month, dt)
+                except Exception:
+                    pass
+
+                # Try dateutil.parser if available
+                try:
+                    from dateutil import parser as dateutil_parser
+                    dt = dateutil_parser.parse(s)
+                    if allow_fallback:
+                        return _check_year_month(year, month, dt) or _check_year_month(fallback_year, fallback_month, dt)
+                    return _check_year_month(year, month, dt)
+                except Exception:
+                    pass
+
+                # Last-resort: prefix match YYYY-MM for either primary or fallback
+                if allow_fallback:
+                    return s.startswith(f"{year}-{month:02d}") or s.startswith(f"{fallback_year}-{fallback_month:02d}")
+                return s.startswith(f"{year}-{month:02d}")
             except Exception:
                 return False
 
@@ -184,7 +304,8 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
                 continue
             if not (101 <= rv_int <= 499):
                 continue
-            if not _rank_date_matches(r.get("rank_date")):
+            # Require the rank_date to be in the month-2 fallback for top rikishi
+            if not _rank_date_is_fallback(r.get("rank_date")):
                 continue
             top_rank_rows.append(r)
 
@@ -192,8 +313,18 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
         top_rank_rows = sorted(top_rank_rows, key=lambda r: (r.get("rank_date") or date_obj, -int(r.get("rank_value") if r.get("rank_value") is not None else 0)), reverse=True)
 
         ordered_top_rikishi = {}
-        # Create lookup by id (ids may be int or str)
-        rikishi_by_id = {d.get("id"): d for d in rikishi_rows if d.get("id") is not None}
+        # Create lookup by id (ids may be int or str). Store both string and
+        # integer keyed entries to make lookups robust to type mismatches.
+        rikishi_by_id = {}
+        for d in rikishi_rows:
+            rid = d.get("id")
+            if rid is None:
+                continue
+            rikishi_by_id[rid] = d
+            try:
+                rikishi_by_id[str(rid)] = d
+            except Exception:
+                pass
         for r in top_rank_rows:
             rikishi_rank_row = convert_dates(r.copy())
             rank_name = rikishi_rank_row.get("rank_name")
@@ -217,7 +348,9 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
         top_rikishi = ordered_top_rikishi.get("1")
         kimarite_counts = {}
         if top_rikishi:
-            winner_matches = [m for m in matches_rows if m.get("winner") == top_rikishi.get("id")]
+            # normalize id types when matching winners
+            top_id = top_rikishi.get("id")
+            winner_matches = [m for m in matches_rows if str(m.get("winner")) == str(top_id)]
             kimarite_list = [m.get("kimarite") for m in winner_matches]
             kimarite_counts = dict(Counter(kimarite_list))
 
@@ -272,7 +405,8 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
         # kimarite usage for most recent basho
         kimarite_usage = Counter()
         for m in matches_rows:
-            if m.get("basho_id") == most_recent_basho:
+            # Use the month-2 target basho id for this metric as requested by the user.
+            if m.get("basho_id") == target_basho_for_kimarite:
                 kim = m.get("kimarite")
                 kimarite_usage[kim] += 1
 
@@ -357,6 +491,7 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
             "heya_avg_rank": heya_avg_rank,
             "heya_counts": heya_counts_clean,
             "shusshin_counts": shusshin_counts_clean,
+            # kimarite usage for the target basho (month - 2): just counts
             "kimarite_usage_most_recent_basho": dict(kimarite_usage),
             "avg_stats": avg_stats,
             "fast_climber": fast_climber_dict,

@@ -153,6 +153,13 @@ def process_end_basho(webhook_payload):
                 except Exception as e:
                     print(f"Failed to update rikishi {rikishi_id}: {e}")
         print("Successfully updated basho_pages and rikishi_pages in MongoDB")
+        # Remove the homepage upcoming_matches key since this basho has ended.
+        try:
+            hp_coll = db_obj.get_collection("homepage")
+            unset_res = hp_coll.find_one_and_update({"_homepage_doc": True}, {"$unset": {"upcoming_matches": ""}}, upsert=False)
+            print("Unset homepage.upcoming_matches; find_one_and_update returned:", unset_res)
+        except Exception as e:
+            print(f"Failed to unset homepage.upcoming_matches: {e}")
     except Exception as e:
         print("Failed to update rikishi and basho_pages in MongoDB:", e)
         raise

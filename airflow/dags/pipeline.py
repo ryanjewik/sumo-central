@@ -157,6 +157,54 @@ def call_push_webhook_xcom(webhook_json: str):
   return webhook_json
 
 
+def call_upload_webhook_s3(webhook_json: str):
+  """Upload the webhook JSON (string) to S3 and return an s3a:// URI.
+
+  This callable is executed by a PythonOperator. It reads the configured
+  S3 path (Variable S3_SMOKE_PATH or env var), uploads the JSON payload to
+  a unique key under `webhook_payloads/` and returns the s3a:// URI so
+  downstream SparkSubmitOperators can read it from the cluster.
+  """
+  try:
+    import boto3
+    import uuid
+    import json as _json
+  except Exception as e:
+    raise RuntimeError("boto3 (and friends) must be available in the Airflow worker to upload webhook payloads to S3") from e
+
+  # Accept either a templated JSON string or already-serialized value.
+  body = webhook_json if isinstance(webhook_json, str) else _json.dumps(webhook_json)
+
+  # Resolve S3 base path from Airflow Variable or environment
+  s3_base = None
+  try:
+    s3_base = Variable.get("S3_SMOKE_PATH", default_var=None)
+  except Exception:
+    s3_base = None
+  s3_base = s3_base or os.environ.get("S3_SMOKE_PATH")
+  if not s3_base:
+    raise RuntimeError("S3_SMOKE_PATH must be set (Airflow Variable or environment) to upload webhook payloads")
+
+  # Normalize to s3:// style for boto3 and preserve prefix
+  s3_norm = s3_base.replace("s3a://", "s3://")
+  if s3_norm.startswith("s3://"):
+    s3_norm = s3_norm[5:]
+
+  parts = s3_norm.split("/", 1)
+  bucket = parts[0]
+  prefix = parts[1] if len(parts) > 1 else ""
+  prefix = prefix.rstrip("/")
+
+  key_prefix = f"{prefix}/webhook_payloads" if prefix else "webhook_payloads"
+  key = f"{key_prefix}/{uuid.uuid4().hex}.json"
+
+  client = boto3.client("s3")
+  client.put_object(Bucket=bucket, Key=key, Body=body.encode("utf-8"))
+
+  # Return the s3a:// URI that spark can read using s3a
+  return f"s3a://{bucket}/{key}"
+
+
 def call_data_cleaning_spark(webhook: dict):
   return _load_and_call("/opt/airflow/jobs/spark_data_cleaning.py", "process_data", webhook)
 
@@ -353,6 +401,14 @@ with DAG(
     op_kwargs={"webhook_json": "{{ dag_run.conf | tojson }}"},
   )
 
+  # Upload the webhook payload to S3 so downstream Spark jobs can read it
+  # without passing large JSON on the command line.
+  upload_webhook_s3 = PythonOperator(
+    task_id="upload_webhook_s3",
+    python_callable=call_upload_webhook_s3,
+    op_kwargs={"webhook_json": "{{ ti.xcom_pull(task_ids='push_webhook_xcom') }}"},
+  )
+
   # Branch operators read the webhook from XCom (pushed by push_webhook_xcom)
   postgres_branch_task = BranchPythonOperator(
     task_id="branch_postgres",
@@ -458,7 +514,10 @@ with DAG(
     application="/opt/airflow/jobs/spark_mongoNewMatches.py",
     conn_id="spark_default",
     packages="org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
-    application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') | tojson }}"],
+    # Read payload from S3 instead of passing long JSON on the CLI. The
+    # `upload_webhook_s3` PythonOperator uploads the webhook payload and
+    # returns an s3a:// URI which is passed here and read by the Spark job.
+    application_args=["--payload-s3", "{{ ti.xcom_pull(task_ids='upload_webhook_s3') }}"],
     driver_memory="1g",
     executor_memory="1g",
     executor_cores=1,
@@ -502,7 +561,7 @@ with DAG(
     application="/opt/airflow/jobs/spark_mongoMatchResults.py",
     conn_id="spark_default",
     packages="org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
-    application_args=["{{ ti.xcom_pull(task_ids='push_webhook_xcom') | tojson }}"],
+    application_args=["--payload-s3", "{{ ti.xcom_pull(task_ids='upload_webhook_s3') }}"],
     driver_memory="1g",
     executor_memory="1g",
     executor_cores=1,
@@ -656,12 +715,14 @@ with DAG(
 
 
   spark_conf >> homepage_task
-  spark_conf >> run_new_matches_mongo
-  spark_conf >> run_match_results_mongo
+  # Do NOT start the mongo branch tasks directly from spark_conf — ensure
+  # the `homepage_task` completes first so homepage writes (and any
+  # downstream data dependencies) are present before Mongo operators run.
   # Connect tasks/operators
   # run the spark smoke test first, then continue to the postgres branch
   start_task >> spark_conf
   spark_conf >> push_webhook_xcom
+  push_webhook_xcom >> upload_webhook_s3
   push_webhook_xcom >> spark_smoke
   spark_smoke >> postgres_branch_task
   postgres_branch_task >> [new_basho_postgres, end_basho_postgres, new_matches_postgres, match_results_postgres, skip_postgres]
@@ -671,7 +732,29 @@ with DAG(
 
 
   # Branch downstream choices
-  join_postgres >> mongo_branch_task >> [run_new_basho_mongo, run_new_matches_mongo, run_end_basho_mongo, run_match_results_mongo, skip_mongo] >> join_mongo
+  # We want the mongo branch tasks to be reachable after `join_postgres`,
+  # but require `homepage_task` to complete only for the two jobs that may
+  # race with homepage updates: `run_new_matches_mongo` and
+  # `run_match_results_mongo`.
+  #
+  # Wiring strategy:
+  # - Both `homepage_task` and `mongo_branch_task` are downstream of
+  #   `join_postgres`.
+  # - `mongo_branch_task` enables all mongo tasks to be considered runnable.
+  # - `run_new_matches_mongo` and `run_match_results_mongo` also declare
+  #   `homepage_task` as an upstream dependency so they wait for it.
+  join_postgres >> homepage_task
+  join_postgres >> mongo_branch_task
+
+  # mongo branch tasks; note that new_matches and match_results have two
+  # upstreams (homepage_task and mongo_branch_task) and will only run after
+  # both complete.
+  mongo_branch_task >> [run_new_basho_mongo, run_end_basho_mongo, skip_mongo, run_new_matches_mongo, run_match_results_mongo] >> join_mongo
+  # Ensure the webhook payload upload completes before Spark mongo jobs that
+  # need the S3 payload URI.
+  upload_webhook_s3 >> run_new_matches_mongo
+  upload_webhook_s3 >> run_match_results_mongo
+  homepage_task >> [run_new_matches_mongo, run_end_basho_mongo]
 
   # Both homepage and the mongo branch must finish before finishing the DAG
   homepage_task >> join_mongo
