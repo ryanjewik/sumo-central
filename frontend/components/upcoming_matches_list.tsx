@@ -16,13 +16,48 @@ interface UpcomingMatchesListProps {
   // Use a loose-but-typed incoming shape and helper accessors below to avoid `any`.
   matches: Record<string, unknown>[];
   date?: string;
+  // optional callback to open the login dialog in the parent (used when user is not signed in)
+  onOpenLogin?: () => void;
 }
 
 
 
 import { useState } from 'react';
 
-const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date }) => {
+// Auto-fit a single-line text by shrinking font size until it fits within its container.
+const AutoFitText: React.FC<{ text: string; maxPx?: number; minPx?: number; sx?: any }> = ({ text, maxPx = 14, minPx = 10, sx }) => {
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  const [fontPx, setFontPx] = React.useState<number>(maxPx);
+
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // start at maxPx and shrink until fits or minPx reached
+    let current = maxPx;
+    // apply immediately to measure
+    el.style.fontSize = `${current}px`;
+    el.style.whiteSpace = 'nowrap';
+    // loop a few times; limit iterations for safety
+    let iterations = 0;
+    while (el.scrollWidth > el.clientWidth && current > minPx && iterations < 40) {
+      current = Math.max(minPx, current - 0.5);
+      el.style.fontSize = `${current}px`;
+      iterations += 1;
+    }
+    setFontPx(current);
+  }, [text, maxPx, minPx]);
+
+  return (
+    <Box ref={ref} component="div" sx={{ overflow: 'hidden', textAlign: 'center', ...sx }} style={{ fontSize: `${fontPx}px`, whiteSpace: 'nowrap' }}>
+      {text}
+    </Box>
+  );
+};
+
+import { useAuth } from '../context/AuthContext';
+
+const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date, onOpenLogin }) => {
+  const { user } = useAuth();
   // Track votes for each match: { [matchId]: { west: number; east: number } }
   const [votes, setVotes] = useState<Record<number, { west: number; east: number }>>({});
   // Track user's vote for each match: { [matchId]: 'west' | 'east' | undefined }
@@ -46,7 +81,7 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
   };
 
   // rikishi id -> image cache (s3_url preferred)
-  const [rikishiImages, setRikishiImages] = React.useState<Record<string, string>>({});
+  // Server now supplies rikishi images/ranks nested in the match payload when available.
 
   // helper accessors to safely read possibly-unknown incoming object shapes
   const getString = (obj: Record<string, unknown>, ...keys: string[]): string | undefined => {
@@ -94,45 +129,7 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
     if (Object.keys(initial).length > 0) setVotes(prev => ({ ...initial, ...prev }));
   }, [serializedMatches, matches]);
 
-  // detect if incoming matches include rikishi id fields and fetch missing images
-  const serializedRikishiImages = React.useMemo(() => JSON.stringify(rikishiImages), [rikishiImages]);
-
-  React.useEffect(() => {
-    let mounted = true;
-    try {
-  const parsedMatches: Record<string, unknown>[] = JSON.parse(serializedMatches || '[]') as Record<string, unknown>[];
-      const cached: Record<string, string> = JSON.parse(serializedRikishiImages || '{}');
-      const ids = new Set<string>();
-      parsedMatches.forEach((m) => {
-        const westId = getString(m, 'west_rikishi_id', 'westId', 'rikishi1_id') ?? (getNumber(m, 'west_rikishi_id', 'westId', 'rikishi1_id') ? String(getNumber(m, 'west_rikishi_id', 'westId', 'rikishi1_id')) : undefined);
-        const eastId = getString(m, 'east_rikishi_id', 'eastId', 'rikishi2_id') ?? (getNumber(m, 'east_rikishi_id', 'eastId', 'rikishi2_id') ? String(getNumber(m, 'east_rikishi_id', 'eastId', 'rikishi2_id')) : undefined);
-        if (westId && !cached[String(westId)]) ids.add(String(westId));
-        if (eastId && !cached[String(eastId)]) ids.add(String(eastId));
-      });
-      if (ids.size === 0) return undefined;
-      (async () => {
-        const out: Record<string, string> = {};
-        await Promise.all(Array.from(ids).map(async (id) => {
-          try {
-            const res = await fetch(`/api/rikishi/${encodeURIComponent(id)}`);
-            if (!mounted) return;
-            if (!res.ok) return;
-            const doc = await res.json();
-            const s = doc?.rikishi?.s3_url ?? doc?.s3_url ?? doc?.rikishi?.pfp_url ?? doc?.pfp_url ?? doc?.rikishi?.image_url ?? doc?.image_url ?? null;
-            if (s) out[id] = s;
-          } catch {
-            // ignore
-          }
-        }));
-        if (!mounted) return;
-        if (Object.keys(out).length > 0) setRikishiImages(prev => ({ ...prev, ...out }));
-      })();
-    } catch {
-      // parsing failed; bail
-    }
-    return () => { mounted = false };
-  // include serializedMatches and serializedRikishiImages (strings) only
-  }, [serializedMatches, serializedRikishiImages]);
+  // No client-side rikishi fetches: prefer server-provided nested `west_rikishi` / `east_rikishi` or top-level fields.
 
   return (
     <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 4, mb: 0 }}>
@@ -153,11 +150,19 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
         <Typography className="app-text" level="title-lg" sx={{ fontWeight: 1000, fontSize: '1.5rem' }}>
           Upcoming Matches
         </Typography>
-        {date && (
-          <Typography sx={{ color: '#563861', fontWeight: 500, fontSize: '1.08rem', mb: 2 }}>
-            {date}
-          </Typography>
-        )}
+        {date && (() => {
+          // Display only YYYY-MM-DD portion. Incoming date strings sometimes include
+          // time (e.g. 2025-09-20T00:00:00). Trim that to just the date for display.
+          let display = String(date);
+          if (display.includes('T')) display = display.split('T')[0];
+          else if (display.includes(' ')) display = display.split(' ')[0];
+          else if (display.length > 10) display = display.slice(0, 10);
+          return (
+            <Typography sx={{ color: '#563861', fontWeight: 500, fontSize: '1.08rem', mb: 2 }}>
+              {display}
+            </Typography>
+          );
+        })()}
 
         <List variant="outlined" sx={{ minWidth: 240, borderRadius: 'sm', p: 0, m: 0 }}>
           {matches.length === 0 ? (
@@ -182,10 +187,16 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                 if (!Number.isNaN(n)) aiPred = n;
               }
 
-              const rikishi1 = getString(match, 'rikishi1') ?? String(getIdString(match, 'rikishi1_id') ?? '');
-              const rikishi2 = getString(match, 'rikishi2') ?? String(getIdString(match, 'rikishi2_id') ?? '');
-              const rikishi1Rank = getString(match, 'rikishi1Rank', 'rikishi1_rank');
-              const rikishi2Rank = getString(match, 'rikishi2Rank', 'rikishi2_rank');
+              const westId = getIdString(match, 'west_rikishi_id', 'westId', 'rikishi1_id');
+              const eastId = getIdString(match, 'east_rikishi_id', 'eastId', 'rikishi2_id');
+              const rikishi1 = getString(match, 'rikishi1') ?? String(westId ?? '');
+              const rikishi2 = getString(match, 'rikishi2') ?? String(eastId ?? '');
+              const rawR1 = getString(match, 'rikishi1Rank', 'rikishi1_rank');
+              const rawR2 = getString(match, 'rikishi2Rank', 'rikishi2_rank');
+              const nestedWest = (match as Record<string, unknown>)['west_rikishi'] as Record<string, unknown> | undefined;
+              const nestedEast = (match as Record<string, unknown>)['east_rikishi'] as Record<string, unknown> | undefined;
+              const rikishi1Rank = rawR1 ?? (nestedWest ? (String(nestedWest['current_rank'] ?? nestedWest['rank'] ?? 'NA')) : 'NA');
+              const rikishi2Rank = rawR2 ?? (nestedEast ? (String(nestedEast['current_rank'] ?? nestedEast['rank'] ?? 'NA')) : 'NA');
 
               return (
                 <ListItem key={String(id)} sx={{ p: 0, m: 0, listStyle: 'none', position: 'relative' }}>
@@ -196,15 +207,15 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 2,
+                      gap: 1.5,
                       background: '#F5E6C8',
                       borderRadius: '0.75rem',
-                      minHeight: 60,
+                      minHeight: 52,
                       cursor: 'pointer',
                       transition: 'transform 0.15s, box-shadow 0.15s',
                       position: 'relative',
                       isolation: 'isolate',
-                      mb: 1.5,
+                      mb: 1,
                       pb: idx < matches.length - 1 ? 'calc(0.5rem + 1px)' : 0,
                       '&:hover': {
                         transform: 'scale(1.03)',
@@ -212,107 +223,139 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                       },
                     }}
                   >
-                    {/* AI prediction indicator (top-right) */}
-                    {typeof aiPred !== 'undefined' && (
-                      <Box sx={{ position: 'absolute', top: 6, right: 10, background: '#fff', borderRadius: '0.4rem', px: 0.6, py: 0.15, border: '1px solid rgba(0,0,0,0.06)', fontSize: '0.78rem', fontWeight: 700, color: '#563861' }}>
-                        {Number(aiPred) === 1 ? 'AI → West' : 'AI → East'}
-                      </Box>
-                    )}
+                      {/* (AI prediction pill moved below the votes row) */}
 
-                    {/* West avatar */}
-                    <Box sx={{ position: 'relative' }}>
-                      {
-                        (() => {
-                          const westId = getIdString(match, 'west_rikishi_id', 'westId', 'rikishi1_id');
-                          const src = getString(match, 'west_image', 'west_image_url', 'west_photo') ?? (westId ? rikishiImages[String(westId)] : null) ?? '/sumo_logo.png';
-                          return <Avatar size="sm" src={src} />;
-                        })()
-                      }
-                    </Box>
-                    {/* Middle content */}
-                    <Box sx={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, width: '100%' }}>
-                        <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                          <Typography className="app-text" level="body-md" sx={{ fontWeight: 600, fontSize: '1.13rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', textAlign: 'center' }}>{rikishi1}</Typography>
-                          <Typography className="app-text" level="body-xs" sx={{ color: '#a06b9a', fontWeight: 500, fontSize: '0.98rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', mt: 0.2, textAlign: 'center' }}>{rikishi1Rank || 'Rank TBD'}</Typography>
+                      {/* Left and right columns: name + rank above a larger avatar */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, width: '100%' }}>
+                        <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.5, width: 120 }}>
+                          <Typography className="app-text" level="body-md" sx={{ fontWeight: 600, fontSize: '1rem', maxWidth: '120px', textAlign: 'center', wordBreak: 'break-word' }}>{rikishi1}</Typography>
+                          <AutoFitText text={rikishi1Rank || 'NA'} maxPx={14} minPx={10} sx={{ color: '#7a4b7a', fontWeight: 500, maxWidth: '120px' }} />
+                          {/* larger avatar */}
+                          <Box sx={{ width: 56, height: 56, mt: 0.5 }}>
+                            {(() => {
+                              const westId = getIdString(match, 'west_rikishi_id', 'westId', 'rikishi1_id');
+                              const nestedWest = (match as Record<string, unknown>)['west_rikishi'] as Record<string, unknown> | undefined;
+                              const src = getString(match, 'west_image', 'west_image_url', 'west_photo') ?? (nestedWest ? String(nestedWest['s3_url'] ?? nestedWest['image_url'] ?? nestedWest['pfp_url']) : null) ?? '/sumo_logo.png';
+                              return <Avatar size="lg" src={src} sx={{ width: 56, height: 56, '& img': { objectFit: 'cover', objectPosition: 'top' } }} />;
+                            })()}
+                          </Box>
                         </Box>
-                        <Typography className="app-text" level="body-md" sx={{ fontWeight: 700, fontSize: '1.13rem', color: '#563861', mx: 1 }}>VS</Typography>
-                        <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                          <Typography className="app-text" level="body-md" sx={{ fontWeight: 600, fontSize: '1.13rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', textAlign: 'center' }}>{rikishi2}</Typography>
-                          <Typography className="app-text" level="body-xs" sx={{ color: '#a06b9a', fontWeight: 500, fontSize: '0.98rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', mt: 0.2, textAlign: 'center' }}>{rikishi2Rank || 'Rank TBD'}</Typography>
+
+                        {/* Center: Vote area. If the user is signed in show voting controls; otherwise show Sign in button */}
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5, width: '42%', justifyContent: 'center' }}>
+                          {user ? (
+                            <>
+                              {/* votes count above the vote row */}
+                              <Typography sx={{ fontSize: '0.82rem', color: '#888', mb: 0.3 }}>
+                                {matchVotes.west + matchVotes.east} vote{(matchVotes.west + matchVotes.east) === 1 ? '' : 's'}
+                              </Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', justifyContent: 'center' }}>
+                                <button
+                                  style={{
+                                    background: userVotes[id] === 'west' ? '#e0709f' : '#e0709f',
+                                    color: '#fff',
+                                    border: userVotes[id] === 'west'
+                                      ? '2px solid #c45e8b'
+                                      : '2px solid #c45e8b',
+                                    borderRadius: 8,
+                                    width: 84,
+                                    height: 34,
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    fontSize: '0.92rem',
+                                    transition: 'background 0.18s, border 0.18s',
+                                    display: 'inline-block',
+                                    position: 'relative',
+                                    boxShadow: userVotes[id] === 'west' ? '0 2px 6px #e0709faa' : '0 1px 2px #e0709f66',
+                                  }}
+                                  onClick={e => { e.stopPropagation(); handleVote(id, 'west'); }}
+                                >
+                                  {userVotes[id] === 'west' ? '✔' : 'Vote'}
+                                </button>
+
+                                <Box sx={{ width: 180, maxWidth: '60%' }}>
+                                  <ProgressBar value={percent} className="h-3 bg-red-500" progressClassName="bg-blue-500" />
+                                </Box>
+
+                                <button
+                                  style={{
+                                    background: userVotes[id] === 'east' ? '#3ccf9a' : '#3ccf9a',
+                                    color: '#fff',
+                                    border: userVotes[id] === 'east'
+                                      ? '2px solid #2aa97a'
+                                      : '2px solid #2aa97a',
+                                    borderRadius: 8,
+                                    width: 84,
+                                    height: 34,
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    fontSize: '0.92rem',
+                                    transition: 'background 0.18s, border 0.18s',
+                                    display: 'inline-block',
+                                    position: 'relative',
+                                    boxShadow: userVotes[id] === 'east' ? '0 2px 6px #3ccf9aaa' : '0 1px 2px #3ccf9a66',
+                                  }}
+                                  onClick={e => { e.stopPropagation(); handleVote(id, 'east'); }}
+                                >
+                                  {userVotes[id] === 'east' ? '✔' : 'Vote'}
+                                </button>
+                              </Box>
+
+                              {/* AI prediction shown directly below the votes row */}
+                              {typeof aiPred !== 'undefined' && (
+                                (() => {
+                                  const predictedName = (Number(aiPred) === 1) ? rikishi1 : rikishi2;
+                                  return (
+                                    <Box sx={{ mt: 0.6, background: 'rgba(86,56,97,0.06)', color: '#563861', borderRadius: 8, px: '0.5rem', py: '0.08rem', fontSize: '0.78rem', fontWeight: 700, border: '1px solid rgba(86,56,97,0.08)' }}>
+                                      <span style={{ paddingRight: 6, fontWeight: 600 }}>AI prediction:</span>
+                                      <span style={{ paddingLeft: 6, background: '#fff', color: '#563861', borderRadius: 6, padding: '0 6px', fontWeight: 700 }}>{String(predictedName)}</span>
+                                    </Box>
+                                  );
+                                })()
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <Typography sx={{ fontSize: '0.82rem', color: '#888', mb: 0.3 }}>
+                                Sign in to vote
+                              </Typography>
+                              <button
+                                style={{
+                                  background: '#563861',
+                                  color: '#fff',
+                                  border: '2px solid rgba(86,56,97,0.9)',
+                                  borderRadius: 8,
+                                  width: 160,
+                                  height: 36,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  fontSize: '0.95rem',
+                                }}
+                                onClick={(e) => { e.stopPropagation(); if (onOpenLogin) onOpenLogin(); else { try { (window as any).location.href = '/'; } catch {} } }}
+                              >
+                                Sign in to vote
+                              </button>
+                            </>
+                          )}
                         </Box>
-                      </Box>
-                      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1, width: '100%' }}>
-                        <Box sx={{ width: 240, maxWidth: '100%' }}>
-                          <ProgressBar value={percent} className="bg-red-500" progressClassName="bg-blue-500" />
+
+                        <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.5, width: 120 }}>
+                          <Typography className="app-text" level="body-md" sx={{ fontWeight: 600, fontSize: '1rem', maxWidth: '120px', textAlign: 'center', wordBreak: 'break-word' }}>{rikishi2}</Typography>
+                          <AutoFitText text={rikishi2Rank || 'NA'} maxPx={14} minPx={10} sx={{ color: '#7a4b7a', fontWeight: 500, maxWidth: '120px' }} />
+                          {/* larger avatar */}
+                          <Box sx={{ width: 56, height: 56, mt: 0.5 }}>
+                            {(() => {
+                              const eastId = getIdString(match, 'east_rikishi_id', 'eastId', 'rikishi2_id');
+                              const nestedEast = (match as Record<string, unknown>)['east_rikishi'] as Record<string, unknown> | undefined;
+                              const src = getString(match, 'east_image', 'east_image_url', 'east_photo') ?? (nestedEast ? String(nestedEast['s3_url'] ?? nestedEast['image_url'] ?? nestedEast['pfp_url']) : null) ?? '/sumo_logo.png';
+                              return <Avatar size="lg" src={src} sx={{ width: 56, height: 56, '& img': { objectFit: 'cover', objectPosition: 'top' } }} />;
+                            })()}
+                          </Box>
                         </Box>
-                      </Box>
-                      <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, mt: 1, width: '100%' }}>
-                        <button
-                          style={{
-                            background: userVotes[id] === 'west' ? '#e0a3c2' : '#f5e6c8',
-                            color: '#563861',
-                            border: userVotes[id] === 'west'
-                              ? '2.5px solid #563861'
-                              : '2.5px solid #e0a3c2',
-                            borderRadius: '0.5rem',
-                            width: 110,
-                            height: 36,
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            transition: 'background 0.18s, border 0.18s',
-                            display: 'inline-block',
-                            position: 'relative',
-                            boxShadow: userVotes[id] === 'west' ? '0 2px 8px #e0a3c2aa' : '0 1px 2px #e0a3c255',
-                          }}
-                            onClick={e => {
-                            e.stopPropagation();
-                            handleVote(id, 'west');
-                          }}
-                        >
-                          {userVotes[id] === 'west' ? '✔' : 'Vote'}
-                        </button>
-                        <button
-                          style={{
-                            background: userVotes[id] === 'east' ? '#a3e0b8' : '#f5e6c8',
-                            color: '#563861',
-                            border: userVotes[id] === 'east'
-                              ? '2.5px solid #563861'
-                              : '2.5px solid #a3e0b8',
-                            borderRadius: '0.5rem',
-                            width: 110,
-                            height: 36,
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            transition: 'background 0.18s, border 0.18s',
-                            display: 'inline-block',
-                            position: 'relative',
-                            boxShadow: userVotes[id] === 'east' ? '0 2px 8px #a3e0b8aa' : '0 1px 2px #a3e0b855',
-                          }}
-                          onClick={e => {
-                            e.stopPropagation();
-                            handleVote(id, 'east');
-                          }}
-                        >
-                          {userVotes[id] === 'east' ? '✔' : 'Vote'}
-                        </button>
-                      </Box>
-                      <Typography sx={{ fontSize: '0.85rem', color: '#888', mt: 0.5 }}>
-                        {matchVotes.west + matchVotes.east} vote{(matchVotes.west + matchVotes.east) === 1 ? '' : 's'}
-                      </Typography>
+
+                      {/* vote count moved above the vote row in the center column */}
                     </Box>
-                    {/* East avatar */}
-                    <Box sx={{ position: 'relative' }}>
-                      {
-                        (() => {
-                          const eastId = getIdString(match, 'east_rikishi_id', 'eastId', 'rikishi2_id');
-                          const src = getString(match, 'east_image', 'east_image_url', 'east_photo') ?? (eastId ? rikishiImages[String(eastId)] : null) ?? '/sumo_logo.png';
-                          return <Avatar size="sm" src={src} />;
-                        })()
-                      }
-                    </Box>
+                    {/* (removed duplicate small east avatar - larger avatar in the right column above is used) */}
                     {/* Divider drawn INSIDE this item (never overlaps the next row) */}
                     {idx < matches.length - 1 && (
                       <Box

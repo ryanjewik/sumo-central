@@ -150,23 +150,78 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
 
         kimarite_counts = dict(Counter(kimarite_list))
 
-    # getting the most recent day's matches in Makuuchi
+    # getting the most recent completed day's matches in Makuuchi
+    # Prefer matches from the previous day (day - 1) if they exist and are completed (have a winner).
     cursor.execute(
-        """
-        SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division 
-        FROM matches
-        WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
-        AND division = 'Makuuchi'
-        AND day = (
-            SELECT MAX(day)
-            FROM matches
-            WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
-                AND division = 'Makuuchi'
-        );
-        """
+        "SELECT MAX(day) FROM matches WHERE basho_id = (SELECT MAX(basho_id) FROM matches) AND division = 'Makuuchi';"
     )
-    rows = cursor.fetchall()
-    colnames = [desc[0] for desc in cursor.description]
+    max_day_row = cursor.fetchone()[0]
+    rows = []
+    colnames = []
+    if max_day_row is not None:
+        target_day = max_day_row - 1 if isinstance(max_day_row, int) else None
+        # try previous day with completed matches first
+        if target_day is not None and target_day >= 1:
+            cursor.execute(
+                """
+                SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division
+                FROM matches
+                WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
+                AND division = 'Makuuchi'
+                AND day = %s
+                AND winner IS NOT NULL
+                ;
+                """,
+                (target_day,),
+            )
+            rows = cursor.fetchall()
+            colnames = [desc[0] for desc in cursor.description] if cursor.description else []
+        # fallback: previous day regardless of winner
+        if not rows and target_day is not None and target_day >= 1:
+            cursor.execute(
+                """
+                SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division
+                FROM matches
+                WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
+                AND division = 'Makuuchi'
+                AND day = %s
+                ;
+                """,
+                (target_day,),
+            )
+            rows = cursor.fetchall()
+            colnames = [desc[0] for desc in cursor.description] if cursor.description else []
+        # next fallback: current max_day but prefer completed matches
+        if not rows:
+            cursor.execute(
+                """
+                SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division
+                FROM matches
+                WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
+                AND division = 'Makuuchi'
+                AND day = %s
+                AND winner IS NOT NULL
+                ;
+                """,
+                (max_day_row,),
+            )
+            rows = cursor.fetchall()
+            colnames = [desc[0] for desc in cursor.description] if cursor.description else []
+        # last-resort: current max_day regardless of winner
+        if not rows:
+            cursor.execute(
+                """
+                SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division
+                FROM matches
+                WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
+                AND division = 'Makuuchi'
+                AND day = %s
+                ;
+                """,
+                (max_day_row,),
+            )
+            rows = cursor.fetchall()
+            colnames = [desc[0] for desc in cursor.description] if cursor.description else []
 
     recent_matches = {}
     highlighted_match = None
@@ -182,6 +237,8 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
         if match["rank_avg"] < lowest_avg:
             lowest_avg = match["rank_avg"]
             highlighted_match = match
+
+    
 
     # Get counts and average rank order for heya and shusshin
     cursor.execute("SELECT current_rank, heya, shusshin FROM rikishi;")

@@ -925,8 +925,307 @@ def main():
                 # Replace existing upcoming_matches with the canonical set for this webhook.
                 # The user asked that we replace any existing contents rather than append.
                 try:
-                    hp_coll.update_one({'_homepage_doc': True}, {'$set': {'upcoming_matches': selected}})
+                    # Filter only upcoming (unplayed) matches from the webhook payload
+                    try:
+                        upcoming_candidates = [m for m in selected if not m.get('winner')]
+                    except Exception:
+                        upcoming_candidates = []
+
+                    # Enrich upcoming matches with rikishi info from rikishi_pages where possible
+                    try:
+                        rikishi_coll = db.get_collection('rikishi_pages')
+                        # collect all referenced rikishi ids (ints) from upcoming candidates
+                        rikishi_ids = set()
+                        for m in upcoming_candidates:
+                            try:
+                                if m.get('east_rikishi_id') not in (None, ""):
+                                    rikishi_ids.add(int(m.get('east_rikishi_id')))
+                            except Exception:
+                                try:
+                                    rikishi_ids.add(m.get('east_rikishi_id'))
+                                except Exception:
+                                    pass
+                            try:
+                                if m.get('west_rikishi_id') not in (None, ""):
+                                    rikishi_ids.add(int(m.get('west_rikishi_id')))
+                            except Exception:
+                                try:
+                                    rikishi_ids.add(m.get('west_rikishi_id'))
+                                except Exception:
+                                    pass
+
+                        if rikishi_ids:
+                            try:
+                                docs = rikishi_coll.find({'id': {'$in': list(rikishi_ids)}})
+                                rikishi_map = {}
+                                for d in docs:
+                                    # prefer the nested 'rikishi' object if present
+                                    rik = d.get('rikishi') if isinstance(d.get('rikishi'), dict) else d
+                                    try:
+                                        rikishi_map[int(d.get('id'))] = rik
+                                    except Exception:
+                                        try:
+                                            rikishi_map[str(d.get('id'))] = rik
+                                        except Exception:
+                                            pass
+
+                                # attach to upcoming matches
+                                for m in upcoming_candidates:
+                                    try:
+                                        eid = m.get('east_rikishi_id')
+                                        if eid not in (None, ""):
+                                            rik = rikishi_map.get(int(eid)) if int(eid) in rikishi_map else rikishi_map.get(str(eid)) if str(eid) in rikishi_map else None
+                                            if rik:
+                                                m['east_rikishi'] = rik
+                                    except Exception:
+                                        pass
+                                    try:
+                                        wid = m.get('west_rikishi_id')
+                                        if wid not in (None, ""):
+                                            rik = rikishi_map.get(int(wid)) if int(wid) in rikishi_map else rikishi_map.get(str(wid)) if str(wid) in rikishi_map else None
+                                            if rik:
+                                                m['west_rikishi'] = rik
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                # non-fatal: continue without enrichment
+                                pass
+                    except Exception:
+                        # If enrichment fails, don't block replacing the homepage doc
+                        pass
+                    except Exception:
+                        # If enrichment fails, don't block replacing the homepage doc
+                        pass
+
+                    # Compute highlighted_match from the upcoming matches (unplayed) using rank order
+                    def order_ranks_local(rank_mapping):
+                        # sort similar to other builders: unranked (value==0) last; East before West
+                        items = [(n, v) for n, v in rank_mapping.items()]
+                        def sort_key(item):
+                            name, value = item
+                            if value == 0:
+                                return (float('inf'), 1, name)
+                            east_west = 0 if 'East' in name else 1 if 'West' in name else 2
+                            return (value, east_west, name)
+                        items_sorted = sorted(items, key=sort_key)
+                        om = {}
+                        for i, (name, value) in enumerate(items_sorted, 1):
+                            om[name] = {'rank_value': value, 'order': i}
+                        return om
+
+                    ordered_rank_mapping = {}
+                    try:
+                        # Try PostgresHook in Airflow first
+                        try:
+                            from airflow.providers.postgres.hooks.postgres import PostgresHook
+                            ph = PostgresHook(postgres_conn_id=os.getenv('POSTGRES_CONN_ID', 'postgres_default'))
+                            pconn = ph.get_conn()
+                            pcur = pconn.cursor()
+                            pcur.execute('SELECT DISTINCT rank_name, rank_value FROM rikishi_rank_history ORDER BY rank_value;')
+                            rkrows = pcur.fetchall()
+                            try:
+                                pcur.close()
+                            except Exception:
+                                pass
+                            try:
+                                pconn.close()
+                            except Exception:
+                                pass
+                            rank_mapping = {r[0]: r[1] for r in rkrows if r[0] is not None}
+                            ordered_rank_mapping = order_ranks_local(rank_mapping)
+                        except Exception:
+                            # Fallback: try psycopg2 using env vars
+                            try:
+                                import psycopg2
+                                pg_urls = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL')
+                                if pg_urls:
+                                    pconn = psycopg2.connect(pg_urls)
+                                else:
+                                    pg_host = os.getenv('POSTGRES_HOST')
+                                    pg_port = os.getenv('POSTGRES_PORT')
+                                    pg_db = os.getenv('POSTGRES_DB') or os.getenv('POSTGRES_DATABASE')
+                                    pg_user = os.getenv('POSTGRES_USER')
+                                    pg_pass = os.getenv('POSTGRES_PASSWORD')
+                                    conn_args = {}
+                                    if pg_host:
+                                        conn_args['host'] = pg_host
+                                    if pg_port:
+                                        conn_args['port'] = pg_port
+                                    if pg_db:
+                                        conn_args['dbname'] = pg_db
+                                    if pg_user:
+                                        conn_args['user'] = pg_user
+                                    if pg_pass:
+                                        conn_args['password'] = pg_pass
+                                    pconn = psycopg2.connect(**conn_args)
+                                pcur = pconn.cursor()
+                                pcur.execute('SELECT DISTINCT rank_name, rank_value FROM rikishi_rank_history ORDER BY rank_value;')
+                                rkrows = pcur.fetchall()
+                                try:
+                                    pcur.close()
+                                except Exception:
+                                    pass
+                                try:
+                                    pconn.close()
+                                except Exception:
+                                    pass
+                                rank_mapping = {r[0]: r[1] for r in rkrows if r[0] is not None}
+                                ordered_rank_mapping = order_ranks_local(rank_mapping)
+                            except Exception:
+                                ordered_rank_mapping = {}
+                    except Exception:
+                        ordered_rank_mapping = {}
+
+                    # Normalize helper for rank names and create a normalized lookup
+                    import re
+                    def _norm_rank_name(rn):
+                        try:
+                            if rn is None:
+                                return None
+                            s = str(rn)
+                            # collapse whitespace and trim
+                            s = re.sub(r"\s+", " ", s).strip()
+                            return s
+                        except Exception:
+                            return None
+
+                    # Build a lowercase/normalized lookup so small differences in formatting
+                    # (extra spaces, case) won't prevent matching the rank_name keys.
+                    ordered_rank_mapping_norm = {}
+                    try:
+                        for k, v in ordered_rank_mapping.items():
+                            nk = _norm_rank_name(k)
+                            if nk:
+                                ordered_rank_mapping_norm[nk.lower()] = v
+                    except Exception:
+                        ordered_rank_mapping_norm = {}
+
+                    # Choose highlighted match from selected upcoming matches (no winner)
+                    highlighted_match = None
+                    lowest_avg = float('inf')
+                    try:
+                        for m in upcoming_candidates:
+                            try:
+                                if m.get('winner') not in (None, '', 0):
+                                    continue
+                                # determine rank names (robust: nested rikishi, direct fields, rikishi_map lookup)
+                                def _get_rank(mobj, side):
+                                    # 1) try nested rikishi current_rank/rank_name fields
+                                    try:
+                                        rik = mobj.get(f"{side}_rikishi")
+                                        if isinstance(rik, dict):
+                                            for k in ('current_rank', 'currentRank', 'rank', 'rank_name'):
+                                                try:
+                                                    v = rik.get(k)
+                                                    if v:
+                                                        return v
+                                                except Exception:
+                                                    continue
+                                    except Exception:
+                                        pass
+
+                                    # 2) try direct match-level fields (eastRank, east_rank, etc.)
+                                    try:
+                                        for key in (f"{side}Rank", f"{side}_rank", f"{side}RankName", f"{side}RankName", f"{side}rank", f"{side}_rank_name"):
+                                            v = mobj.get(key)
+                                            if v:
+                                                return v
+                                    except Exception:
+                                        pass
+
+                                    # 3) try rikishi id -> rikishi_map lookup (if enrichment ran)
+                                    try:
+                                        rid_field = f"{side}_rikishi_id"
+                                        rid = mobj.get(rid_field)
+                                        if rid not in (None, ""):
+                                            try:
+                                                # rikishi_map may have int or str keys
+                                                if 'rikishi_map' in locals() and isinstance(rikishi_map, dict):
+                                                    rk = None
+                                                    try:
+                                                        rk = rikishi_map.get(int(rid))
+                                                    except Exception:
+                                                        rk = rikishi_map.get(str(rid))
+                                                    if isinstance(rk, dict):
+                                                        for k in ('current_rank', 'currentRank', 'rank', 'rank_name'):
+                                                            v = rk.get(k)
+                                                            if v:
+                                                                return v
+                                            except Exception:
+                                                pass
+                                    except Exception:
+                                        pass
+
+                                    return None
+
+                                east_rank = _get_rank(m, 'east')
+                                west_rank = _get_rank(m, 'west')
+
+                                # lookup order using normalized mapping first, then fallback to original
+                                def _order_for(rank_str):
+                                    if not rank_str:
+                                        return 9999
+                                    nk = _norm_rank_name(rank_str)
+                                    if not nk:
+                                        return 9999
+                                    v = ordered_rank_mapping.get(rank_str)
+                                    if not v:
+                                        v = ordered_rank_mapping_norm.get(nk.lower())
+                                    if v and isinstance(v, dict) and v.get('order'):
+                                        return v.get('order')
+                                    return 9999
+
+                                east_order = _order_for(east_rank)
+                                west_order = _order_for(west_rank)
+                                rank_avg = (east_order + west_order) / 2.0
+                                m['rank_avg'] = rank_avg
+                                if rank_avg < lowest_avg:
+                                    lowest_avg = rank_avg
+                                    highlighted_match = m
+                            except Exception:
+                                continue
+                    except Exception:
+                        highlighted_match = None
+
+                    # Persist both upcoming_matches and highlighted_match to homepage doc
+                    try:
+                        # Persist upcoming_matches and the selected highlighted match
+                        # under the server-canonical key `upcoming_highlighted_match` so
+                        # consumers know it's derived from the upcoming set written here.
+                        if highlighted_match is not None:
+                            hp_coll.update_one({'_homepage_doc': True}, {'$set': {'upcoming_matches': selected, 'upcoming_highlighted_match': highlighted_match}})
+                        else:
+                            # Ensure we don't leave a stale upcoming_highlighted_match when
+                            # there is no highlighted match for this payload.
+                            hp_coll.update_one({'_homepage_doc': True}, {'$set': {'upcoming_matches': selected}, '$unset': {'upcoming_highlighted_match': ""}})
+                    except Exception:
+                        # fallback to original simple update (best-effort)
+                        try:
+                            hp_coll.update_one({'_homepage_doc': True}, {'$set': {'upcoming_matches': selected}})
+                        except Exception:
+                            pass
                     print(f"Replaced upcoming_matches on homepage document with {len(selected)} match(es) (driver)")
+
+                    # Additionally persist upcoming data into a dedicated document flagged
+                    # with {"upcoming": True}. This keeps the homepage doc cleaner and
+                    # allows frontends to read a single, dedicated document for upcoming
+                    # matches and the server-derived highlighted match.
+                    try:
+                        upcoming_doc = {
+                            'upcoming': True,
+                            'upcoming_matches': selected,
+                            'updated_at': datetime.utcnow().isoformat() + 'Z',
+                        }
+                        if highlighted_match is not None:
+                            upcoming_doc['upcoming_highlighted_match'] = highlighted_match
+
+                        # Upsert the dedicated upcoming document. Use the same collection
+                        # as homepage for simplicity; it's a separate document identified
+                        # by the `upcoming: True` sentinel.
+                        hp_coll.update_one({'upcoming': True}, {'$set': upcoming_doc}, upsert=True)
+                        print('Wrote/updated dedicated upcoming document (upcoming=True)')
+                    except Exception as exc:
+                        print(f'Failed to write dedicated upcoming document: {exc}')
 
                     # Also push matches into basho_pages in nested days -> division -> date
                     try:

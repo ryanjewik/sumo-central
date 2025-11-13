@@ -83,15 +83,53 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
       return 0;
     };
 
-    const eastName = getString(m, 'east_shikona', 'eastshikona', 'eastName') ?? ((m['east'] && typeof m['east'] === 'object') ? getString(m['east'] as RawMatch, 'shikona', 'name', 'displayName') : undefined);
-    const westName = getString(m, 'west_shikona', 'westshikona', 'westName') ?? ((m['west'] && typeof m['west'] === 'object') ? getString(m['west'] as RawMatch, 'shikona', 'name', 'displayName') : undefined);
-    const eastRank = getString(m, 'east_rank', 'eastRank') ?? ((m['east'] && typeof m['east'] === 'object') ? getString(m['east'] as RawMatch, 'rank', 'banzuke') : '') ?? '';
-    const westRank = getString(m, 'west_rank', 'westRank') ?? ((m['west'] && typeof m['west'] === 'object') ? getString(m['west'] as RawMatch, 'rank', 'banzuke') : '') ?? '';
+  const eastName = getString(m, 'east_shikona', 'eastshikona', 'eastName') ?? ((m['east'] && typeof m['east'] === 'object') ? getString(m['east'] as RawMatch, 'shikona', 'name', 'displayName') : undefined) ?? ((m['east_rikishi'] && typeof m['east_rikishi'] === 'object') ? getString(m['east_rikishi'] as RawMatch, 'shikona', 'name', 'displayName') : undefined);
+  const westName = getString(m, 'west_shikona', 'westshikona', 'westName') ?? ((m['west'] && typeof m['west'] === 'object') ? getString(m['west'] as RawMatch, 'shikona', 'name', 'displayName') : undefined) ?? ((m['west_rikishi'] && typeof m['west_rikishi'] === 'object') ? getString(m['west_rikishi'] as RawMatch, 'shikona', 'name', 'displayName') : undefined);
+  const eastRank = getString(m, 'east_rank', 'eastRank') ?? ((m['east'] && typeof m['east'] === 'object') ? getString(m['east'] as RawMatch, 'rank', 'banzuke') : '') ?? ((m['east_rikishi'] && typeof m['east_rikishi'] === 'object') ? getString(m['east_rikishi'] as RawMatch, 'current_rank', 'rank', 'banzuke') : '') ?? '';
+  const westRank = getString(m, 'west_rank', 'westRank') ?? ((m['west'] && typeof m['west'] === 'object') ? getString(m['west'] as RawMatch, 'rank', 'banzuke') : '') ?? ((m['west_rikishi'] && typeof m['west_rikishi'] === 'object') ? getString(m['west_rikishi'] as RawMatch, 'current_rank', 'rank', 'banzuke') : '') ?? '';
     const kim = getString(m, 'kimarite', 'kimarite_name', 'kimarite_display', 'kimariteName', 'method');
     const eastVotes = getNumber(m, 'east_votes', 'eastVotes', 'east_votes_count') || ((m['east'] && typeof m['east'] === 'object') ? getNumber(m['east'] as RawMatch, 'votes') : 0);
     const westVotes = getNumber(m, 'west_votes', 'westVotes', 'west_votes_count') || ((m['west'] && typeof m['west'] === 'object') ? getNumber(m['west'] as RawMatch, 'votes') : 0);
     const winner = (m['winner'] ?? m['result'] ?? m['winning_side'] ?? null) as unknown;
-    const winnerSide = (winner === 'east' || winner === 'west') ? (winner as string) : ((String(winner) === String(eastName)) ? 'east' : ((String(winner) === String(westName)) ? 'west' : null));
+    // determine winner by id when possible: compare numeric/string winner to east/west rikishi id fields
+    let winnerSide: string | null = null;
+    try {
+      const rawWinner = winner;
+      const eastIds = [m['east_rikishi_id'], m['eastId'], m['east_id'], (m['east'] && typeof m['east'] === 'object') ? (m['east'] as RawMatch)['id'] : undefined];
+      const westIds = [m['west_rikishi_id'], m['westId'], m['west_id'], (m['west'] && typeof m['west'] === 'object') ? (m['west'] as RawMatch)['id'] : undefined];
+      const normalizeId = (v: unknown) => {
+        if (v === null || v === undefined) return null;
+        if (typeof v === 'number') return String(v);
+        if (typeof v === 'string') return v;
+        try { return String(v); } catch { return null; }
+      };
+      const wNorm = normalizeId(rawWinner);
+      if (wNorm !== null) {
+        for (const eid of eastIds) {
+          if (normalizeId(eid) === wNorm) {
+            winnerSide = 'east';
+            break;
+          }
+        }
+      }
+      if (!winnerSide && wNorm !== null) {
+        for (const wid of westIds) {
+          if (normalizeId(wid) === wNorm) {
+            winnerSide = 'west';
+            break;
+          }
+        }
+      }
+      // fallback: preserve previous behavior (string name or 'east'/'west')
+      if (!winnerSide) {
+        if (rawWinner === 'east' || rawWinner === 'west') winnerSide = String(rawWinner);
+        else if (String(rawWinner) === String(eastName)) winnerSide = 'east';
+        else if (String(rawWinner) === String(westName)) winnerSide = 'west';
+        else winnerSide = null;
+      }
+    } catch (e) {
+      winnerSide = null;
+    }
 
     // match number / bout number
     const matchNumber = Number(m['match_number'] ?? m['bout'] ?? m['bout_number'] ?? m['no'] ?? m['matchNo'] ?? NaN);
@@ -119,8 +157,8 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
     }
 
     // candidate avatar fields
-    const eastImage = getString(m['east'] && typeof m['east'] === 'object' ? (m['east'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'east_image', 'east_photo', 'east_profile') ?? null;
-    const westImage = getString(m['west'] && typeof m['west'] === 'object' ? (m['west'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'west_image', 'west_photo', 'west_profile') ?? null;
+  const eastImage = getString(m['east'] && typeof m['east'] === 'object' ? (m['east'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'east_image', 'east_photo', 'east_profile') ?? ((m['east_rikishi'] && typeof m['east_rikishi'] === 'object') ? getString(m['east_rikishi'] as RawMatch, 's3_url', 's3', 'image', 'pfp_url', 'image_url') : null) ?? null;
+  const westImage = getString(m['west'] && typeof m['west'] === 'object' ? (m['west'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'west_image', 'west_photo', 'west_profile') ?? ((m['west_rikishi'] && typeof m['west_rikishi'] === 'object') ? getString(m['west_rikishi'] as RawMatch, 's3_url', 's3', 'image', 'pfp_url', 'image_url') : null) ?? null;
 
     // build a safe fallback id only when at least one side has a name
     const constructedId = (m['east_shikona'] ?? m['eastName'] ?? (m['east'] && (m['east'] as RawMatch)['name'])) && (m['west_shikona'] ?? m['westName'] ?? (m['west'] && (m['west'] as RawMatch)['name']))
@@ -157,54 +195,6 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
 
   // precompute serialized normalized data to use in effect deps (avoids complex expressions)
   const serializedNormalized = React.useMemo(() => JSON.stringify(normalized), [normalized]);
-
-  // cache of rikishi id -> image url (s3_url preferred)
-  const [rikishiImages, setRikishiImages] = React.useState<Record<string, string>>({});
-
-  // serialized rikishi cache for effect deps
-  const serializedRikishi = React.useMemo(() => JSON.stringify(rikishiImages), [rikishiImages]);
-
-  // fetch rikishi docs for any matches that lack avatar urls but have rikishi id fields
-  React.useEffect(() => {
-    // Use serialized inputs so the dependency array stays simple and stable.
-    let mounted = true;
-    try {
-      const parsed: NormalizedMatch[] = JSON.parse(serializedNormalized || '[]');
-      const cached: Record<string, string> = JSON.parse(serializedRikishi || '{}');
-      const idsToFetch = new Set<string>();
-      parsed.forEach((nm) => {
-        const er = nm.raw?.east_rikishi_id ?? nm.raw?.east_id ?? nm.raw?.east_rikishi ?? null;
-        const wr = nm.raw?.west_rikishi_id ?? nm.raw?.west_id ?? nm.raw?.west_rikishi ?? null;
-        if (er && !nm.eastImage && !cached[String(er)]) idsToFetch.add(String(er));
-        if (wr && !nm.westImage && !cached[String(wr)]) idsToFetch.add(String(wr));
-      });
-      if (idsToFetch.size === 0) return () => { mounted = false };
-
-      (async () => {
-        const results: Record<string, string> = {};
-        await Promise.all(Array.from(idsToFetch).map(async (id) => {
-          try {
-            const res = await fetch(`/api/rikishi/${encodeURIComponent(id)}`);
-            if (!mounted) return;
-            if (!res.ok) return;
-            const doc = await res.json();
-            // try common shapes: doc.rikishi.s3_url, doc.s3_url, doc.rikishi?.pfp_url
-            const s = doc?.rikishi?.s3_url ?? doc?.s3_url ?? doc?.rikishi?.pfp_url ?? doc?.pfp_url ?? doc?.rikishi?.image_url ?? doc?.image_url ?? null;
-            if (s) results[id] = s;
-          } catch {
-            // ignore individual fetch failures
-          }
-        }));
-        if (!mounted) return;
-        if (Object.keys(results).length > 0) setRikishiImages(prev => ({ ...prev, ...results }));
-      })();
-    } catch {
-      // if JSON.parse fails, skip
-    }
-
-    return () => { mounted = false };
-  // include serialized deps so effect re-runs when normalized or rikishi cache updates
-  }, [serializedNormalized, serializedRikishi]);
 
   // group by dayLabel and sort
   const groups = new Map<string, NormalizedMatch[]>();
@@ -273,8 +263,10 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                 const westPercent = Math.round(((match.westVotes ?? 0) / total) * 100);
                 const progressValue = Math.max(eastPercent, westPercent);
                 const winnerSide = match.winnerSide;
-                const avatarEast = match.eastImage ?? rikishiImages[String(match.raw?.east_rikishi_id ?? match.raw?.east_id ?? '')] ?? null;
-                const avatarWest = match.westImage ?? rikishiImages[String(match.raw?.west_rikishi_id ?? match.raw?.west_id ?? '')] ?? null;
+                const rawAvatarEast: unknown = match.eastImage ?? (match.raw && (match.raw['east_rikishi'] as RawMatch)?.s3_url) ?? (match.raw && (match.raw['east_rikishi'] as RawMatch)?.image_url) ?? null;
+                const rawAvatarWest: unknown = match.westImage ?? (match.raw && (match.raw['west_rikishi'] as RawMatch)?.s3_url) ?? (match.raw && (match.raw['west_rikishi'] as RawMatch)?.image_url) ?? null;
+                const avatarEast: string | null = (typeof rawAvatarEast === 'string' || typeof rawAvatarEast === 'number') ? String(rawAvatarEast) : null;
+                const avatarWest: string | null = (typeof rawAvatarWest === 'string' || typeof rawAvatarWest === 'number') ? String(rawAvatarWest) : null;
                 const initials = (n?: string) => {
                   if (!n) return '';
                   const parts = String(n).trim().split(/\s+/);
@@ -309,39 +301,58 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                           transform: 'scale(1.03)',
                           boxShadow: '0 4px 16px rgba(86,56,97,0.15)'
                         },
+                        // highlight winner side with a colored vertical accent
+                        borderLeft: winnerSide === 'west' ? '6px solid #2563eb' : undefined,
+                        borderRight: winnerSide === 'east' ? '6px solid #ef4444' : undefined,
+                        boxShadow: winnerSide ? (winnerSide === 'west' ? '0 8px 28px rgba(37,99,235,0.08)' : '0 8px 28px rgba(239,68,68,0.08)') : undefined,
                       }}
                     >
-                      <Box sx={{ position: 'relative', width: 32, height: 32 }}>
-                        {avatarWest ? (
-                          <div style={{ width: 32, height: 32, position: 'relative', borderRadius: '50%', overflow: 'hidden' }}>
-                            <Image src={avatarWest} alt={westName} fill style={{ objectFit: 'cover', borderRadius: '50%' }} />
-                          </div>
-                        ) : (
-                          <Avatar size="sm">{initials(westName)}</Avatar>
-                        )}
-                      </Box>
-                        {winnerSide === 'west' && (
-                          <Box
-                            sx={{
-                              pointerEvents: 'none',
-                              position: 'absolute',
-                              top: -8,
-                              right: -8,
-                              background: '#22c55e',
-                              color: '#fff',
+                      {/* West avatar: winner gets a gold glowing outline and trophy, loser gets shadowed black outline */}
+                      <Box sx={{ position: 'relative', width: 40, height: 40 }}>
+                        {
+                          (() => {
+                            const wrapperStyle: React.CSSProperties = {
+                              width: 40,
+                              height: 40,
+                              position: 'relative',
                               borderRadius: '50%',
-                              width: 17,
-                              height: 17,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: 9,
-                              boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
-                            }}
-                          >
-                            W
-                          </Box>
-                        )}
+                              overflow: 'hidden',
+                              display: 'inline-block',
+                            };
+                            if (winnerSide === 'west') {
+                              // gold glow
+                              (wrapperStyle as any).boxShadow = '0 0 0 3px rgba(255,215,0,0.95), 0 8px 24px rgba(255,215,0,0.18)';
+                              (wrapperStyle as any).border = '2px solid rgba(255,215,0,0.65)';
+                            } else if (winnerSide && winnerSide !== 'west') {
+                              // shadowed black outline for loser
+                              (wrapperStyle as any).boxShadow = '0 0 0 3px rgba(0,0,0,0.6), 0 4px 10px rgba(0,0,0,0.35)';
+                              (wrapperStyle as any).border = '1px solid rgba(0,0,0,0.6)';
+                            }
+                            if (avatarWest) {
+                              return (
+                                  <div style={wrapperStyle}>
+                                    <Image src={avatarWest} alt={westName} fill style={{ objectFit: 'cover', objectPosition: 'top', borderRadius: '50%' }} />
+                                  {winnerSide === 'west' && (
+                                    <Box sx={{ position: 'absolute', top: -6, right: -6, background: 'gold', color: '#222', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
+                                      <span style={{ lineHeight: 1 }}>🏆</span>
+                                    </Box>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return (
+                              <div style={wrapperStyle}>
+                                <Avatar size="sm" sx={{ width: 40, height: 40 }}>{initials(westName)}</Avatar>
+                                {winnerSide === 'west' && (
+                                  <Box sx={{ position: 'absolute', top: -6, right: -6, background: 'gold', color: '#222', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
+                                    <span style={{ lineHeight: 1 }}>🏆</span>
+                                  </Box>
+                                )}
+                              </div>
+                            );
+                          })()
+                        }
+                      </Box>
 
                       <Box sx={{ textAlign: 'center', flex: 1 }}>
                         <Typography
@@ -379,39 +390,51 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                         </Box>
                       </Box>
 
-                      <Box sx={{ position: 'relative', width: 32, height: 32 }}>
-                        {avatarEast ? (
-                          <div style={{ width: 32, height: 32, position: 'relative', borderRadius: '50%', overflow: 'hidden' }}>
-                            <Image src={avatarEast} alt={eastName} fill style={{ objectFit: 'cover', borderRadius: '50%' }} />
-                          </div>
-                        ) : (
-                          <Avatar size="sm">{initials(eastName)}</Avatar>
-                        )}
-                        {winnerSide === 'east' && (
-                          <Box
-                            sx={{
-                              pointerEvents: 'none',
-                              position: 'absolute',
-                              top: -8,
-                              right: -8,
-                              background: '#22c55e',
-                              color: '#fff',
+                      {/* East avatar: apply winner/loser outlines similarly */}
+                      <Box sx={{ position: 'relative', width: 40, height: 40 }}>
+                        {
+                          (() => {
+                            const wrapperStyle: React.CSSProperties = {
+                              width: 40,
+                              height: 40,
+                              position: 'relative',
                               borderRadius: '50%',
-                              width: 17,
-                              height: 17,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: 9,
-                              fontWeight: 700,
-                              boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
-                            }}
-                          >
-                            W
-                          </Box>
-                        )}
+                              overflow: 'hidden',
+                              display: 'inline-block',
+                            };
+                            if (winnerSide === 'east') {
+                              (wrapperStyle as any).boxShadow = '0 0 0 3px rgba(255,215,0,0.95), 0 8px 24px rgba(255,215,0,0.18)';
+                              (wrapperStyle as any).border = '2px solid rgba(255,215,0,0.65)';
+                            } else if (winnerSide && winnerSide !== 'east') {
+                              (wrapperStyle as any).boxShadow = '0 0 0 3px rgba(0,0,0,0.6), 0 4px 10px rgba(0,0,0,0.35)';
+                              (wrapperStyle as any).border = '1px solid rgba(0,0,0,0.6)';
+                            }
+                            if (avatarEast) {
+                              return (
+                                <div style={wrapperStyle}>
+                                  <Image src={avatarEast} alt={eastName} fill style={{ objectFit: 'cover', objectPosition: 'top', borderRadius: '50%' }} />
+                                  {winnerSide === 'east' && (
+                                    <Box sx={{ position: 'absolute', top: -6, right: -6, background: 'gold', color: '#222', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
+                                      <span style={{ lineHeight: 1 }}>🏆</span>
+                                    </Box>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return (
+                              <div style={wrapperStyle}>
+                                <Avatar size="sm" sx={{ width: 40, height: 40 }}>{initials(eastName)}</Avatar>
+                                {winnerSide === 'east' && (
+                                  <Box sx={{ position: 'absolute', top: -6, right: -6, background: 'gold', color: '#222', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
+                                    <span style={{ lineHeight: 1 }}>🏆</span>
+                                  </Box>
+                                )}
+                              </div>
+                            );
+                          })()
+                        }
                       </Box>
-                      {kim && <div style={{ position: 'absolute', left: 8, bottom: 8, fontSize: 11, color: '#563861' }}>{kim}</div>}
+                      {/* kimarite removed per UX: no need to display method text */}
                     </ListItemButton>
                   </ListItem>
                 );

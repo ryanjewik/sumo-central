@@ -39,6 +39,87 @@ func (a *App) GetBasho(c *gin.Context) {
 		return
 	}
 
+	// Enrich upcoming_matches with rikishi summaries so frontend can render images and stats
+	func() {
+		defer func() { _ = recover() }()
+		// reuse logic similar to homepage enrichment
+		getNumericID := func(m bson.M, keys ...string) (int64, bool) {
+			for _, k := range keys {
+				if v, ok := m[k]; ok {
+					switch t := v.(type) {
+					case int32:
+						return int64(t), true
+					case int64:
+						return t, true
+					case float64:
+						return int64(t), true
+					case string:
+						if n, err := strconv.ParseInt(t, 10, 64); err == nil {
+							return n, true
+						}
+					}
+				}
+			}
+			return 0, false
+		}
+		enrichMatch := func(m bson.M) {
+			var westId, eastId int64
+			if id, ok := getNumericID(m, "west_rikishi_id", "west_id", "westId", "rikishi1_id"); ok {
+				westId = id
+			}
+			if id, ok := getNumericID(m, "east_rikishi_id", "east_id", "eastId", "rikishi2_id"); ok {
+				eastId = id
+			}
+			coll := a.Mongo.Collection("rikishi_pages")
+			if westId != 0 {
+				filter := bson.M{"$or": bson.A{bson.M{"id": westId}, bson.M{"id": int32(westId)}}}
+				var rdoc bson.M
+				if err := coll.FindOne(c.Request.Context(), filter).Decode(&rdoc); err == nil {
+					if rkMap, ok := rdoc["rikishi"].(bson.M); ok {
+						if s, ok := rkMap["s3_url"].(string); ok && s != "" {
+							m["west_image"] = s
+						}
+						if rv, ok := rkMap["current_rank"]; ok {
+							if rv == nil {
+								m["west_rank"] = "NA"
+							} else {
+								m["west_rank"] = rv
+							}
+						}
+					}
+				}
+			}
+			if eastId != 0 {
+				filter := bson.M{"$or": bson.A{bson.M{"id": eastId}, bson.M{"id": int32(eastId)}}}
+				var rdoc bson.M
+				if err := coll.FindOne(c.Request.Context(), filter).Decode(&rdoc); err == nil {
+					if rkMap, ok := rdoc["rikishi"].(bson.M); ok {
+						if s, ok := rkMap["s3_url"].(string); ok && s != "" {
+							m["east_image"] = s
+						}
+						if rv, ok := rkMap["current_rank"]; ok {
+							if rv == nil {
+								m["east_rank"] = "NA"
+							} else {
+								m["east_rank"] = rv
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if raw, ok := doc["upcoming_matches"].(bson.A); ok && len(raw) > 0 {
+			for i := range raw {
+				if m, ok := raw[i].(bson.M); ok {
+					enrichMatch(m)
+					raw[i] = m
+				}
+			}
+			doc["upcoming_matches"] = raw
+		}
+	}()
+
 	c.JSON(http.StatusOK, doc)
 }
 

@@ -354,14 +354,99 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
             kimarite_list = [m.get("kimarite") for m in winner_matches]
             kimarite_counts = dict(Counter(kimarite_list))
 
-        # getting the most recent day's matches in Makuuchi
-        max_basho_id = max([m.get("basho_id") for m in matches_rows if m.get("basho_id") is not None])
-        makuuchi_matches = [m for m in matches_rows if m.get("basho_id") == max_basho_id and m.get("division") == "Makuuchi"]
+        # getting the most recent completed day's matches in Makuuchi
+        # Prefer matches from the previous day (day - 1) if they exist and are completed (have a winner).
+        # Prefer a basho that actually has completed matches (winners recorded).
+        # Fall back to most_recent_basho if none found in matches_rows.
+        def _has_winner(m):
+            try:
+                if m.get('winner') not in (None, '', 0):
+                    return True
+            except Exception:
+                pass
+            try:
+                if m.get('winnerId') not in (None, '', 0):
+                    return True
+            except Exception:
+                pass
+            try:
+                if m.get('winner_id') not in (None, '', 0):
+                    return True
+            except Exception:
+                pass
+            try:
+                if m.get('westWin') == 1 or m.get('westWin') == 0:
+                    return True
+            except Exception:
+                pass
+            return False
+
+        try:
+            # If matches for the most_recent_basho are present in matches_rows, inspect whether
+            # that basho actually has completed matches (winners). If it does, prefer it.
+            # If it has matches but no completed days yet, fall back to the most recent basho
+            # that does have completed matches so `recent_matches` can show an actual completed day.
+            has_current_basho_matches = any(m.get('basho_id') == most_recent_basho for m in matches_rows)
+            if has_current_basho_matches:
+                # Check if current basho has at least one completed Makuuchi match
+                current_makuuchi = [m for m in matches_rows if m.get('basho_id') == most_recent_basho and m.get('division') == 'Makuuchi']
+                current_completed_days = sorted({m.get('day') for m in current_makuuchi if _has_winner(m) and m.get('day') is not None})
+                if current_completed_days:
+                    use_basho = most_recent_basho
+                else:
+                    # Find other basho ids that have winners and pick the most recent one
+                    basho_with_winners = [m.get('basho_id') for m in matches_rows if m.get('basho_id') is not None and _has_winner(m)]
+                    # Exclude current most_recent_basho since it has no completed days
+                    other_bashos = [b for b in set(basho_with_winners) if b != most_recent_basho]
+                    use_basho = max(other_bashos) if other_bashos else most_recent_basho
+            else:
+                # No matches for the most recent basho at all — pick the most recent basho with winners
+                basho_with_winners = [m.get('basho_id') for m in matches_rows if m.get('basho_id') is not None and _has_winner(m)]
+                use_basho = max(basho_with_winners) if basho_with_winners else most_recent_basho
+        except Exception:
+            use_basho = most_recent_basho
+
+        makuuchi_matches = [m for m in matches_rows if m.get("basho_id") == use_basho and m.get("division") == "Makuuchi"]
+        recent_rows = []
         if makuuchi_matches:
-            max_day = max([m.get("day") for m in makuuchi_matches if m.get("day") is not None])
-            recent_rows = [m for m in makuuchi_matches if m.get("day") == max_day]
-        else:
-            recent_rows = []
+            # Compute the current max day present in this basho's matches (this represents the current day index)
+            try:
+                current_day = max([m.get("day") for m in makuuchi_matches if m.get("day") is not None])
+            except Exception:
+                current_day = None
+
+            # Build set of completed days (days that have at least one match with a recorded winner)
+            try:
+                completed_days = sorted({m.get("day") for m in makuuchi_matches if _has_winner(m) and m.get("day") is not None})
+            except Exception:
+                completed_days = []
+
+            # Prefer the previous day (current_day - 1) when available and completed
+            target_day = None
+            if isinstance(current_day, int) and current_day > 1:
+                prev_day = current_day - 1
+                if prev_day in completed_days:
+                    target_day = prev_day
+
+            # If previous day isn't available/completed, choose the latest completed day less than current_day
+            if target_day is None and completed_days:
+                if current_day is not None:
+                    prior_completed = [d for d in completed_days if d < current_day]
+                    if prior_completed:
+                        target_day = max(prior_completed)
+                # If no completed day before current_day, pick the latest completed day available
+                if target_day is None:
+                    target_day = max(completed_days)
+
+            # If we found a target_day, include only completed matches from that day
+            if target_day is not None:
+                recent_rows = [m for m in makuuchi_matches if m.get("day") == target_day and _has_winner(m)]
+            else:
+                # No completed days found; as a last resort attempt to include completed matches on the current_day
+                if current_day is not None:
+                    recent_rows = [m for m in makuuchi_matches if m.get("day") == current_day and _has_winner(m)]
+                else:
+                    recent_rows = []
 
         recent_matches = {}
         highlighted_match = None
@@ -372,10 +457,38 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
             east_order = ordered_rank_mapping.get(match.get("east_rank"), {}).get("order", 0)
             west_order = ordered_rank_mapping.get(match.get("west_rank"), {}).get("order", 0)
             match["rank_avg"] = (east_order + west_order) / 2
+            # Attach rikishi documents (if present) for east and west using rikishi_by_id
+            try:
+                # Try several common id keys that may exist in the match row
+                rid_keys = [
+                    ('east_rikishi_id', 'east'),
+                    ('eastId', 'east'),
+                    ('east_id', 'east'),
+                    ('west_rikishi_id', 'west'),
+                    ('westId', 'west'),
+                    ('west_id', 'west'),
+                ]
+                for key, side in rid_keys:
+                    if key in row:
+                        try:
+                            rid = row.get(key)
+                            if rid is not None and rid != "":
+                                # lookup in rikishi_by_id (we stored both int and str keys)
+                                rikd = rikishi_by_id.get(rid) if rikishi_by_id.get(rid) is not None else rikishi_by_id.get(str(rid))
+                                if rikd:
+                                    match[f"{side}_rikishi"] = convert_dates(rikd.copy())
+                        except Exception:
+                            pass
+            except Exception:
+                # non-fatal; proceed without enrichment
+                pass
+
             recent_matches[match_title] = match
             if match["rank_avg"] < lowest_avg:
                 lowest_avg = match["rank_avg"]
                 highlighted_match = match
+
+            
 
         # Get counts and average rank order for heya and shusshin
         heya_counts = Counter()
@@ -445,9 +558,10 @@ def build_homepage_payload(pg_conn=None, postgres_conn_id=None):
         if rank_dates:
             most_recent_date = max(rank_dates)
             one_year_ago = most_recent_date - datetime.timedelta(days=365)
-            recent_rows = [row for row in rank_history if row.get("rank_date") and row.get("rank_date") >= one_year_ago]
+            # Use a distinct variable name to avoid clobbering the earlier 'recent_rows' used for matches
+            rank_recent_rows = [row for row in rank_history if row.get("rank_date") and row.get("rank_date") >= one_year_ago]
             rikishi_trends = defaultdict(list)
-            for row in recent_rows:
+            for row in rank_recent_rows:
                 rikishi_id = row.get("rikishi_id")
                 rank_name = row.get("rank_name")
                 rank_date = row.get("rank_date")

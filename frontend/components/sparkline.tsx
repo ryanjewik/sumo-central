@@ -72,67 +72,11 @@ export default function RikishiWinLossSparkline({ data, title, rikishiId }: Riki
 
   const [matchIndex, setMatchIndex] = React.useState<null | number>(null);
 
-  React.useEffect(() => {
-    let mounted = true;
-    if (rikishiId == null) return () => { mounted = false };
-
-    (async () => {
-      try {
-        const id = String(rikishiId);
-        const res = await fetch(`/api/rikishi/${encodeURIComponent(id)}`);
-        if (!mounted) return;
-        if (!res.ok) return;
-        const doc = await res.json();
-        if (!doc) return;
-
-        const matchesObj = doc.matches ?? {};
-        const entries = Object.entries(matchesObj as Record<string, unknown>);
-
-        const parsedAll = entries.map(([key, val]) => {
-          const dateStr = String(key).slice(0, 10);
-          const date = new Date(dateStr);
-          return { key, date: isNaN(date.getTime()) ? null : date, val } as { key: string; date: Date | null; val: unknown };
-        });
-        const parsed = parsedAll.filter(e => e.date != null) as { key: string; date: Date; val: unknown }[];
-
-        parsed.sort((a, b) => a.date.getTime() - b.date.getTime());
-
-        const winLossSeries: number[] = [];
-        const labels: string[] = [];
-
-        for (const p of parsed) {
-          const match = p.val as Record<string, unknown>;
-          let winner: unknown = (match && (match['winner'] ?? match['winner_id'] ?? match['winning_side'])) ?? null;
-          if (winner === 'east' || winner === 'west') {
-            const eastObj = match && match['east'] as Record<string, unknown> | undefined;
-            const westObj = match && match['west'] as Record<string, unknown> | undefined;
-            const eastId = (match && (match['east_rikishi_id'] ?? match['east_id'] ?? (eastObj && eastObj['id']))) ?? null;
-            const westId = (match && (match['west_rikishi_id'] ?? match['west_id'] ?? (westObj && westObj['id']))) ?? null;
-            winner = (winner === 'east') ? eastId : westId;
-          }
-
-          // If winner is an object with id/_id, resolve
-          if (winner && typeof winner === 'object') {
-            const w = winner as Record<string, unknown>;
-            winner = (w['id'] ?? w['_id']) ?? winner;
-          }
-
-          const won = (winner != null) && (String(winner) === String(rikishiId));
-          winLossSeries.push(won ? 1 : 0);
-          labels.push(p.date.toISOString().slice(0, 10));
-        }
-
-        if (mounted) {
-          if (winLossSeries.length > 0) setFetchedSeries(winLossSeries);
-          if (labels.length > 0) setFetchedLabels(labels);
-        }
-      } catch {
-        // ignore and keep fallback
-      }
-    })();
-
-    return () => { mounted = false };
-  }, [rikishiId]);
+  // No client-side fetches to /api/rikishi: the sparkline will only use `data` prop
+  // or deterministic defaults. If the server supplies a `data` array, it will be
+  // used; otherwise we fall back to the deterministic `defaultWinLossRaw` to
+  // avoid SSR/CSR hydration mismatches. Removed client fetch to improve initial
+  // page load performance.
 
   // After hydration (client-side) optionally populate a randomized sample series
   // only when no real rikishiId and no explicit `data` was provided. This runs

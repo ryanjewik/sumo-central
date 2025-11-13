@@ -25,12 +25,26 @@ except Exception:
 
 
 def insert_match(cursor, match_id, basho_id, division, day, match_number, east_id, east_shikona, east_rank, west_id, west_shikona, west_rank, winner_id, kimarite):
+    # Use an upsert so incoming matchResults update existing rows (e.g., add winner/kimarite)
+    # while still inserting when the match doesn't exist yet.
     cursor.execute(
         '''
         INSERT INTO matches (
             id, basho_id, division, day, match_number, east_rikishi_id, eastShikona, east_rank, west_rikishi_id, westShikona, west_rank, winner, kimarite
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (id) DO NOTHING;
+        ON CONFLICT (id) DO UPDATE SET
+            basho_id = COALESCE(EXCLUDED.basho_id, matches.basho_id),
+            division = COALESCE(EXCLUDED.division, matches.division),
+            day = COALESCE(EXCLUDED.day, matches.day),
+            match_number = COALESCE(EXCLUDED.match_number, matches.match_number),
+            east_rikishi_id = COALESCE(EXCLUDED.east_rikishi_id, matches.east_rikishi_id),
+            eastShikona = COALESCE(EXCLUDED.eastShikona, matches.eastShikona),
+            east_rank = COALESCE(EXCLUDED.east_rank, matches.east_rank),
+            west_rikishi_id = COALESCE(EXCLUDED.west_rikishi_id, matches.west_rikishi_id),
+            westShikona = COALESCE(EXCLUDED.westShikona, matches.westShikona),
+            west_rank = COALESCE(EXCLUDED.west_rank, matches.west_rank),
+            winner = COALESCE(EXCLUDED.winner, matches.winner),
+            kimarite = COALESCE(EXCLUDED.kimarite, matches.kimarite);
         ''',
         (match_id, basho_id, division, day, match_number, east_id, east_shikona, east_rank, west_id, west_shikona, west_rank, winner_id, kimarite)
     )
@@ -42,11 +56,47 @@ def process_match_results(webhook: dict):
 
     rikishi_list = []
 
+    conn = None
+    cur = None
     try:
         pg_conn_id = os.getenv("POSTGRES_CONN_ID", "postgres_default")
+        # Prefer Airflow PostgresHook when available
         if PostgresHook:
-            pg = PostgresHook(postgres_conn_id=pg_conn_id)
-            conn = pg.get_conn()
+            try:
+                pg = PostgresHook(postgres_conn_id=pg_conn_id)
+                conn = pg.get_conn()
+            except Exception as e:
+                print(f"PostgresHook connection failed: {e}; will try psycopg2 fallback")
+
+        # Fallback to psycopg2 if PostgresHook not available or failed
+        if conn is None:
+            try:
+                # Try DATABASE_URL / POSTGRES_URL first
+                pg_urls = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL')
+                if pg_urls:
+                    conn = psycopg2.connect(pg_urls)
+                else:
+                    pg_host = os.getenv('POSTGRES_HOST')
+                    pg_port = os.getenv('POSTGRES_PORT')
+                    pg_db = os.getenv('POSTGRES_DB') or os.getenv('POSTGRES_DATABASE')
+                    pg_user = os.getenv('POSTGRES_USER')
+                    pg_pass = os.getenv('POSTGRES_PASSWORD')
+                    conn_args = {}
+                    if pg_host:
+                        conn_args['host'] = pg_host
+                    if pg_port:
+                        conn_args['port'] = pg_port
+                    if pg_db:
+                        conn_args['dbname'] = pg_db
+                    if pg_user:
+                        conn_args['user'] = pg_user
+                    if pg_pass:
+                        conn_args['password'] = pg_pass
+                    conn = psycopg2.connect(**conn_args)
+            except Exception as e:
+                print(f"Failed to establish Postgres connection: {e}")
+                raise
+
         cur = conn.cursor()
 
         for match in webhook.get('payload_decoded', []):
@@ -122,9 +172,6 @@ def process_match_results(webhook: dict):
                 )
 
         conn.commit()
-        cur.close()
-        conn.close()
-
         # initialize S3 hook and fetch per-rikishi matches and save to S3
         s3_conn_id = os.getenv("S3_CONN_ID", "aws_default")
         try:
@@ -152,7 +199,32 @@ def process_match_results(webhook: dict):
             try:
                 if s3_hook and S3_BUCKET:
                     s3_key = f"{S3_PREFIX}rikishi_matches/rikishi_{rikishi}.json"
-                    s3_hook.load_string(json.dumps(matches), key=s3_key, bucket_name=S3_BUCKET, replace=True)
+                    try:
+                        s3_hook.load_string(json.dumps(matches), key=s3_key, bucket_name=S3_BUCKET, replace=True)
+                    except Exception as exc:
+                        errstr = str(exc)
+                        print(f"S3Hook.load_string failed for rikishi {rikishi}: {errstr}")
+                        # Signature mismatch is commonly caused by incorrect credentials, region
+                        # or connection config in the Airflow connection. Provide a helpful
+                        # diagnostic and attempt a boto3 fallback using configured env vars.
+                        if 'SignatureDoesNotMatch' in errstr or 'Signature' in errstr:
+                            print("S3 signature error detected. Check AWS credentials and region on the Airflow connection (aws_default or S3_CONN_ID). Trying boto3 fallback...")
+                        try:
+                            import boto3
+                            from botocore.client import Config
+                            aws_region = S3_REGION or os.getenv('AWS_REGION') or os.getenv('AWS_DEFAULT_REGION')
+                            cfg = Config(signature_version='s3v4', region_name=aws_region) if aws_region else Config(signature_version='s3v4')
+                            boto_s3 = boto3.client('s3', config=cfg)
+                            boto_s3.put_object(Bucket=S3_BUCKET, Key=s3_key, Body=json.dumps(matches).encode('utf-8'))
+                            print(f"Successfully saved rikishi {rikishi} matches via boto3 fallback to {S3_BUCKET}/{s3_key}")
+                        except Exception as bexc:
+                            print(f"boto3 fallback failed for rikishi {rikishi}: {bexc}")
+                            # fallback to local helper if present
+                            try:
+                                from utils.save_to_s3 import _save_to_s3
+                                _save_to_s3(matches, S3_PREFIX + "rikishi_matches", f"rikishi_{rikishi}")
+                            except Exception:
+                                print(f"No S3 hook or local saver available for rikishi {rikishi}")
                 else:
                     # fallback to local helper if present
                     try:

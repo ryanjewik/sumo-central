@@ -17,6 +17,10 @@ func Register(r *gin.Engine, app *handlers.App) {
 	r.GET("/", app.Home)
 	// also expose under /homepage for explicit API consumer
 	r.GET("/homepage", app.Home)
+	// expose a dedicated upcoming document (written by background jobs)
+	// Accept both /upcoming and /api/upcoming so frontend rewrites work
+	r.GET("/upcoming", app.Upcoming)
+	r.GET("/api/upcoming", app.Upcoming)
 	r.GET("/leaderboard", app.Leaderboard)
 
 	// Rikishi and Basho listing endpoints (Postgres)

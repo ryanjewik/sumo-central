@@ -153,13 +153,29 @@ def process_end_basho(webhook_payload):
                 except Exception as e:
                     print(f"Failed to update rikishi {rikishi_id}: {e}")
         print("Successfully updated basho_pages and rikishi_pages in MongoDB")
-        # Remove the homepage upcoming_matches key since this basho has ended.
+        # Remove the homepage upcoming_matches and any server-derived highlighted
+        # match when this basho has ended so consumers don't show stale upcoming UI.
         try:
             hp_coll = db_obj.get_collection("homepage")
-            unset_res = hp_coll.find_one_and_update({"_homepage_doc": True}, {"$unset": {"upcoming_matches": ""}}, upsert=False)
-            print("Unset homepage.upcoming_matches; find_one_and_update returned:", unset_res)
+            unset_payload = {"$unset": {"upcoming_matches": "", "upcoming_highlighted_match": ""}}
+            unset_res = hp_coll.find_one_and_update({"_homepage_doc": True}, unset_payload, upsert=False)
+            print("Unset homepage.upcoming_matches and upcoming_highlighted_match; find_one_and_update returned:", unset_res)
         except Exception as e:
-            print(f"Failed to unset homepage.upcoming_matches: {e}")
+            print(f"Failed to unset homepage upcoming keys: {e}")
+
+        # Also remove the dedicated upcoming document (if present) so consumers
+        # that rely on the `upcoming: True` doc won't display stale upcoming data
+        # after this basho ends.
+        try:
+            try:
+                del_res = db_obj.get_collection("homepage").delete_one({"upcoming": True})
+                print("Deleted dedicated upcoming document (upcoming=True); deleted_count=", getattr(del_res, 'deleted_count', None))
+            except Exception:
+                # if deletion on same collection fails, try an explicit get_collection call
+                del_res = db_obj.get_collection("upcoming").delete_one({"upcoming": True})
+                print("Deleted dedicated upcoming document from 'upcoming' collection; deleted_count=", getattr(del_res, 'deleted_count', None))
+        except Exception as e:
+            print(f"Failed to delete dedicated upcoming document: {e}")
     except Exception as e:
         print("Failed to update rikishi and basho_pages in MongoDB:", e)
         raise

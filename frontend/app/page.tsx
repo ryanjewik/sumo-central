@@ -151,6 +151,9 @@ function InnerApp() {
   }
 
   const [homepage, setHomepage] = useState<Homepage | null>(null);
+  const [upcomingDoc, setUpcomingDoc] = useState<Record<string, unknown> | null>(null);
+  const [upcomingDocError, setUpcomingDocError] = useState<string | null>(null);
+  const [upcomingDocLoading, setUpcomingDocLoading] = useState(false);
   const [homepageError, setHomepageError] = useState<string | null>(null);
   const [homepageLoading, setHomepageLoading] = useState(false);
   const [bashoUpcomingMatches, setBashoUpcomingMatches] = useState<Record<string, unknown>[] | null>(null);
@@ -190,23 +193,98 @@ function InnerApp() {
     };
   }, []);
 
+  // Try to fetch the dedicated upcoming document. If present, frontend will
+  // prefer its `upcoming_matches` / `upcoming_highlighted_match`. If not
+  // present, frontend falls back to `homepage.upcoming_matches` / homepage
+  // highlighted match and will hide voting UI for that fallback.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setUpcomingDocLoading(true);
+      setUpcomingDocError(null);
+      try {
+        const res = await fetch('/api/upcoming', { credentials: 'include' });
+        if (!mounted) return;
+        if (!res.ok) {
+          // Not found is expected until server writes the doc; treat as fallback
+          setUpcomingDoc(null);
+          setUpcomingDocLoading(false);
+          return;
+        }
+        const doc = await res.json();
+        if (mounted) setUpcomingDoc(doc as Record<string, unknown>);
+      } catch (err: unknown) {
+        if (mounted) setUpcomingDoc(null);
+        if (mounted) setUpcomingDocError(err && typeof err === 'object' && 'message' in err ? String((err as { message?: unknown }).message) : 'network error');
+      } finally {
+        if (mounted) setUpcomingDocLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   // When homepage loads, fetch the most recent basho document (if present)
   useEffect(() => {
     let mounted = true;
-    const bashoId = homepage?.most_recent_basho;
+
+  // Prefer the dedicated upcoming document if it exists
+  const rawFromUpcoming = (upcomingDoc as any)?.upcoming_matches;
+  const rawFromHomepage = rawFromUpcoming ?? (homepage as any)?.upcoming_matches;
+    const getString = (o: Record<string, unknown> | undefined, ...keys: string[]) => {
+      if (!o) return undefined;
+      for (const k of keys) {
+        const v = o[k];
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number') return String(v);
+      }
+      return undefined;
+    };
+
+    if (Array.isArray(rawFromHomepage) && rawFromHomepage.length > 0) {
+      const rawMatches: Record<string, unknown>[] = rawFromHomepage;
+      const normalized = rawMatches.map((m: Record<string, unknown>, idx: number) => {
+        const id = getString(m, 'match_number') ?? getString(m, 'id') ?? String(idx + 1);
+        const rikishiWest = getString(m, 'westshikona', 'west_shikona', 'west_name', 'west', 'west_name_local');
+        const rikishiEast = getString(m, 'eastshikona', 'east_shikona', 'east_name', 'east', 'east_name_local');
+        return {
+          id: Number(id),
+          rikishi1: rikishiWest || rikishiEast || 'TBD',
+          rikishi2: rikishiEast || rikishiWest || 'TBD',
+          rikishi1Rank: getString(m, 'west_rank') ?? getString(m, 'west_rank_label'),
+          rikishi2Rank: getString(m, 'east_rank') ?? getString(m, 'east_rank_label'),
+          date: getString(m, 'match_date') ?? getString(homepage as Record<string, unknown>, 'start_date') ?? undefined,
+          venue: getString(m, 'venue') ?? getString(homepage as Record<string, unknown>, 'venue'),
+          ai_prediction: getString(m, 'AI_prediction') ?? getString(m, 'ai_prediction') ?? getString(m, 'aiPrediction'),
+            // id fields so UpcomingMatchesList can fetch images by rikishi id
+            rikishi1_id: getString(m, 'west_rikishi_id', 'west_id', 'westId', 'rikishi1_id') ?? undefined,
+            rikishi2_id: getString(m, 'east_rikishi_id', 'east_id', 'eastId', 'rikishi2_id') ?? undefined,
+            west_rikishi_id: getString(m, 'west_rikishi_id', 'west_id', 'westId') ?? undefined,
+            east_rikishi_id: getString(m, 'east_rikishi_id', 'east_id', 'eastId') ?? undefined,
+            // preserve nested rikishi objects (if enrichment has already run server-side)
+            west_rikishi: (m as any)['west_rikishi'] ?? (m as any)['westRikishi'] ?? undefined,
+            east_rikishi: (m as any)['east_rikishi'] ?? (m as any)['eastRikishi'] ?? undefined,
+        };
+      });
+
+      if (mounted) setBashoUpcomingMatches(normalized);
+      return () => { mounted = false; };
+    }
+
+  // Fallback: fetch the basho document via API when neither the dedicated
+  // upcoming doc nor homepage include upcoming_matches
+  const bashoId = homepage?.most_recent_basho;
     if (!bashoId) {
       // clear any previous
       setBashoUpcomingMatches(null);
       setBashoError(null);
       setBashoLoading(false);
-      return;
+      return () => { mounted = false; };
     }
 
     (async () => {
       setBashoLoading(true);
       setBashoError(null);
       try {
-        // The backend exposes /basho/:id; frontend routes API calls under /api/*
         const res = await fetch(`/api/basho/${encodeURIComponent(String(bashoId))}`, { credentials: 'include' });
         if (!mounted) return;
         if (!res.ok) {
@@ -215,23 +293,10 @@ function InnerApp() {
           setBashoLoading(false);
           return;
         }
-        const doc = await res.json();
-        // Normalize upcoming_matches into the shape UpcomingMatchesList expects
-        const rawMatches: Record<string, unknown>[] = Array.isArray(doc?.upcoming_matches) ? doc.upcoming_matches : [];
-        const getString = (o: Record<string, unknown> | undefined, ...keys: string[]) => {
-          if (!o) return undefined;
-          for (const k of keys) {
-            const v = o[k];
-            if (typeof v === 'string') return v;
-            if (typeof v === 'number') return String(v);
-          }
-          return undefined;
-        };
-
+      const doc = await res.json();
+    const rawMatches: Record<string, unknown>[] = Array.isArray(doc?.upcoming_matches) ? doc.upcoming_matches : [];
         const normalized = rawMatches.map((m: Record<string, unknown>, idx: number) => {
-          // match id fallback
           const id = getString(m, 'match_number') ?? getString(m, 'id') ?? String(idx + 1);
-          // left side in the UI is treated as WEST (rikishi1)
           const rikishiWest = getString(m, 'westshikona', 'west_shikona', 'west_name', 'west', 'west_name_local');
           const rikishiEast = getString(m, 'eastshikona', 'east_shikona', 'east_name', 'east', 'east_name_local');
           return {
@@ -242,8 +307,15 @@ function InnerApp() {
             rikishi2Rank: getString(m, 'east_rank') ?? getString(m, 'east_rank_label'),
             date: getString(m, 'match_date') ?? getString(doc as Record<string, unknown>, 'start_date') ?? undefined,
             venue: getString(m, 'venue') ?? getString(doc as Record<string, unknown>, 'venue'),
-            // keep original AI prediction field available for UI indicator
             ai_prediction: getString(m, 'AI_prediction') ?? getString(m, 'ai_prediction') ?? getString(m, 'aiPrediction'),
+            // id fields so UpcomingMatchesList can fetch images by rikishi id
+            rikishi1_id: getString(m, 'west_rikishi_id', 'west_id', 'westId', 'rikishi1_id') ?? undefined,
+            rikishi2_id: getString(m, 'east_rikishi_id', 'east_id', 'eastId', 'rikishi2_id') ?? undefined,
+            west_rikishi_id: getString(m, 'west_rikishi_id', 'west_id', 'westId') ?? undefined,
+            east_rikishi_id: getString(m, 'east_rikishi_id', 'east_id', 'eastId') ?? undefined,
+            // preserve nested rikishi objects if provided by the basho document
+            west_rikishi: (m as any)['west_rikishi'] ?? (m as any)['westRikishi'] ?? undefined,
+            east_rikishi: (m as any)['east_rikishi'] ?? (m as any)['eastRikishi'] ?? undefined,
           };
         });
 
@@ -257,10 +329,8 @@ function InnerApp() {
       }
     })();
 
-    return () => {
-      mounted = false;
-    };
-  }, [homepage]);
+    return () => { mounted = false; };
+  }, [homepage, upcomingDoc]);
   // Sample forum post data
   const sampleForumPosts = [
     {
@@ -427,6 +497,12 @@ function InnerApp() {
           {homepageLoading && <div style={{ color: '#563861' }}>Loading homepage...</div>}
           {homepageError && <div style={{ color: 'red' }}>{homepageError}</div>}
           {/* homepage document is loaded into components below — avoid printing raw JSON in production */}
+          {/* DEV: quick debug showing whether homepage.upcoming_matches is present */}
+          {homepage && (
+            <div style={{ marginTop: 8, fontSize: '0.9rem', color: '#444' }}>
+              <strong>DEV:</strong> upcoming doc: {upcomingDoc ? (Array.isArray((upcomingDoc as any).upcoming_matches) ? (upcomingDoc as any).upcoming_matches.length + ' items' : 'present') : (Array.isArray((homepage as any).upcoming_matches) ? (homepage as any).upcoming_matches.length + ' items (homepage)' : 'none')}
+            </div>
+          )}
         </div>
         <div className="content-box" style={{ marginTop: '13rem' }}>
           <div
@@ -459,7 +535,16 @@ function InnerApp() {
               transition: 'opacity 1.1s cubic-bezier(0.77,0,0.175,1)',
             }}
           >
-            <HighlightedMatchCard match={homepage?.highlighted_match} />
+            {/* Prefer highlighted from dedicated upcoming doc, fall back to homepage.highlighted_match.
+                When falling back (no upcoming doc present) voting should be disabled. */}
+            {
+              (() => {
+                const highlightedFromUpcoming = (upcomingDoc as any)?.upcoming_highlighted_match;
+                const highlighted = highlightedFromUpcoming ?? (homepage as any)?.highlighted_match;
+                const allowVoting = Boolean(highlightedFromUpcoming);
+                return <HighlightedMatchCard match={highlighted} onOpenLogin={() => setLoginOpen(true)} allowVoting={allowVoting} />
+              })()
+            }
 
             {/* Dashboard Section: Climbing Rikishi */}
 
@@ -702,6 +787,7 @@ function InnerApp() {
                     ? (bashoUpcomingMatches[0].date as string)
                     : upcomingDate
                 }
+                onOpenLogin={() => setLoginOpen(true)}
               />
             </div>
             <RecentMatchesList date={recentMatchesDate} matches={homepage?.recent_matches ? Object.values(homepage.recent_matches) : undefined} />

@@ -211,22 +211,78 @@ kimarite_counts = dict(Counter(kimarite_counts))
 #collection.insert_one({"highlight_rikishi": top_rikishi, "kimarite_counts": kimarite_counts})
 
 
-#getting the most recent day's matches in Makuuchi
-cursor.execute("""
-               SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division 
-                FROM matches
-                WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
-                AND division = 'Makuuchi'
-                AND day = (
-                    SELECT MAX(day)
-                    FROM matches
-                    WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
-                        AND division = 'Makuuchi'
-                );
-                """
-                )
-rows = cursor.fetchall()
-colnames = [desc[0] for desc in cursor.description]
+# getting the most recent completed day's matches in Makuuchi
+# Prefer matches from the previous day (day - 1) if they exist and are completed (have a winner).
+cursor.execute(
+    "SELECT MAX(day) FROM matches WHERE basho_id = (SELECT MAX(basho_id) FROM matches) AND division = 'Makuuchi';"
+)
+max_day_row = cursor.fetchone()[0]
+rows = []
+colnames = []
+if max_day_row is not None:
+    target_day = max_day_row - 1 if isinstance(max_day_row, int) else None
+    # try previous day with completed matches first
+    if target_day is not None and target_day >= 1:
+        cursor.execute(
+            """
+            SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division
+            FROM matches
+            WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
+            AND division = 'Makuuchi'
+            AND day = %s
+            AND winner IS NOT NULL
+            ;
+            """,
+            (target_day,),
+        )
+        rows = cursor.fetchall()
+        colnames = [desc[0] for desc in cursor.description] if cursor.description else []
+    # fallback: previous day regardless of winner
+    if not rows and target_day is not None and target_day >= 1:
+        cursor.execute(
+            """
+            SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division
+            FROM matches
+            WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
+            AND division = 'Makuuchi'
+            AND day = %s
+            ;
+            """,
+            (target_day,),
+        )
+        rows = cursor.fetchall()
+        colnames = [desc[0] for desc in cursor.description] if cursor.description else []
+    # next fallback: current max_day but prefer completed matches
+    if not rows:
+        cursor.execute(
+            """
+            SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division
+            FROM matches
+            WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
+            AND division = 'Makuuchi'
+            AND day = %s
+            AND winner IS NOT NULL
+            ;
+            """,
+            (max_day_row,),
+        )
+        rows = cursor.fetchall()
+        colnames = [desc[0] for desc in cursor.description] if cursor.description else []
+    # last-resort: current max_day regardless of winner
+    if not rows:
+        cursor.execute(
+            """
+            SELECT DISTINCT basho_id, east_rikishi_id, west_rikishi_id, east_rank, west_rank, eastshikona, westshikona, winner, kimarite, day, match_number, division
+            FROM matches
+            WHERE basho_id = (SELECT MAX(basho_id) FROM matches)
+            AND division = 'Makuuchi'
+            AND day = %s
+            ;
+            """,
+            (max_day_row,),
+        )
+        rows = cursor.fetchall()
+        colnames = [desc[0] for desc in cursor.description] if cursor.description else []
 conn.commit()
 recent_matches = {}
 highlighted_match = None
@@ -242,6 +298,8 @@ for row in rows:
     if match['rank_avg'] < lowest_avg:
         lowest_avg = match['rank_avg']
         highlighted_match = match
+
+ 
 
 #collection.insert_one({"recent_makuuchi_matches": recent_matches, "highlighted_match": highlighted_match})
 
