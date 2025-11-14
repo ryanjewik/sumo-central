@@ -21,10 +21,6 @@ import SumoTicketsCard from '../components/SumoTicketsCard';
 import UpcomingMatchesList from '../components/upcoming_matches_list';
 // Image intentionally not used in this file directly
 
-
-
-
-
 function InnerApp() {
   // Login dialog state
   const [loginOpen, setLoginOpen] = useState(false);
@@ -55,21 +51,20 @@ function InnerApp() {
   // No sample upcoming matches; upcoming matches will be derived from backend documents.
   // recent matches date should be resolved by the RecentMatchesList component
   // via the basho lookup; avoid hardcoded dates here.
-  // Animation state for navbar
-  const [navbarVisible, setNavbarVisible] = useState(false);
+  // Animation state for header + page content
+  // Header component renders the navbar; keep delayed reveals for other page parts
   const [searchBarVisible, setSearchBarVisible] = useState(false);
   const [sideBarsVisible, setSideBarsVisible] = useState(false);
   const [mainContentVisible, setMainContentVisible] = useState(false);
 
   useEffect(() => {
-    // Trigger navbar animation after mount
-    setTimeout(() => setNavbarVisible(true), 100);
-    // Reveal search bar, side bars, and main content after navbar animation completes
-    setTimeout(() => {
+    // Reveal search bar, side bars, and main content after header animation completes
+    const t = setTimeout(() => {
       setSearchBarVisible(true);
       setSideBarsVisible(true);
       setMainContentVisible(true);
     }, 1400);
+    return () => clearTimeout(t);
   }, []);
 
   // Shared auth button/pill style for profile and logout buttons
@@ -337,115 +332,6 @@ function InnerApp() {
 
   return (
     <>
-      <nav
-        className="navbar"
-        style={{
-          transform: navbarVisible ? 'translateY(0)' : 'translateY(-80px)',
-          opacity: navbarVisible ? 1 : 0,
-          transition: 'transform 1.3s cubic-bezier(0.77,0,0.175,1), opacity 1.3s cubic-bezier(0.77,0,0.175,1)',
-          zIndex: 10,
-        }}
-      >
-        <div className="navbar-row navbar-row-top">
-            <div className="navbar-left">
-            <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-              <Image src="/sumo_logo.png" alt="Sumopedia Logo" width={40} height={40} className="navbar-logo" />
-              <span className="navbar-title">Sumopedia</span>
-            </a>
-          </div>
-          <div
-            style={{
-              overflow: 'hidden',
-              width: '35vw',
-              minHeight: 40,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <div
-              style={{
-                width: searchBarVisible ? '100%' : '0%',
-                transition: 'width 0.7s cubic-bezier(0.77,0,0.175,1)',
-                overflow: 'hidden',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <SearchBar />
-            </div>
-          </div>
-          <div className="navbar-right">
-            <button className="navbar-btn" style={authPillStyle}>L</button>
-
-            {/* If logged in, show username and logout; otherwise show Sign In */}
-            {user ? (
-              <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
-                <span style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                  <span style={authPillStyle}>{user.username}</span>
-                </span>
-
-                <button
-                  className="navbar-btn"
-                  onClick={async () => {
-                    try {
-                      await logout();
-                    } catch {
-                      // ignore
-                    }
-                    // logout() will setUser(null)
-                  }}
-                  style={authPillStyle}
-                >
-                  Logout
-                </button>
-              </div>
-            ) : (
-              <>
-                {/* Login/User button with fixed width */}
-                <button
-                  className="navbar-btn"
-                  style={{
-                    minWidth: 100,
-                    maxWidth: 120,
-                    width: 110,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    display: 'inline-block',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    borderRadius: '999px', // pill/rounded rectangle
-                    border: '2px solid #563861',
-                    background: '#563861',
-                    color: '#fff',
-                    fontWeight: 600,
-                    fontSize: '1rem',
-                    fontFamily: 'inherit',
-                    transition: 'background 0.18s, color 0.18s',
-                  }}
-                  onClick={() => {
-                    if (!user) setLoginOpen(true);
-                  }}
-                >
-                  Sign In
-                </button>
-
-                <LoginDialog
-                  open={loginOpen}
-                  onClose={() => setLoginOpen(false)}
-                />
-              </>
-            )}
-          </div>
-        </div>
-        <div className="navbar-row navbar-row-bottom app-text">
-          <NavbarSelection />
-        </div>
-      </nav>
       <div id="background">
         {/* simple dev view: show homepage document returned from Mongo */}
         <div style={{ maxWidth: 1100, margin: '1rem auto', padding: '0 1rem' }}>
