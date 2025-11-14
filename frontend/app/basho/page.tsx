@@ -136,8 +136,10 @@ export default function BashoIndexPage() {
   }, [loading, hasMore]);
 
   return (
-    <div style={{ marginTop: '13rem', padding: '1rem' }} className="content-box">
-      <div style={{ width: '100%' }}>
+    <>
+      <div id="background"></div>
+      <div style={{ marginTop: '15rem', padding: '1rem', position: 'relative', zIndex: 1 }} className="content-box">
+        <div style={{ width: '100%' }}>
         <h1 className="app-text" style={{ marginBottom: '1rem' }}>Basho — Index</h1>
 
         {loading && items.length === 0 && <div className="app-text">Loading...</div>}
@@ -163,5 +165,6 @@ export default function BashoIndexPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

@@ -37,7 +37,9 @@ export default function BashoDetailPage() {
   }, [id]);
 
   return (
-    <div style={{ marginTop: '13rem', padding: '1rem' }} className="content-box">
+    <>
+      <div id="background"></div>
+      <div style={{ marginTop: '15rem', padding: '1rem', position: 'relative', zIndex: 1 }} className="content-box">
       <h1 className="app-text">Basho — {id}</h1>
 
       {loading && <div className="app-text">Loading...</div>}
@@ -57,6 +59,7 @@ export default function BashoDetailPage() {
       )}
 
       {!loading && !error && !doc && <div className="app-text">No basho page found.</div>}
-    </div>
+      </div>
+    </>
   );
 }

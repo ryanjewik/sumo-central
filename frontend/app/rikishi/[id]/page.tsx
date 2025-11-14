@@ -38,7 +38,9 @@ export default function RikishiDetailPage() {
   }, [id]);
 
   return (
-    <div style={{ marginTop: '13rem', padding: '1rem' }} className="content-box">
+    <>
+      <div id="background"></div>
+      <div style={{ marginTop: '15rem', padding: '1rem', position: 'relative', zIndex: 1 }} className="content-box">
       <h1 className="app-text">Rikishi — {id}</h1>
 
       {loading && <div className="app-text">Loading...</div>}
@@ -60,6 +62,7 @@ export default function RikishiDetailPage() {
       )}
 
       {!loading && !error && !doc && <div className="app-text">No rikishi page found.</div>}
-    </div>
+      </div>
+    </>
   );
 }
