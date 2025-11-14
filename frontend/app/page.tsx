@@ -355,6 +355,10 @@ function InnerApp() {
               transform: sideBarsVisible ? 'translateX(0)' : 'translateX(-80px)',
               opacity: sideBarsVisible ? 1 : 0,
               transition: 'transform 1.1s cubic-bezier(0.77,0,0.175,1), opacity 1.1s cubic-bezier(0.77,0,0.175,1)',
+              // ensure this column can receive pointer events and sits above decorative overlays
+              pointerEvents: sideBarsVisible ? 'auto' : 'none',
+              zIndex: 20001,
+              position: 'relative',
             }}
           >
             {/* Highlighted Rikishi Card */}
@@ -374,6 +378,10 @@ function InnerApp() {
             style={{
               opacity: mainContentVisible ? 1 : 0,
               transition: 'opacity 1.1s cubic-bezier(0.77,0,0.175,1)',
+              // keep main content interactive and above decorative background
+              pointerEvents: mainContentVisible ? 'auto' : 'none',
+              zIndex: 20001,
+              position: 'relative',
             }}
           >
             {/* Prefer highlighted from dedicated upcoming doc, fall back to homepage.highlighted_match.
@@ -617,6 +625,10 @@ function InnerApp() {
               transform: sideBarsVisible ? 'translateX(0)' : 'translateX(80px)',
               opacity: sideBarsVisible ? 1 : 0,
               transition: 'transform 1.1s cubic-bezier(0.77,0,0.175,1), opacity 1.1s cubic-bezier(0.77,0,0.175,1)',
+              // ensure right column also sits above background decorations
+              pointerEvents: sideBarsVisible ? 'auto' : 'none',
+              zIndex: 20001,
+              position: 'relative',
             }}
           >
             <div style={{ marginBottom: '1.5rem' }}>

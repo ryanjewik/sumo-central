@@ -306,7 +306,7 @@ export default function RikishiWinLossSparkline({ data, title, rikishiId }: Riki
       aria-label="Showing win/loss by match"
       tabIndex={0}
     >
-  <Stack direction="column" width={220} sx={{ paddingTop: 2, paddingBottom: 1 }}>
+  <Stack direction="column" width="100%" sx={{ paddingTop: 2, paddingBottom: 1 }}>
         <Typography
           sx={{
             color: 'rgb(117, 117, 117)',
@@ -320,7 +320,8 @@ export default function RikishiWinLossSparkline({ data, title, rikishiId }: Riki
         <Stack
           direction="column"
           alignItems="center"
-          sx={{ borderBottom: 'solid 2px rgba(137, 86, 255, 0.2)', minHeight: 60, width: '100%' }}
+          // reduce height by ~30% so sparkline sits visually below adjacent card (was 60)
+          sx={{ borderBottom: 'solid 2px rgba(137, 86, 255, 0.2)', minHeight: 42, width: '100%' }}
         >
           <Typography
             sx={{
@@ -343,13 +344,13 @@ export default function RikishiWinLossSparkline({ data, title, rikishiId }: Riki
             })()}
           </Typography>
           {isLoading ? (
-            <Stack direction="row" alignItems="center" justifyContent="center" sx={{ height: 60 }}>
-              <CircularProgress size={20} thickness={5} />
+            <Stack direction="row" alignItems="center" justifyContent="center" sx={{ height: 42 }}>
+              <CircularProgress size={18} thickness={5} />
             </Stack>
           ) : (
             <SparkLineChart
-              height={60}
-              width={140}
+              // reduced height ~30%
+              height={70}
               area
               showHighlight
               color="rgb(137, 86, 255)"

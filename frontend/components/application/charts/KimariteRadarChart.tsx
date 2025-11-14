@@ -109,9 +109,11 @@ const radarDataDefault: RadarDatum[] = [
 
 interface KimariteRadarChartProps {
     kimariteCounts?: Record<string, number>;
+    // optional visual height in pixels
+    height?: number;
 }
 
-const KimariteRadarChart: React.FC<KimariteRadarChartProps> = ({ kimariteCounts }) => {
+const KimariteRadarChart: React.FC<KimariteRadarChartProps> = ({ kimariteCounts, height }) => {
     // if backend provides `kimarite_usage_most_recent_basho` as an object { technique: count }
     // take the top 6 techniques by count and convert to radar data with a single series named 'Usage'
     let radarData = radarDataDefault;
@@ -135,12 +137,15 @@ const KimariteRadarChart: React.FC<KimariteRadarChartProps> = ({ kimariteCounts 
     const mainTextColor = '#563861';
     const axisTextColor = '#563861';
 
+    const heightFinal = typeof height === 'number' ? height : 500;
+    const responsiveInnerHeight = Math.max(200, heightFinal - 80);
+
     return (
         <div
             className="rounded-xl shadow-lg p-4 flex flex-col items-center justify-center app-text"
             style={{
                 width: '100%',
-                height: 500,
+                height: heightFinal,
                 border: '4px solid #563861',
                 background: gradientBg,
                 color: mainTextColor,
@@ -156,9 +161,9 @@ const KimariteRadarChart: React.FC<KimariteRadarChartProps> = ({ kimariteCounts 
                             textAlign: 'center',
                         }}
                     >
-                        Top Kimarite Usage (most recent basho)
+                        Top Kimarite Usage
                     </div>
-            <ResponsiveContainer width="100%" height={420}>
+            <ResponsiveContainer width="100%" height={responsiveInnerHeight}>
                 <RechartsRadarChart
                     cx="50%"
                     cy="50%"

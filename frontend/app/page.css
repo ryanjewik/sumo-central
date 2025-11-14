@@ -5,7 +5,8 @@
   top: 0; left: 0; right: 0;
   min-height: 100vh;
   width: 100%;
-  z-index: auto;
+  z-index: 0; /* keep behind page content which uses z-index:1 */
+  pointer-events: none; /* allow clicks through the background */
   background: #E4E0BE;
 }
 
@@ -44,6 +45,29 @@
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   font-family: 'Courier New', Courier, monospace;
   padding: 2rem 0 0 0;
+}
+
+/*
+  The navbar is fixed and visually tall; when it overlaps page content
+  it can unintentionally intercept pointer events over the left/middle
+  columns. Make non-interactive areas of the navbar pass pointer events
+  through, while preserving interactivity for the navbar controls.
+*/
+.navbar {
+  pointer-events: none; /* allow clicks to pass through decorative area */
+}
+.navbar a,
+.navbar button,
+.navbar input,
+.navbar .MuiListItemButton-root,
+.navbar .MuiInputBase-root,
+.navbar .navbar-left,
+.navbar .navbar-right {
+  /* Keep navbar controls interactive and visually above page content
+     even when primary content is raised (content z-index: 20001). */
+  pointer-events: auto; /* re-enable for interactive controls */
+  position: relative;
+  z-index: 30002;
 }
 
 /* Use symmetric, shrinking gutters via padding instead of margins */
@@ -308,4 +332,51 @@
     width: 100%;
     max-width: 300px;
   }
+}
+
+/*
+  Safety override: some layout elements are rendered with inline
+  animation styles (opacity:0 / transform:...) to animate in on the
+  client. If client JS hasn't run (or hydration is delayed) those
+  invisible elements can still intercept pointer events and block
+  interactivity. Force these high-level columns to be visible and
+  pointer-event-enabled by default so the page is usable before
+  client-side animation runs.
+
+  This intentionally uses !important to override inline styles set
+  by components. It's a small, low-risk change that can be removed
+  later if you prefer the original animation behavior.
+*/
+.left-bar, .main-content {
+  opacity: 1 !important;
+  transform: none !important;
+  pointer-events: auto !important;
+}
+
+/* Make sure these primary content columns sit above decorative
+   background graphics that might otherwise capture pointer events.
+   We keep the navbar above everything (navbar z-index:10000). */
+.left-bar, .main-content {
+  position: relative;
+  /* Raised so primary content sits above decorative overlays that
+     were intercepting pointer events during hydration. This is a
+     pragmatic fix: we keep the navbar controls themselves above the
+     content (see rules for `.navbar a, .navbar button` below). */
+  z-index: 20001 !important;
+  pointer-events: auto !important;
+}
+
+/* Defensive: disable pointer events on decorative SVG elements that
+   are placed inside the #background container so they don't block
+   clicks on interactive UI. This targets common SVG primitives and
+   groups; it's safe because these are purely decorative visuals. */
+#background svg,
+#background g,
+#background path,
+#background rect,
+#background circle,
+#background ellipse,
+#background polygon,
+#background polyline {
+  pointer-events: none !important;
 }

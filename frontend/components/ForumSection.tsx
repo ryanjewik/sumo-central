@@ -20,11 +20,11 @@ interface ForumSectionProps {
 
 const ForumSection: React.FC<ForumSectionProps> = ({ posts }) => (
   <div className="forum-area">
-    <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#563861' }}>Trending Forum Discussions</h2>
+    <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#563861' }}>Trending Discussions</h2>
     {posts.map(post => (
       <a
-        key={post.id}
-        href={"/forum/" + post.id}
+  key={post.id}
+  href={"/discussions/" + post.id}
         className="forum-post"
         style={{
           display: 'block',
