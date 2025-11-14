@@ -1,63 +1,167 @@
+"use client";
+
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import styles from './page.module.css';
 
 type RikishiItem = { id: string; shikona?: string };
 
-async function fetchRikishiList(): Promise<RikishiItem[]> {
-  // Prefer an explicit backend base URL via env var. If not provided, try relative
-  // paths (assuming the host proxies to the backend).
-  const backend = process.env.BACKEND_URL || '';
-  const attempts = [
-    `${backend}/rikishi`,
-    `${backend}/api/rikishi`,
-    `${backend}/api/homepage`,
-  ];
+const PAGE_SIZE = 30; // change to 500 if you want large page fetches client-side
 
-  for (const url of attempts) {
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) continue;
-      const data = await res.json();
-
-      if (data && Array.isArray((data as any).items)) {
-        return (data as any).items.map((it: any) => ({ id: String(it.id), shikona: it.shikona ?? it.name ?? '' }));
-      }
-
-      if (Array.isArray(data)) {
-        return data.map((id: any) => ({ id: String(id) }));
-      }
-
-      // If homepage doc contains a list
-      if (typeof data === 'object') {
-        const possible = (data as any).rikishi_ids || (data as any).rikishi_list || (data as any).all_rikishi || (data as any).rikishi_index;
-        if (Array.isArray(possible)) return possible.map((id: any) => ({ id: String(id) }));
-      }
-    } catch (err) {
-      // try next
-    }
-  }
-
-  return [];
+function buildAttempts() {
+  // Try common backend endpoints (relative paths). Server may accept page/limit params.
+  return ['/rikishi', '/api/rikishi', '/api/homepage'];
 }
 
-export default async function RikishiIndexPage() {
-  const items = await fetchRikishiList();
+async function tryFetchUrl(url: string, page: number, limit: number) {
+  // append pagination params where appropriate
+  const sep = url.includes('?') ? '&' : '?';
+  const pagedUrl = `${url}${sep}page=${page}&limit=${limit}`;
+  const res = await fetch(pagedUrl, { cache: 'no-store' });
+  if (!res.ok) throw new Error('not ok');
+  return res.json();
+}
+
+export default function RikishiIndexPage() {
+  const [items, setItems] = useState<RikishiItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [total, setTotal] = useState<number | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const attempts = buildAttempts();
+
+    const fetchOnce = async () => {
+      setLoading(true);
+      try {
+        for (const url of attempts) {
+          try {
+            const json = await tryFetchUrl(url, 1, PAGE_SIZE);
+            if (!mounted) return;
+
+            let newItems: RikishiItem[] = [];
+            if (Array.isArray(json)) {
+              newItems = json.map((it: any) => ({ id: String(it.id ?? it), shikona: it.shikona ?? it.name ?? '' }));
+              setHasMore(false);
+            } else if (json && Array.isArray(json.items)) {
+              newItems = json.items.map((it: any) => ({ id: String(it.id), shikona: it.shikona ?? it.name ?? '' }));
+              if (typeof json.total === 'number') setTotal(json.total);
+              if (json.items.length < PAGE_SIZE || (json.total && newItems.length >= json.total)) setHasMore(false);
+            } else if (json && typeof json === 'object') {
+              // maybe homepage doc contains list
+              const possible = json.rikishi_ids || json.rikishi_list || json.all_rikishi || json.rikishi_index || json.items;
+              if (Array.isArray(possible)) {
+                newItems = possible.map((it: any) => ({ id: String(it.id ?? it), shikona: it.shikona ?? it.name ?? '' }));
+                setHasMore(false);
+              }
+            }
+
+            if (newItems.length > 0) {
+              setItems(newItems);
+              return;
+            }
+          } catch (e) {
+            // try next endpoint
+          }
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    fetchOnce();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // fetch subsequent pages when `page` increases
+  useEffect(() => {
+    if (page === 1) return; // already fetched
+    let mounted = true;
+    const attempts = buildAttempts();
+
+    const fetchPage = async () => {
+      setLoading(true);
+      try {
+        for (const url of attempts) {
+          try {
+            const json = await tryFetchUrl(url, page, PAGE_SIZE);
+            if (!mounted) return;
+
+            let newItems: RikishiItem[] = [];
+            if (Array.isArray(json)) {
+              newItems = json.map((it: any) => ({ id: String(it.id ?? it), shikona: it.shikona ?? it.name ?? '' }));
+            } else if (json && Array.isArray(json.items)) {
+              newItems = json.items.map((it: any) => ({ id: String(it.id), shikona: it.shikona ?? it.name ?? '' }));
+              if (typeof json.total === 'number') setTotal(json.total);
+            }
+
+            if (newItems.length > 0) {
+              setItems((prev) => [...prev, ...newItems]);
+              if (newItems.length < PAGE_SIZE) setHasMore(false);
+              if (total && items.length + newItems.length >= total) setHasMore(false);
+              return;
+            }
+          } catch (e) {
+            // try next
+          }
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    fetchPage();
+
+    return () => {
+      mounted = false;
+    };
+  }, [page]);
+
+  // sentinel observer
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loading && hasMore) setPage((p) => p + 1);
+      },
+      { rootMargin: '200px' }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loading, hasMore]);
 
   return (
     <div style={{ marginTop: '13rem', padding: '1rem' }} className="content-box">
       <div style={{ width: '100%' }}>
         <h1 className="app-text" style={{ marginBottom: '1rem' }}>Rikishi — Index</h1>
 
-        {items.length === 0 ? (
+        {items.length === 0 && !loading && (
           <div className="app-text">No rikishi found or backend endpoint unavailable.</div>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {items.map((it) => (
-              <li key={it.id} style={{ margin: '0.4rem 0' }}>
-                <Link href={`/rikishi/${encodeURIComponent(String(it.id))}`} className="navbar-link">{it.shikona && it.shikona.length > 0 ? `${it.shikona} (${it.id})` : it.id}</Link>
-              </li>
-            ))}
-          </ul>
         )}
+
+        {items.length > 0 && (
+          <div className={styles.container}>
+            {items.map((it) => (
+              <Link key={it.id} href={`/rikishi/${encodeURIComponent(String(it.id))}`} className={styles.item}>
+                <div className={styles.title}>{it.shikona && it.shikona.length > 0 ? it.shikona : it.id}</div>
+                <div className={styles.id}>({it.id})</div>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        <div ref={sentinelRef} style={{ height: 1 }} />
+
+        <div className={styles.loading}>
+          {loading && <div className="app-text">Loading…</div>}
+          {!hasMore && items.length > 0 && <div className={styles.end}>End of list</div>}
+        </div>
       </div>
     </div>
   );

@@ -47,8 +47,33 @@ func (a *App) ListRikishi(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	// select id + shikona (display name) when available
-	rows, err := a.PG.Query(ctx, "SELECT id, shikona FROM rikishi ORDER BY id")
+	// Pagination: allow ?page=N&limit=M (default limit 500)
+	pageStr := c.DefaultQuery("page", "1")
+	limitStr := c.DefaultQuery("limit", "500")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 500
+	}
+	// cap limit to a reasonable maximum to avoid huge responses
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	offset := (page - 1) * limit
+
+	// get total count (for client-side hasMore / pagination UI)
+	var total int64
+	if err := a.PG.QueryRow(ctx, "SELECT COUNT(*) FROM rikishi").Scan(&total); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+		return
+	}
+
+	// select id + shikona (display name) when available with limit/offset
+	rows, err := a.PG.Query(ctx, "SELECT id, shikona FROM rikishi ORDER BY id LIMIT $1 OFFSET $2", limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 		return
@@ -68,5 +93,5 @@ func (a *App) ListRikishi(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "limit": limit})
 }
