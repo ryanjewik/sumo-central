@@ -112,9 +112,10 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
           <Image
             src={imageSrc}
             alt={`${name} profile`}
-            fill
-            style={{ objectFit: 'cover' }}
-            sizes="(max-width: 480px) 120px, 170px"
+            width={680}
+            height={1000}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            quality={92}
             priority={false}
           />
         </div>

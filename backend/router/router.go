@@ -40,11 +40,4 @@ func Register(r *gin.Engine, app *handlers.App) {
 
 	// Protected actions (require JWT)
 	r.POST("/matches/:id/vote", app.JWTMiddleware(), app.Vote)
-
-	//r.POST("/auth/register", app.Register)
-
-	// api := r.Group("/api")
-	// {
-	// 	api.GET("/matches", app.GetMatches) // reads from Mongo
-	// }
 }

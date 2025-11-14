@@ -193,24 +193,113 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
 
   const normalized = itemsArray.map(normalize);
 
-  // precompute serialized normalized data to use in effect deps (avoids complex expressions)
+  // If no explicit `date` prop is provided, try to resolve a single date for these recent matches
+  // by fetching the basho document using basho_id found on the match objects. The basho document
+  // is expected at /api/basho_pages/:bashoId and to contain `basho.start_date`.
+  const [resolvedDate, setResolvedDate] = React.useState<string | null>(null);
   const serializedNormalized = React.useMemo(() => JSON.stringify(normalized), [normalized]);
 
-  // group by dayLabel and sort
-  const groups = new Map<string, NormalizedMatch[]>();
-  normalized.forEach((nm) => {
-    const key = nm.dayLabel || 'Unknown day';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(nm);
-  });
+  React.useEffect(() => {
+    // If a caller provided an explicit date prop, prefer that (keeps backwards compatibility).
+    if (date) return;
+    if (!normalized || normalized.length === 0) return;
 
-  // convert groups to array and sort by date (if parseable) desc (most recent first)
-  const groupArray = Array.from(groups.entries()).map(([label, list]) => ({ label, list }));
-  groupArray.sort((a, b) => {
-    const da = Date.parse(a.label) || 0;
-    const db = Date.parse(b.label) || 0;
-    return db - da;
-  });
+    // Find the first match that contains both a basho id and a day number.
+    let found: { bashoId: string; dayNum: number } | null = null;
+    for (const nm of normalized) {
+      const r = nm.raw as RawMatch;
+      const maybeBasho = r['basho_id'] ?? (r['basho'] && (r['basho'] as any)['basho_id']) ?? r['bashoId'] ?? ((r['basho'] as any)?.id) ?? r['basho'] ?? null;
+      const maybeDay = r['day'] ?? r['basho_day'] ?? r['day_number'] ?? null;
+      if (maybeBasho != null && maybeDay != null) {
+        found = { bashoId: String(maybeBasho), dayNum: Number(maybeDay) || 1 };
+        break;
+      }
+    }
+    if (!found) return;
+
+    const { bashoId, dayNum } = found;
+    let aborted = false;
+
+    (async () => {
+      try {
+        // Try both known endpoints that may contain the basho document
+        const endpoints = [`/api/basho_pages/${encodeURIComponent(bashoId)}`, `/api/basho/${encodeURIComponent(bashoId)}`];
+        let startRaw: unknown = null;
+        for (const ep of endpoints) {
+          try {
+            const res = await fetch(ep);
+            if (!res.ok) continue;
+            const j = await res.json();
+            // prefer nested j.basho.start_date, then j.start_date, then j.basho.start
+            startRaw = (j && ((j.basho && (j.basho.start_date ?? (j.basho.start))) ?? j.start_date ?? j.start)) ?? null;
+            if (startRaw) break;
+          } catch (err) {
+            // try next endpoint
+            continue;
+          }
+        }
+        if (!startRaw) return;
+
+        // Parse start date as UTC (avoid local timezone shifting). Ensure it has a time component.
+        const startStr = String(startRaw);
+        // If the date is a plain yyyy-mm-dd, append T00:00:00Z to force UTC parsing
+        const iso = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(startStr) ? `${startStr}T00:00:00Z` : startStr;
+        const sd = new Date(iso);
+        if (isNaN(sd.getTime())) return;
+
+        // Compute match date: start_date + (dayNum - 1) days
+        const matchDate = new Date(sd);
+        matchDate.setUTCDate(sd.getUTCDate() + Math.max(0, (dayNum - 1)));
+        const y = matchDate.getUTCFullYear();
+        const mm = String(matchDate.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(matchDate.getUTCDate()).padStart(2, '0');
+        if (!aborted) setResolvedDate(`${y}-${mm}-${dd}`);
+      } catch (e) {
+        // ignore and leave resolvedDate null
+      }
+    })();
+
+    return () => { aborted = true; };
+  }, [date, serializedNormalized]);
+
+  // If we were able to resolve a single date for this set of recent matches (either
+  // passed via the `date` prop or computed via the basho lookup into `resolvedDate`)
+  // prefer showing a single unified header and collapse all matches into one group so
+  // we don't print duplicate or conflicting day labels per-row.
+  const headerDate = React.useMemo(() => {
+    if (resolvedDate) return resolvedDate;
+    if (date) {
+      // trim to YYYY-MM-DD if a full ISO is passed
+      let display = String(date);
+      if (display.includes('T')) display = display.split('T')[0];
+      else if (display.includes(' ')) display = display.split(' ')[0];
+      else if (display.length > 10) display = display.slice(0, 10);
+      return display;
+    }
+    return null;
+  }, [resolvedDate, date]);
+
+  let groupArray: { label: string; list: NormalizedMatch[] }[] = [];
+  if (headerDate) {
+    // collapse everything into a single labeled group (avoids double/incorrect dates)
+    groupArray = [{ label: headerDate, list: normalized }];
+  } else {
+    // group by dayLabel and sort when no single header date is available
+    const groups = new Map<string, NormalizedMatch[]>();
+    normalized.forEach((nm) => {
+      const key = nm.dayLabel || 'Unknown day';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(nm);
+    });
+
+    // convert groups to array and sort by date (if parseable) desc (most recent first)
+    groupArray = Array.from(groups.entries()).map(([label, list]) => ({ label, list }));
+    groupArray.sort((a, b) => {
+      const da = Date.parse(a.label) || 0;
+      const db = Date.parse(b.label) || 0;
+      return db - da;
+    });
+  }
 
   // sort matches inside each group by matchNumber (ascending) or timestamp
   groupArray.forEach(g => {
@@ -240,16 +329,16 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
         <Typography className="app-text" level="title-lg" sx={{ fontWeight: 1000, fontSize: '1.5rem' }}>
           Recent Matches
         </Typography>
-        {date && (
-          <Typography sx={{ color: '#563861', fontWeight: 500, fontSize: '1.08rem', mb: 2 }}>
-            {date}
+        {(resolvedDate || date) && (
+          <Typography sx={{ color: '#563861', fontWeight: 500, fontSize: '1.08rem', mb: 2, fontFamily: 'inherit' }}>
+            {resolvedDate || date}
           </Typography>
         )}
 
         <List variant="outlined" sx={{ minWidth: 240, borderRadius: 'sm', p: 0, m: 0 }}>
           {groupArray.map((group, gi) => (
             <Box key={`${String(group.label ?? 'day')}-${gi}`} sx={{ mb: 2 }}>
-              <Typography level="body-md" sx={{ fontWeight: 700, mb: 1, color: '#563861' }}>{group.label}</Typography>
+              {/* group.label removed when a unified header date exists to avoid duplicate dates */}
               {group.list.map((match: NormalizedMatch, idx: number) => {
                 const eastName = match.eastName;
                 const westName = match.westName;

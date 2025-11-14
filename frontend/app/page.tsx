@@ -98,8 +98,8 @@ function InnerApp() {
       venue: 'Ryogoku Kokugikan',
     },
   ];
-  // Previous day for recent matches
-  const recentMatchesDate = '2025-09-19';
+  // recent matches date should be resolved by the RecentMatchesList component
+  // via the basho lookup; avoid hardcoded dates here.
   // Animation state for navbar
   const [navbarVisible, setNavbarVisible] = useState(false);
   const [searchBarVisible, setSearchBarVisible] = useState(false);
@@ -790,7 +790,7 @@ function InnerApp() {
                 onOpenLogin={() => setLoginOpen(true)}
               />
             </div>
-            <RecentMatchesList date={recentMatchesDate} matches={homepage?.recent_matches ? Object.values(homepage.recent_matches) : undefined} />
+            <RecentMatchesList matches={homepage?.recent_matches ? Object.values(homepage.recent_matches) : undefined} />
           </div>
         </div>
       </div>
