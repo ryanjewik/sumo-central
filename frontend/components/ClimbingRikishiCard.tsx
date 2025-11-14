@@ -56,10 +56,52 @@ const ClimbingRikishiCard: React.FC<ClimbingRikishiCardProps> = ({ rikishi }) =>
   }
 
   // derive a safe rikishi id from common keys
-  const _rawId = (r as Record<string, unknown>)['id'] ?? (r as Record<string, unknown>)['_id'] ?? (r as Record<string, unknown>)['rikishi_id'];
-  let rikishiIdValue: string | number | undefined;
-  if (typeof _rawId === 'string' || typeof _rawId === 'number') rikishiIdValue = _rawId;
-  else rikishiIdValue = undefined;
+  // Try several common top-level and nested locations for an identifier.
+  const asRecord = r as Record<string, any>;
+  const candidateValues = [
+    asRecord['id'],
+    asRecord['_id'],
+    asRecord['rikishi_id'],
+    asRecord['rikishiId'],
+    asRecord['rikishiIdValue'],
+    // nested rikishi/profile objects
+    asRecord.rikishi?.id,
+    asRecord.rikishi?._id,
+    asRecord.rikishi?.rikishi_id,
+    asRecord.profile?.id,
+    asRecord.profile?._id,
+    asRecord.pfp?.id,
+  ];
+
+  let rikishiIdValue: string | number | undefined = undefined;
+  for (const v of candidateValues) {
+    if (typeof v === 'string' || typeof v === 'number') {
+      rikishiIdValue = v;
+      break;
+    }
+  }
+
+  // As a last-ditch: if the card was given `recent_matches` as an object map,
+  // try to extract a rikishi id from the first match (winner/east/west ids).
+  if (rikishiIdValue == null) {
+    try {
+      const series = r.recent_matches ?? r.win_series ?? r.recent_form ?? r.form;
+      const first = Array.isArray(series) ? series[0] : (series && typeof series === 'object' ? Object.values(series)[0] : undefined);
+      if (first && typeof first === 'object') {
+        const maybe = first.winner ?? first.east_rikishi_id ?? first.west_rikishi_id ?? first.east_id ?? first.west_id;
+        if (typeof maybe === 'string' || typeof maybe === 'number') rikishiIdValue = maybe;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  React.useEffect(() => {
+    // emit a quick debug line so we can see whether an ID is being passed to the sparkline
+    // and whether sparkData is available. This is non-invasive and helps debugging in the browser.
+    // eslint-disable-next-line no-console
+    console.log('ClimbingRikishiCard: rikishiId', rikishiIdValue, 'sparkData length', Array.isArray(sparkData) ? sparkData.length : 0);
+  }, [rikishiIdValue, sparkData]);
 
   return (
   <div

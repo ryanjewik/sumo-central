@@ -30,24 +30,7 @@ function InnerApp() {
   const [loginOpen, setLoginOpen] = useState(false);
   // Get auth from provider
   const { user, logout } = useAuth();
-  // Sample upcoming matches data
-  // All upcoming matches are on the same day
-  const upcomingDate = '2025-09-20';
-
-  // Sample leaderboard data (top 10 users)
-  const sampleLeaderboard = [
-    { username: 'sumofan123', correctPredictions: 42 },
-    { username: 'rikishi_enthusiast', correctPredictions: 39 },
-    { username: 'banzukeMaster', correctPredictions: 37 },
-    { username: 'sumoStats', correctPredictions: 35 },
-    { username: 'newbieSumo', correctPredictions: 33 },
-    { username: 'yokozunaFan', correctPredictions: 30 },
-    { username: 'komusubiKid', correctPredictions: 28 },
-    { username: 'heyaHero', correctPredictions: 27 },
-    { username: 'bashoboy', correctPredictions: 25 },
-    { username: 'kimariteKing', correctPredictions: 24 },
-    // ...more users
-  ];
+  // Leaderboard state (populated from backend). No sample fallback data here.
   const [leaderboard, setLeaderboard] = useState<{ username: string; correctPredictions: number }[] | null>(null);
 
   useEffect(() => {
@@ -69,35 +52,7 @@ function InnerApp() {
   }, []);
 
 
-  const sampleUpcomingMatches = [
-    {
-      id: 1,
-      rikishi1: 'Terunofuji',
-      rikishi2: 'Takakeisho',
-      rikishi1Rank: 'Yokozuna',
-      rikishi2Rank: 'Ozeki',
-      date: upcomingDate,
-      venue: 'Ryogoku Kokugikan',
-    },
-    {
-      id: 2,
-      rikishi1: 'Hoshoryu',
-      rikishi2: 'Wakatakakage',
-      rikishi1Rank: 'Sekiwake',
-      rikishi2Rank: 'Komusubi',
-      date: upcomingDate,
-      venue: 'Ryogoku Kokugikan',
-    },
-    {
-      id: 3,
-      rikishi1: 'Abi',
-      rikishi2: 'Shodai',
-      rikishi1Rank: 'Maegashira 1',
-      rikishi2Rank: 'Maegashira 2',
-      date: upcomingDate,
-      venue: 'Ryogoku Kokugikan',
-    },
-  ];
+  // No sample upcoming matches; upcoming matches will be derived from backend documents.
   // recent matches date should be resolved by the RecentMatchesList component
   // via the basho lookup; avoid hardcoded dates here.
   // Animation state for navbar
@@ -524,7 +479,7 @@ function InnerApp() {
       </div>
             <div style={{ flex: 1, gap: '1rem', display: 'flex', flexDirection: 'column' }}>
               <KimariteRadarChart kimariteCounts={homepage?.kimarite_usage_most_recent_basho} />
-              <LeaderboardTable leaderboard={leaderboard ?? sampleLeaderboard} />
+              <LeaderboardTable leaderboard={leaderboard ?? []} />
               <SumoTicketsCard />
             </div>
           </div>
@@ -780,12 +735,12 @@ function InnerApp() {
           >
             <div style={{ marginBottom: '1.5rem' }}>
               <UpcomingMatchesList
-                matches={bashoUpcomingMatches ?? sampleUpcomingMatches}
+                matches={bashoUpcomingMatches ?? []}
                 date={
-                  // prefer a date derived from the first basho match or fall back to the sample upcoming date
+                  // prefer a date derived from the first basho match or leave undefined so the component can decide
                   (bashoUpcomingMatches && bashoUpcomingMatches.length > 0 && typeof bashoUpcomingMatches[0].date === 'string')
                     ? (bashoUpcomingMatches[0].date as string)
-                    : upcomingDate
+                    : undefined
                 }
                 onOpenLogin={() => setLoginOpen(true)}
               />
