@@ -380,3 +380,43 @@
 #background polyline {
   pointer-events: none !important;
 }
+
+/* Basho page specific styles */
+.basho-card {
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.basho-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: 'Courier New', Courier, monospace;
+}
+.basho-table th {
+  background: rgba(224,163,194,0.08); /* subtle pink header */
+  color: #563861;
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 2px solid #E0A3C2;
+}
+.basho-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid rgba(224,163,194,0.5);
+  color: #563861;
+}
+.basho-yusho-badge {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid rgba(224,163,194,0.6);
+  border-radius: 8px;
+  background: rgba(224,163,194,0.03);
+  min-width: 140px;
+}
+
+/* Card border color utility (used on basho card) */
+.basho-card-border {
+  border-color: #563861 !important;
+}
+
+/* Slight translucent table background to match theme */
+.basho-table {
+  background: rgba(240,240,244,0.6);
+}
