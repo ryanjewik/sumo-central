@@ -91,28 +91,44 @@ func (a *App) GetUser(c *gin.Context) {
 		// public display fields. If the rikishi table or row is missing, fall
 		// back to returning the raw id string.
 		var rk struct {
-			ID           sql.NullInt64
-			Shikona      sql.NullString
-			CurrentRank  sql.NullString
-			Heya         sql.NullString
-			Wins         sql.NullInt64
-			Losses       sql.NullInt64
-			Matches      sql.NullInt64
-			YushoCount   sql.NullInt64
-			SanshoCount  sql.NullInt64
+			ID          sql.NullInt64
+			Shikona     sql.NullString
+			CurrentRank sql.NullString
+			Heya        sql.NullString
+			Wins        sql.NullInt64
+			Losses      sql.NullInt64
+			Matches     sql.NullInt64
+			YushoCount  sql.NullInt64
+			SanshoCount sql.NullInt64
 		}
 		// attempt to select from rikishi; columns may vary across DBs
 		err := a.PG.QueryRow(ctx, `SELECT id, shikona, current_rank, heya, wins, losses, matches, yusho_count, sansho_count FROM rikishi WHERE id = $1`, u.FavoriteRikishi.Int64).Scan(&rk.ID, &rk.Shikona, &rk.CurrentRank, &rk.Heya, &rk.Wins, &rk.Losses, &rk.Matches, &rk.YushoCount, &rk.SanshoCount)
 		if err == nil {
 			fav := gin.H{"id": rk.ID.Int64}
-			if rk.Shikona.Valid { fav["shikona"] = rk.Shikona.String }
-			if rk.CurrentRank.Valid { fav["current_rank"] = rk.CurrentRank.String }
-			if rk.Heya.Valid { fav["heya"] = rk.Heya.String }
-			if rk.Wins.Valid { fav["wins"] = rk.Wins.Int64 }
-			if rk.Losses.Valid { fav["losses"] = rk.Losses.Int64 }
-			if rk.Matches.Valid { fav["matches"] = rk.Matches.Int64 }
-			if rk.YushoCount.Valid { fav["yusho_count"] = rk.YushoCount.Int64 }
-			if rk.SanshoCount.Valid { fav["sansho_count"] = rk.SanshoCount.Int64 }
+			if rk.Shikona.Valid {
+				fav["shikona"] = rk.Shikona.String
+			}
+			if rk.CurrentRank.Valid {
+				fav["current_rank"] = rk.CurrentRank.String
+			}
+			if rk.Heya.Valid {
+				fav["heya"] = rk.Heya.String
+			}
+			if rk.Wins.Valid {
+				fav["wins"] = rk.Wins.Int64
+			}
+			if rk.Losses.Valid {
+				fav["losses"] = rk.Losses.Int64
+			}
+			if rk.Matches.Valid {
+				fav["matches"] = rk.Matches.Int64
+			}
+			if rk.YushoCount.Valid {
+				fav["yusho_count"] = rk.YushoCount.Int64
+			}
+			if rk.SanshoCount.Valid {
+				fav["sansho_count"] = rk.SanshoCount.Int64
+			}
 			resp["favorite_rikishi"] = fav
 		} else {
 			// fallback to id (int)
@@ -355,27 +371,43 @@ func (a *App) UpdateMe(c *gin.Context) {
 	if out.FavoriteRikishi.Valid {
 		// attempt to also return rikishi summary for convenience
 		var rk struct {
-			ID           sql.NullInt64
-			Shikona      sql.NullString
-			CurrentRank  sql.NullString
-			Heya         sql.NullString
-			Wins         sql.NullInt64
-			Losses       sql.NullInt64
-			Matches      sql.NullInt64
-			YushoCount   sql.NullInt64
-			SanshoCount  sql.NullInt64
+			ID          sql.NullInt64
+			Shikona     sql.NullString
+			CurrentRank sql.NullString
+			Heya        sql.NullString
+			Wins        sql.NullInt64
+			Losses      sql.NullInt64
+			Matches     sql.NullInt64
+			YushoCount  sql.NullInt64
+			SanshoCount sql.NullInt64
 		}
 		err := a.PG.QueryRow(ctx, `SELECT id, shikona, current_rank, heya, wins, losses, matches, yusho_count, sansho_count FROM rikishi WHERE id = $1`, out.FavoriteRikishi.Int64).Scan(&rk.ID, &rk.Shikona, &rk.CurrentRank, &rk.Heya, &rk.Wins, &rk.Losses, &rk.Matches, &rk.YushoCount, &rk.SanshoCount)
 		if err == nil {
 			fav := gin.H{"id": rk.ID.Int64}
-			if rk.Shikona.Valid { fav["shikona"] = rk.Shikona.String }
-			if rk.CurrentRank.Valid { fav["current_rank"] = rk.CurrentRank.String }
-			if rk.Heya.Valid { fav["heya"] = rk.Heya.String }
-			if rk.Wins.Valid { fav["wins"] = rk.Wins.Int64 }
-			if rk.Losses.Valid { fav["losses"] = rk.Losses.Int64 }
-			if rk.Matches.Valid { fav["matches"] = rk.Matches.Int64 }
-			if rk.YushoCount.Valid { fav["yusho_count"] = rk.YushoCount.Int64 }
-			if rk.SanshoCount.Valid { fav["sansho_count"] = rk.SanshoCount.Int64 }
+			if rk.Shikona.Valid {
+				fav["shikona"] = rk.Shikona.String
+			}
+			if rk.CurrentRank.Valid {
+				fav["current_rank"] = rk.CurrentRank.String
+			}
+			if rk.Heya.Valid {
+				fav["heya"] = rk.Heya.String
+			}
+			if rk.Wins.Valid {
+				fav["wins"] = rk.Wins.Int64
+			}
+			if rk.Losses.Valid {
+				fav["losses"] = rk.Losses.Int64
+			}
+			if rk.Matches.Valid {
+				fav["matches"] = rk.Matches.Int64
+			}
+			if rk.YushoCount.Valid {
+				fav["yusho_count"] = rk.YushoCount.Int64
+			}
+			if rk.SanshoCount.Valid {
+				fav["sansho_count"] = rk.SanshoCount.Int64
+			}
 			resp["favorite_rikishi"] = fav
 		} else {
 			resp["favorite_rikishi"] = out.FavoriteRikishi.Int64
