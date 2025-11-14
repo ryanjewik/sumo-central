@@ -1,9 +1,11 @@
 "use client";
 
 import React from 'react';
+import Link from 'next/link';
 import { Box, Table, TableBody, TableCell, TableHead, TableRow, Paper } from '@mui/material';
 
 interface LeaderboardEntry {
+  id: string;
   username: string;
   correctPredictions: number;
 }
@@ -60,7 +62,7 @@ const LeaderboardTable: React.FC<LeaderboardTableProps> = ({ leaderboard }) => {
             <TableBody>
               {leaderboard.slice(0, 10).map((entry, idx) => (
                 <TableRow
-                  key={entry.username}
+                  key={entry.id}
                   sx={{
                     background: idx % 2 === 0 ? 'rgba(245,230,200,0.85)' : 'rgba(224,163,194,0.10)',
                     transition: 'background 0.2s',
@@ -70,7 +72,11 @@ const LeaderboardTable: React.FC<LeaderboardTableProps> = ({ leaderboard }) => {
                   }}
                 >
                   <TableCell sx={{ color: '#563861', fontWeight: 600, fontFamily: `'Courier New', Courier, monospace` }}>{idx + 1}</TableCell>
-                  <TableCell sx={{ color: '#563861', fontWeight: 500, fontFamily: `'Courier New', Courier, monospace` }}>{entry.username}</TableCell>
+                  <TableCell sx={{ color: '#563861', fontWeight: 500, fontFamily: `'Courier New', Courier, monospace` }}>
+                    <Link href={`/users/${entry.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                      {entry.username}
+                    </Link>
+                  </TableCell>
                   <TableCell align="right" sx={{ color: '#563861', fontWeight: 600, fontFamily: `'Courier New', Courier, monospace` }}>{entry.correctPredictions}</TableCell>
                 </TableRow>
               ))}

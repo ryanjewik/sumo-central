@@ -230,6 +230,10 @@ body {
   z-index: 10000;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   font-family: 'Courier New', Courier, monospace;
+  /* Expose a CSS variable for the navbar height so pages can offset themselves
+     dynamically instead of hard-coding large margins in inline styles. Update
+     this value if navbar layout changes. */
+  --navbar-height: 12rem;
   padding: 2rem 0 0 0;
 }
 
@@ -319,6 +323,18 @@ body {
   position: relative;
   min-height: calc(100vh - 8rem);
   box-sizing: border-box;
+}
+
+/* Utility: apply the page offset so top-level pages avoid the fixed navbar.
+   Use this on the top-level <main> wrapper of pages. It uses the same
+   navbar height variable as the navbar so changes remain centralized. */
+.page-offset {
+  max-width: 900px;
+  margin: calc(var(--navbar-height, 12rem) + 4rem) auto 0;
+  padding: 0 1.5rem;
+  position: relative;
+  z-index: 1;
+  min-height: calc(100vh - 120px);
 }
 
 /* Columns */
@@ -477,6 +493,8 @@ body {
     justify-content: center;
     width: auto;
   }
+  /* Reduce navbar height on smaller screens */
+  .navbar { --navbar-height: 10rem; }
   .rikishi-img {
     width: 80px !important;
     height: 110px !important;

@@ -31,6 +31,20 @@ func Register(r *gin.Engine, app *handlers.App) {
 	r.GET("/rikishi/:id", app.GetRikishi)
 	r.GET("/basho/:id", app.GetBasho)
 
+	// User profile endpoint
+	r.GET("/users/:id", app.GetUser)
+	r.GET("/api/users/:id", app.GetUser)
+
+	// Authenticated current user routes
+	r.GET("/users/me", app.JWTMiddleware(), app.GetUser)
+	r.GET("/api/users/me", app.JWTMiddleware(), app.GetUser)
+	r.PATCH("/api/users/me", app.JWTMiddleware(), app.UpdateMe)
+	// Also accept PATCH on /users/me since the Next.js dev proxy may strip the
+	// `/api` prefix when forwarding requests. Registering both avoids 404s
+	// when the frontend is configured to proxy `/api/*` -> backend without
+	// preserving the `/api` path.
+	r.PATCH("/users/me", app.JWTMiddleware(), app.UpdateMe)
+
 	// Authentication
 	r.POST("/auth/register", app.Register)
 	r.POST("/auth/login", app.Login)

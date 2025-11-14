@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import RikishiWinLossSparkline from '../../../components/sparkline';
 import KimariteRadarChart from '../../../components/application/charts/KimariteRadarChart';
+import { fetchWithAuth } from '../../../lib/auth';
 
 // Shared Tailwind classes for table headers/cells (keeps consistent spacing & font)
 // Slightly larger padding and base font for better legibility and to fill space
@@ -391,6 +392,8 @@ export default function RikishiDetailPage() {
   const [doc, setDoc] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userFavoriteId, setUserFavoriteId] = useState<string | null>(null);
+  const [favLoading, setFavLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -417,6 +420,21 @@ export default function RikishiDetailPage() {
     };
 
     fetchDoc();
+    // also try to get current user's favorite rikishi (if logged in)
+    (async () => {
+      try {
+        const r = await fetchWithAuth('/api/users/me');
+        if (r.ok) {
+          const me = await r.json();
+          const fav = me?.favorite_rikishi;
+          // favorite_rikishi may be an object or id string
+          if (fav && typeof fav === 'object' && fav.id) setUserFavoriteId(String(fav.id));
+          else if (fav) setUserFavoriteId(String(fav));
+        }
+      } catch (e) {
+        // ignore - not logged in or network error
+      }
+    })();
     return () => { mounted = false; };
   }, [id]);
 
@@ -566,6 +584,45 @@ export default function RikishiDetailPage() {
                         <div className="app-text">{source?.yusho_count ?? source?.yusho ?? 0}</div>
                         <div className="app-text font-semibold">Sansho</div>
                         <div className="app-text">{source?.sansho_count ?? source?.sansho ?? 0}</div>
+                      </div>
+
+                      {/* Favorite button */}
+                      <div className="mt-3">
+                        <button
+                          onClick={async () => {
+                            if (favLoading) return;
+                            // if user already favorited this rikishi
+                            if (userFavoriteId && String(userFavoriteId) === String(id)) {
+                              alert('This rikishi is already your favorite.');
+                              return;
+                            }
+                            // if user has a different favorite, confirm replacement
+                            if (userFavoriteId && String(userFavoriteId) !== String(id)) {
+                              const ok = window.confirm('You already have a favorite rikishi. Replace it with this one?');
+                              if (!ok) return;
+                            }
+                            setFavLoading(true);
+                            try {
+                              const res = await fetchWithAuth('/api/users/me', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ favorite_rikishi: String(id) }) });
+                              if (!res.ok) {
+                                const txt = await res.text();
+                                alert('Failed to set favorite: ' + res.status + ' ' + txt);
+                              } else {
+                                // update local state; server returns updated user on success
+                                setUserFavoriteId(String(id));
+                                alert('Favorite updated');
+                              }
+                            } catch (e: any) {
+                              alert('Network error: ' + String(e?.message ?? e));
+                            } finally {
+                              setFavLoading(false);
+                            }
+                          }}
+                          className="px-3 py-2 rounded-md font-semibold"
+                          style={{ background: userFavoriteId && String(userFavoriteId) === String(id) ? '#f97316' : '#2563eb', color: 'white' }}
+                        >
+                          {favLoading ? 'Saving...' : (userFavoriteId && String(userFavoriteId) === String(id) ? 'Favorited' : 'Set as favorite')}
+                        </button>
                       </div>
 
                       <div className="mt-2">

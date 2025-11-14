@@ -63,7 +63,9 @@ export default function Header() {
           {user ? (
             <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <span style={authPillStyle}>{user.username}</span>
+                <Link href={`/users/me`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                  <span style={authPillStyle}>{user.username}</span>
+                </Link>
               </span>
 
               <button

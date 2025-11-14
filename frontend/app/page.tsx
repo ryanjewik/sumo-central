@@ -27,7 +27,7 @@ function InnerApp() {
   // Get auth from provider
   const { user, logout } = useAuth();
   // Leaderboard state (populated from backend). No sample fallback data here.
-  const [leaderboard, setLeaderboard] = useState<{ username: string; correctPredictions: number }[] | null>(null);
+  const [leaderboard, setLeaderboard] = useState<{ id: string; username: string; correctPredictions: number }[] | null>(null);
 
   useEffect(() => {
     let mounted = true;
