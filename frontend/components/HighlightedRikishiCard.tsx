@@ -2,6 +2,7 @@
 
 import React from "react";
 import Image from 'next/image';
+import Link from 'next/link';
 
 type RikishiInfo = {
   shikona?: string;
@@ -74,6 +75,8 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
   const yushoCount = Number(r.yusho_count ?? r.yusho ?? 0);
   const sanshoCount = Number(r.sansho_count ?? r.special_prizes ?? 0);
 
+  // derive an id for linking if available
+  const rikishiId = (r as Record<string, any>)['id'] ?? (r as Record<string, any>)['_id'] ?? (r as Record<string, any>)['rikishi_id'] ?? (r as Record<string, any>)['rikishiId'] ?? undefined;
   return (
     <div
       style={{
@@ -108,20 +111,46 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
         Highlighted Rikishi
       </span>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', gap: '1.2rem' }}>
-        <div style={{ width: 170, height: 250, position: 'relative', borderRadius: 18, overflow: 'hidden', border: '3px solid rgba(224,163,194,0.9)' }}>
-          <Image
-            src={imageSrc}
-            alt={`${name} profile`}
-            width={680}
-            height={1000}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            quality={92}
-            priority={false}
-          />
-        </div>
+        {rikishiId ? (
+          <Link href={`/rikishi/${rikishiId}`}>
+            <a title={`View ${name} profile`} style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+              <div style={{ width: 170, height: 250, position: 'relative', borderRadius: 18, overflow: 'hidden', border: '3px solid rgba(224,163,194,0.9)' }}>
+                <Image
+                  src={imageSrc}
+                  alt={`${name} profile`}
+                  width={680}
+                  height={1000}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  quality={92}
+                  priority={false}
+                />
+              </div>
+            </a>
+          </Link>
+        ) : (
+          <div style={{ width: 170, height: 250, position: 'relative', borderRadius: 18, overflow: 'hidden', border: '3px solid rgba(224,163,194,0.9)' }}>
+            <Image
+              src={imageSrc}
+              alt={`${name} profile`}
+              width={680}
+              height={1000}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              quality={92}
+              priority={false}
+            />
+          </div>
+        )}
         <div style={{ textAlign: 'center', minWidth: 200, fontFamily: `'Courier New', Courier, monospace` }}>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center' }}>
-            <div style={{ fontWeight: 800, fontSize: '1.35rem', color: '#563861' }}>{name}</div>
+            {rikishiId ? (
+              <Link href={`/rikishi/${rikishiId}`}>
+                <a title={`View ${name} profile`} style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.35rem', color: '#563861' }}>{name}</div>
+                </a>
+              </Link>
+            ) : (
+              <div style={{ fontWeight: 800, fontSize: '1.35rem', color: '#563861' }}>{name}</div>
+            )}
             {rank && (
               <div style={{ background: '#ffd54f', color: '#3b2f1b', padding: '4px 8px', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem' }} aria-label="rank-badge">{rank}</div>
             )}

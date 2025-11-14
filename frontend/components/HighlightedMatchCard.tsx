@@ -2,6 +2,7 @@
 
 import React from "react";
 import Image from 'next/image';
+import Link from 'next/link';
 
 type MatchShape = {
   id?: string | number;
@@ -218,20 +219,42 @@ const HighlightedMatchCard: React.FC<HighlightedMatchCardProps> = ({ match, onOp
   <div style={{ minWidth: 220, display: 'flex', flexDirection: 'column', alignItems: 'stretch', flex: '1 1 280px', marginRight: 8 }}>
           <div className="rikishi-card" style={{ width: '100%', boxSizing: 'border-box', borderRadius: 12, padding: 28, background: 'rgba(245,230,200,0.90)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ textAlign: 'center', marginBottom: 8 }}>
-              <div style={{ fontWeight: 900, color: '#1e293b', fontSize: 22 }}>{westName}</div>
+              {westId ? (
+                <Link href={`/rikishi/${westId}`}>
+                  <a title={`View ${westName} profile`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <div style={{ fontWeight: 900, color: '#1e293b', fontSize: 22 }}>{westName}</div>
+                  </a>
+                </Link>
+              ) : (
+                <div style={{ fontWeight: 900, color: '#1e293b', fontSize: 22 }}>{westName}</div>
+              )}
               <div style={{ fontSize: 15, color: '#475569', fontWeight: 800 }}>{displayWestRank}</div>
               {westDetails && westDetails.heya && (
                 <div style={{ fontSize: 14, color: '#6b6b6b', marginTop: 6 }}>{String(westDetails.heya)}</div>
               )}
             </div>
               <div style={{ display: 'flex', gap: 'clamp(12px, 2.5vw, 28px)', alignItems: 'center', marginTop: 4 }}>
-              <div className="pfp" style={{ position: 'relative', width: 170, height: 230, flex: '0 0 auto', zIndex: 1, overflow: 'hidden', borderRadius: 10, marginRight: 0 }} aria-hidden>
-                <Image src={westImg} alt={`${westName} profile`} width={680} height={920} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} quality={90} />
-                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 10, border: winnerSide === 'west' ? '3px solid #2563eb' : '1px solid rgba(37,99,235,0.7)', boxShadow: winnerSide === 'west' ? '0 8px 28px rgba(37,99,235,0.22)' : '0 3px 8px rgba(37,99,235,0.08)'}} />
-                {winnerSide === 'west' && (
-                  <div style={{ position: 'absolute', top: -6, right: -6, background: '#10b981', color: '#fff', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>W</div>
-                )}
-              </div>
+              {westId ? (
+                <Link href={`/rikishi/${westId}`}>
+                  <a title={`View ${westName} profile`} style={{ display: 'inline-block', textDecoration: 'none', color: 'inherit' }}>
+                    <div className="pfp" style={{ position: 'relative', width: 170, height: 230, flex: '0 0 auto', zIndex: 1, overflow: 'hidden', borderRadius: 10, marginRight: 0 }} aria-hidden>
+                      <Image src={westImg} alt={`${westName} profile`} width={680} height={920} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} quality={90} />
+                      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 10, border: winnerSide === 'west' ? '3px solid #2563eb' : '1px solid rgba(37,99,235,0.7)', boxShadow: winnerSide === 'west' ? '0 8px 28px rgba(37,99,235,0.22)' : '0 3px 8px rgba(37,99,235,0.08)'}} />
+                      {winnerSide === 'west' && (
+                        <div style={{ position: 'absolute', top: -6, right: -6, background: '#10b981', color: '#fff', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>W</div>
+                      )}
+                    </div>
+                  </a>
+                </Link>
+              ) : (
+                <div className="pfp" style={{ position: 'relative', width: 170, height: 230, flex: '0 0 auto', zIndex: 1, overflow: 'hidden', borderRadius: 10, marginRight: 0 }} aria-hidden>
+                  <Image src={westImg} alt={`${westName} profile`} width={680} height={920} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} quality={90} />
+                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 10, border: winnerSide === 'west' ? '3px solid #2563eb' : '1px solid rgba(37,99,235,0.7)', boxShadow: winnerSide === 'west' ? '0 8px 28px rgba(37,99,235,0.22)' : '0 3px 8px rgba(37,99,235,0.08)'}} />
+                  {winnerSide === 'west' && (
+                    <div style={{ position: 'absolute', top: -6, right: -6, background: '#10b981', color: '#fff', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>W</div>
+                  )}
+                </div>
+              )}
 
               <div style={{ textAlign: 'left', marginTop: 2, zIndex: 2 }}>
                 {/* ultra-compact rikishi details */}
@@ -270,20 +293,42 @@ const HighlightedMatchCard: React.FC<HighlightedMatchCardProps> = ({ match, onOp
   <div style={{ minWidth: 220, display: 'flex', flexDirection: 'column', alignItems: 'stretch', flex: '1 1 280px', marginLeft: 8 }}>
   <div className="rikishi-card" style={{ width: '100%', boxSizing: 'border-box', borderRadius: 12, padding: 28, background: 'rgba(245,230,200,0.86)', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
             <div style={{ textAlign: 'center', marginBottom: 8 }}>
-              <div style={{ fontWeight: 900, color: '#1e293b', fontSize: 22 }}>{eastName}</div>
+              {eastId ? (
+                <Link href={`/rikishi/${eastId}`}>
+                  <a title={`View ${eastName} profile`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <div style={{ fontWeight: 900, color: '#1e293b', fontSize: 22 }}>{eastName}</div>
+                  </a>
+                </Link>
+              ) : (
+                <div style={{ fontWeight: 900, color: '#1e293b', fontSize: 22 }}>{eastName}</div>
+              )}
               <div style={{ fontSize: 15, color: '#475569', fontWeight: 800 }}>{displayEastRank}</div>
               {eastDetails && eastDetails.heya && (
                 <div style={{ fontSize: 14, color: '#6b6b6b', marginTop: 6 }}>{String(eastDetails.heya)}</div>
               )}
             </div>
             <div style={{ display: 'flex', gap: 'clamp(12px, 2.5vw, 28px)', alignItems: 'center', marginTop: 4 }}>
-              <div className="pfp" style={{ position: 'relative', width: 170, height: 230, flex: '0 0 auto', zIndex: 1, overflow: 'hidden', borderRadius: 10, marginRight: 0 }} aria-hidden>
-                <Image src={eastImg} alt={`${eastName} profile`} width={680} height={920} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} quality={90} />
-                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 10, border: winnerSide === 'east' ? '3px solid #e11d48' : '1px solid rgba(225,29,72,0.7)', boxShadow: winnerSide === 'east' ? '0 8px 28px rgba(225,29,72,0.22)' : '0 3px 8px rgba(225,29,72,0.08)'}} />
-                {winnerSide === 'east' && (
-                  <div style={{ position: 'absolute', top: -6, left: -6, background: '#10b981', color: '#fff', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>W</div>
-                )}
-              </div>
+              {eastId ? (
+                <Link href={`/rikishi/${eastId}`}>
+                  <a title={`View ${eastName} profile`} style={{ display: 'inline-block', textDecoration: 'none', color: 'inherit' }}>
+                    <div className="pfp" style={{ position: 'relative', width: 170, height: 230, flex: '0 0 auto', zIndex: 1, overflow: 'hidden', borderRadius: 10, marginRight: 0 }} aria-hidden>
+                      <Image src={eastImg} alt={`${eastName} profile`} width={680} height={920} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} quality={90} />
+                      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 10, border: winnerSide === 'east' ? '3px solid #e11d48' : '1px solid rgba(225,29,72,0.7)', boxShadow: winnerSide === 'east' ? '0 8px 28px rgba(225,29,72,0.22)' : '0 3px 8px rgba(225,29,72,0.08)'}} />
+                      {winnerSide === 'east' && (
+                        <div style={{ position: 'absolute', top: -6, left: -6, background: '#10b981', color: '#fff', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>W</div>
+                      )}
+                    </div>
+                  </a>
+                </Link>
+              ) : (
+                <div className="pfp" style={{ position: 'relative', width: 170, height: 230, flex: '0 0 auto', zIndex: 1, overflow: 'hidden', borderRadius: 10, marginRight: 0 }} aria-hidden>
+                  <Image src={eastImg} alt={`${eastName} profile`} width={680} height={920} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} quality={90} />
+                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 10, border: winnerSide === 'east' ? '3px solid #e11d48' : '1px solid rgba(225,29,72,0.7)', boxShadow: winnerSide === 'east' ? '0 8px 28px rgba(225,29,72,0.22)' : '0 3px 8px rgba(225,29,72,0.08)'}} />
+                  {winnerSide === 'east' && (
+                    <div style={{ position: 'absolute', top: -6, left: -6, background: '#10b981', color: '#fff', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>W</div>
+                  )}
+                </div>
+              )}
 
               <div style={{ textAlign: 'left', marginTop: 2 }}>
                 {eastDetails && (

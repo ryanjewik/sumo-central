@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Avatar from '@mui/joy/Avatar';
 import Image from 'next/image';
+import Link from 'next/link';
 import Box from '@mui/joy/Box';
 import List from '@mui/joy/List';
 import ListItem from '@mui/joy/ListItem';
@@ -33,6 +34,8 @@ type NormalizedMatch = {
   eastImage?: string | null;
   westImage?: string | null;
   id?: string | number;
+  eastId?: string | number | null;
+  westId?: string | number | null;
 };
 
 const sampleMatches = [
@@ -160,6 +163,10 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
   const eastImage = getString(m['east'] && typeof m['east'] === 'object' ? (m['east'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'east_image', 'east_photo', 'east_profile') ?? ((m['east_rikishi'] && typeof m['east_rikishi'] === 'object') ? getString(m['east_rikishi'] as RawMatch, 's3_url', 's3', 'image', 'pfp_url', 'image_url') : null) ?? null;
   const westImage = getString(m['west'] && typeof m['west'] === 'object' ? (m['west'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'west_image', 'west_photo', 'west_profile') ?? ((m['west_rikishi'] && typeof m['west_rikishi'] === 'object') ? getString(m['west_rikishi'] as RawMatch, 's3_url', 's3', 'image', 'pfp_url', 'image_url') : null) ?? null;
 
+  // extract rikishi ids when available so we can link shikonas/pfps
+  const eastId = (m['east_rikishi_id'] ?? m['eastId'] ?? m['east_id'] ?? (m['east'] && typeof m['east'] === 'object' ? (m['east'] as RawMatch)['id'] : undefined)) as string | number | undefined;
+  const westId = (m['west_rikishi_id'] ?? m['westId'] ?? m['west_id'] ?? (m['west'] && typeof m['west'] === 'object' ? (m['west'] as RawMatch)['id'] : undefined)) as string | number | undefined;
+
     // build a safe fallback id only when at least one side has a name
     const constructedId = (m['east_shikona'] ?? m['eastName'] ?? (m['east'] && (m['east'] as RawMatch)['name'])) && (m['west_shikona'] ?? m['westName'] ?? (m['west'] && (m['west'] as RawMatch)['name']))
       ? `${m['east_shikona'] ?? m['eastName'] ?? (m['east'] && (m['east'] as RawMatch)['name'])}-${m['west_shikona'] ?? m['westName'] ?? (m['west'] && (m['west'] as RawMatch)['name'])}-${m['bout'] ?? m['match_number'] ?? ''}`
@@ -188,6 +195,8 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
       eastImage,
       westImage,
       id: resolvedId,
+      eastId: eastId ?? null,
+      westId: westId ?? null,
     };
   };
 
@@ -356,6 +365,8 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                 const rawAvatarWest: unknown = match.westImage ?? (match.raw && (match.raw['west_rikishi'] as RawMatch)?.s3_url) ?? (match.raw && (match.raw['west_rikishi'] as RawMatch)?.image_url) ?? null;
                 const avatarEast: string | null = (typeof rawAvatarEast === 'string' || typeof rawAvatarEast === 'number') ? String(rawAvatarEast) : null;
                 const avatarWest: string | null = (typeof rawAvatarWest === 'string' || typeof rawAvatarWest === 'number') ? String(rawAvatarWest) : null;
+                const westHref = match.westId ? `/rikishi/${match.westId}` : undefined;
+                const eastHref = match.eastId ? `/rikishi/${match.eastId}` : undefined;
                 const initials = (n?: string) => {
                   if (!n) return '';
                   const parts = String(n).trim().split(/\s+/);
@@ -418,9 +429,9 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                               (wrapperStyle as any).border = '1px solid rgba(0,0,0,0.6)';
                             }
                             if (avatarWest) {
-                              return (
-                                  <div style={wrapperStyle}>
-                                    <Image src={avatarWest} alt={westName} fill style={{ objectFit: 'cover', objectPosition: 'top', borderRadius: '50%' }} />
+                              const content = (
+                                <div style={wrapperStyle}>
+                                  <Image src={avatarWest} alt={westName} fill style={{ objectFit: 'cover', objectPosition: 'top', borderRadius: '50%' }} />
                                   {winnerSide === 'west' && (
                                     <Box sx={{ position: 'absolute', top: -6, right: -6, background: 'gold', color: '#222', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
                                       <span style={{ lineHeight: 1 }}>🏆</span>
@@ -428,6 +439,11 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                                   )}
                                 </div>
                               );
+                              return westHref ? (
+                                <Link href={westHref}>
+                                  <a style={{ display: 'inline-block', textDecoration: 'none', color: 'inherit' }}>{content}</a>
+                                </Link>
+                              ) : content;
                             }
                             return (
                               <div style={wrapperStyle}>
@@ -456,7 +472,20 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                             maxWidth: '100%'
                           }}
                         >
-                          {westName} vs {eastName}
+                          {match.westId ? (
+                            <Link href={`/rikishi/${match.westId}`}>
+                              <a style={{ textDecoration: 'none', color: 'inherit', fontWeight: 700 }}>{westName}</a>
+                            </Link>
+                          ) : (
+                            <span style={{ fontWeight: 700 }}>{westName}</span>
+                          )} {' '}vs{' '}
+                          {match.eastId ? (
+                            <Link href={`/rikishi/${match.eastId}`}>
+                              <a style={{ textDecoration: 'none', color: 'inherit', fontWeight: 700 }}>{eastName}</a>
+                            </Link>
+                          ) : (
+                            <span style={{ fontWeight: 700 }}>{eastName}</span>
+                          )}
                         </Typography>
                         <Typography
                           className="app-text"
@@ -499,7 +528,7 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                               (wrapperStyle as any).border = '1px solid rgba(0,0,0,0.6)';
                             }
                             if (avatarEast) {
-                              return (
+                              const content = (
                                 <div style={wrapperStyle}>
                                   <Image src={avatarEast} alt={eastName} fill style={{ objectFit: 'cover', objectPosition: 'top', borderRadius: '50%' }} />
                                   {winnerSide === 'east' && (
@@ -509,6 +538,11 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                                   )}
                                 </div>
                               );
+                              return eastHref ? (
+                                <Link href={eastHref}>
+                                  <a style={{ display: 'inline-block', textDecoration: 'none', color: 'inherit' }}>{content}</a>
+                                </Link>
+                              ) : content;
                             }
                             return (
                               <div style={wrapperStyle}>

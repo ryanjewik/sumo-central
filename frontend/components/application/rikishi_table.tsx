@@ -3,6 +3,7 @@
 //import React from "react";
 import { Table, TableCard } from "./table/table"; // adjust import if path differs
 import Image from 'next/image';
+import Link from 'next/link';
 
 const columns = [
   { id: "profile", label: "Profile" },
@@ -110,23 +111,25 @@ export function RikishiTable({ topRikishiOrdered }: RikishiTableProps) {
                   if (column.id === "profile") {
                     return (
                       <Table.Cell className={`${cellBg} ${cellBorder}`}>
-                          <div style={{ width: 32, height: 32, position: 'relative', borderRadius: '50%', overflow: 'hidden' }}>
-                            <Image src={String(item.profile ?? '/sumo_logo.png')} alt={String(item.name)} fill style={{ objectFit: 'cover' }} />
-                          </div>
-                        </Table.Cell>
+                        <div style={{ width: 40, height: 40, position: 'relative', borderRadius: '50%', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}>
+                          <Link href={`/rikishi/${item.id}`} passHref>
+                            <a aria-label={`View profile for ${String(item.name)}`} style={{ display: 'block', width: '100%', height: '100%' }}>
+                              <Image src={String(item.profile ?? '/sumo_logo.png')} alt={String(item.name)} fill style={{ objectFit: 'cover' }} />
+                            </a>
+                          </Link>
+                        </div>
+                      </Table.Cell>
                     );
                   }
                   if (column.id === 'name') {
                     return (
                       <Table.Cell className={`${cellBg} ${cellBorder}`}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <a
-                            href={`/rikishi/${item.id}`}
-                            style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}
-                            title={`View profile for ${String(item.name)}`}
-                          >
-                            <span style={{ fontWeight: 700 }}>{String(item.name)}</span>
-                          </a>
+                                <Link href={`/rikishi/${item.id}`} passHref>
+                                  <a style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }} title={`View profile for ${String(item.name)}`}>
+                                    <span style={{ fontWeight: 700 }}>{String(item.name)}</span>
+                                  </a>
+                                </Link>
                           <span style={{ fontSize: 12, color: '#563861', background: '#fff2f6', padding: '2px 6px', borderRadius: 8 }}>{String(item.rank)}</span>
                         </div>
                       </Table.Cell>

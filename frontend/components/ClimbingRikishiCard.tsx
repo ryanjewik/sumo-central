@@ -2,6 +2,7 @@
 
 import React from "react";
 import Image from 'next/image';
+import Link from 'next/link';
 import RikishiWinLossSparkline from '../components/sparkline';
 
 interface RikishiInfo {
@@ -169,17 +170,37 @@ const ClimbingRikishiCard: React.FC<ClimbingRikishiCardProps> = ({ rikishi }) =>
         }}
       >
         {/* profile image: prefer backend-provided keys */}
-        <div style={{ width: 70, height: 70, position: 'relative', borderRadius: '50%', overflow: 'hidden', border: '3px solid #388eec', background: '#fff' }}>
-          <Image
-            src={String(r.s3_url ?? r.pfp_url ?? r.image_url ?? r.profile_image ?? r.photo ?? '/sumo_logo.png')}
-            alt={`${name} profile`}
-            fill
-            style={{ objectFit: 'cover', borderRadius: '50%' }}
-            sizes="70px"
-          />
-        </div>
-        <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#563861', textAlign: 'center' }}>{name}</div>
-        <div style={{ fontSize: '0.95rem', color: '#388eec', textAlign: 'center' }}>{rank}</div>
+        {rikishiIdValue ? (
+          <Link href={`/rikishi/${rikishiIdValue}`}>
+            <a title={`View ${name} profile`} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 70, height: 70, position: 'relative', borderRadius: '50%', overflow: 'hidden', border: '3px solid #388eec', background: '#fff' }}>
+                <Image
+                  src={String(r.s3_url ?? r.pfp_url ?? r.image_url ?? r.profile_image ?? r.photo ?? '/sumo_logo.png')}
+                  alt={`${name} profile`}
+                  fill
+                  style={{ objectFit: 'cover', borderRadius: '50%' }}
+                  sizes="70px"
+                />
+              </div>
+              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#563861', textAlign: 'center' }}>{name}</div>
+              <div style={{ fontSize: '0.95rem', color: '#388eec', textAlign: 'center' }}>{rank}</div>
+            </a>
+          </Link>
+        ) : (
+          <>
+            <div style={{ width: 70, height: 70, position: 'relative', borderRadius: '50%', overflow: 'hidden', border: '3px solid #388eec', background: '#fff' }}>
+              <Image
+                src={String(r.s3_url ?? r.pfp_url ?? r.image_url ?? r.profile_image ?? r.photo ?? '/sumo_logo.png')}
+                alt={`${name} profile`}
+                fill
+                style={{ objectFit: 'cover', borderRadius: '50%' }}
+                sizes="70px"
+              />
+            </div>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#563861', textAlign: 'center' }}>{name}</div>
+            <div style={{ fontSize: '0.95rem', color: '#388eec', textAlign: 'center' }}>{rank}</div>
+          </>
+        )}
         {/* Rikishi Stats removed */}
       </div>
       <div

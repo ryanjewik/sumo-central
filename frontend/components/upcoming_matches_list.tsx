@@ -6,6 +6,7 @@ import ListItem from '@mui/joy/ListItem';
 import ListItemButton from '@mui/joy/ListItemButton';
 import Typography from '@mui/joy/Typography';
 import Image from 'next/image';
+import Link from 'next/link';
 import { ProgressBar } from "./base/progress-indicators/progress-indicators";
 
 
@@ -248,15 +249,23 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                     {/* Left and right columns: name + rank above a larger avatar */}
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, width: '100%' }}>
                       <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.5, width: 100 }}>
-                        <AutoFitText text={rikishi1} maxPx={18} minPx={10} sx={{ fontWeight: 600, maxWidth: '100px', textAlign: 'center' }} />
+                        {westId ? (
+                          <Link href={`/rikishi/${westId}`}>
+                            <a style={{ textDecoration: 'none', color: 'inherit' }}>
+                              <AutoFitText text={rikishi1} maxPx={18} minPx={10} sx={{ fontWeight: 600, maxWidth: '100px', textAlign: 'center' }} />
+                            </a>
+                          </Link>
+                        ) : (
+                          <AutoFitText text={rikishi1} maxPx={18} minPx={10} sx={{ fontWeight: 600, maxWidth: '100px', textAlign: 'center' }} />
+                        )}
                         <AutoFitText text={rikishi1Rank || 'NA'} maxPx={14} minPx={10} sx={{ color: '#7a4b7a', fontWeight: 500, maxWidth: '120px' }} />
                         {/* slightly smaller avatar to avoid bleeding outside tab */}
                         <Box sx={{ width: 44, height: 44, mt: 0.5, overflow: 'hidden', borderRadius: '50%' }}>
                           {(() => {
-                            const westId = getIdString(match, 'west_rikishi_id', 'westId', 'rikishi1_id');
                             const nestedWest = (match as Record<string, unknown>)['west_rikishi'] as Record<string, unknown> | undefined;
                             const src = getString(match, 'west_image', 'west_image_url', 'west_photo') ?? (nestedWest ? String(nestedWest['s3_url'] ?? nestedWest['image_url'] ?? nestedWest['pfp_url']) : null) ?? '/sumo_logo.png';
-                            return (
+                            const href = westId ? `/rikishi/${westId}` : undefined;
+                            const img = (
                               <ImageWithFallback
                                 src={src}
                                 alt={`${rikishi1} profile`}
@@ -266,6 +275,11 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                                 quality={85}
                               />
                             );
+                            return href ? (
+                              <Link href={href}>
+                                <a style={{ display: 'inline-block', textDecoration: 'none', color: 'inherit' }}>{img}</a>
+                              </Link>
+                            ) : img;
                           })()}
                         </Box>
                       </Box>
@@ -376,15 +390,23 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                       </Box>
 
                       <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.5, width: 100 }}>
-                        <AutoFitText text={rikishi2} maxPx={18} minPx={10} sx={{ fontWeight: 600, maxWidth: '100px', textAlign: 'center' }} />
+                        {eastId ? (
+                          <Link href={`/rikishi/${eastId}`}>
+                            <a style={{ textDecoration: 'none', color: 'inherit' }}>
+                              <AutoFitText text={rikishi2} maxPx={18} minPx={10} sx={{ fontWeight: 600, maxWidth: '100px', textAlign: 'center' }} />
+                            </a>
+                          </Link>
+                        ) : (
+                          <AutoFitText text={rikishi2} maxPx={18} minPx={10} sx={{ fontWeight: 600, maxWidth: '100px', textAlign: 'center' }} />
+                        )}
                         <AutoFitText text={rikishi2Rank || 'NA'} maxPx={14} minPx={10} sx={{ color: '#7a4b7a', fontWeight: 500, maxWidth: '120px' }} />
                         {/* slightly smaller avatar to avoid bleeding outside tab */}
                         <Box sx={{ width: 44, height: 44, mt: 0.5, overflow: 'hidden', borderRadius: '50%' }}>
                           {(() => {
-                            const eastId = getIdString(match, 'east_rikishi_id', 'eastId', 'rikishi2_id');
                             const nestedEast = (match as Record<string, unknown>)['east_rikishi'] as Record<string, unknown> | undefined;
                             const src = getString(match, 'east_image', 'east_image_url', 'east_photo') ?? (nestedEast ? String(nestedEast['s3_url'] ?? nestedEast['image_url'] ?? nestedEast['pfp_url']) : null) ?? '/sumo_logo.png';
-                            return (
+                            const href = eastId ? `/rikishi/${eastId}` : undefined;
+                            const img = (
                               <ImageWithFallback
                                 src={src}
                                 alt={`${rikishi2} profile`}
@@ -394,6 +416,11 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                                 quality={85}
                               />
                             );
+                            return href ? (
+                              <Link href={href}>
+                                <a style={{ display: 'inline-block', textDecoration: 'none', color: 'inherit' }}>{img}</a>
+                              </Link>
+                            ) : img;
                           })()}
                         </Box>
                       </Box>
