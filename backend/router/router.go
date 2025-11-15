@@ -58,4 +58,8 @@ func Register(r *gin.Engine, app *handlers.App) {
 
 	// Protected actions (require JWT)
 	r.POST("/matches/:id/vote", app.JWTMiddleware(), app.Vote)
+	// Read vote counts
+	r.GET("/matches/:id/votes", app.GetMatchVotes)
+	// WebSocket subscription for low-latency match updates
+	r.GET("/matches/:id/ws", app.MatchUpdatesWS)
 }

@@ -244,6 +244,209 @@ func (a *App) Home(c *gin.Context) {
 							}
 						}
 					}
+
+					// attach canonical composite id for frontend convenience
+					if id, ok := buildCanonicalFromMap(m); ok {
+						m["canonical_id"] = strconv.FormatInt(id, 10)
+					} else {
+						toStr := func(v interface{}) string {
+							if v == nil {
+								return ""
+							}
+							switch t := v.(type) {
+							case int32:
+								return strconv.FormatInt(int64(t), 10)
+							case int64:
+								return strconv.FormatInt(t, 10)
+							case float64:
+								return strconv.FormatInt(int64(t), 10)
+							case string:
+								return t
+							default:
+								return ""
+							}
+						}
+						basho := toStr(m["basho_id"])
+						if basho == "" {
+							basho = toStr(m["basho"])
+						}
+						if basho == "" {
+							basho = toStr(m["tournament_id"])
+						}
+						day := toStr(m["day"])
+						if day == "" {
+							day = toStr(m["Day"])
+						}
+						if day == "" {
+							day = toStr(m["match_day"])
+						}
+						matchNo := toStr(m["match_number"])
+						if matchNo == "" {
+							matchNo = toStr(m["matchNo"])
+						}
+						if matchNo == "" {
+							matchNo = toStr(m["matchNumber"])
+						}
+						east := toStr(m["east_rikishi_id"])
+						if east == "" {
+							east = toStr(m["eastId"])
+						}
+						if east == "" {
+							east = toStr(m["east_id"])
+						}
+						if east == "" {
+							east = toStr(m["rikishi2_id"])
+						}
+						west := toStr(m["west_rikishi_id"])
+						if west == "" {
+							west = toStr(m["westId"])
+						}
+						if west == "" {
+							west = toStr(m["west_id"])
+						}
+						if west == "" {
+							west = toStr(m["rikishi1_id"])
+						}
+						if basho != "" && day != "" && matchNo != "" && east != "" && west != "" {
+							m["canonical_id"] = basho + day + matchNo + east + west
+						}
+					}
+				}
+			}
+
+			// attach canonical composite id for frontend convenience
+			if id, ok := buildCanonicalFromMap(m); ok {
+				m["canonical_id"] = strconv.FormatInt(id, 10)
+			} else {
+				toStr := func(v interface{}) string {
+					if v == nil {
+						return ""
+					}
+					switch t := v.(type) {
+					case int32:
+						return strconv.FormatInt(int64(t), 10)
+					case int64:
+						return strconv.FormatInt(t, 10)
+					case float64:
+						return strconv.FormatInt(int64(t), 10)
+					case string:
+						return t
+					default:
+						return ""
+					}
+				}
+				basho := toStr(m["basho_id"])
+				if basho == "" {
+					basho = toStr(m["basho"])
+				}
+				if basho == "" {
+					basho = toStr(m["tournament_id"])
+				}
+				day := toStr(m["day"])
+				if day == "" {
+					day = toStr(m["Day"])
+				}
+				if day == "" {
+					day = toStr(m["match_day"])
+				}
+				matchNo := toStr(m["match_number"])
+				if matchNo == "" {
+					matchNo = toStr(m["matchNo"])
+				}
+				if matchNo == "" {
+					matchNo = toStr(m["matchNumber"])
+				}
+				east := toStr(m["east_rikishi_id"])
+				if east == "" {
+					east = toStr(m["eastId"])
+				}
+				if east == "" {
+					east = toStr(m["east_id"])
+				}
+				if east == "" {
+					east = toStr(m["rikishi2_id"])
+				}
+				west := toStr(m["west_rikishi_id"])
+				if west == "" {
+					west = toStr(m["westId"])
+				}
+				if west == "" {
+					west = toStr(m["west_id"])
+				}
+				if west == "" {
+					west = toStr(m["rikishi1_id"])
+				}
+				if basho != "" && day != "" && matchNo != "" && east != "" && west != "" {
+					m["canonical_id"] = basho + day + matchNo + east + west
+				}
+			}
+
+			// attach canonical composite id if possible so frontends can use a
+			// stable single identifier (basho+day+match+east+west)
+			if id, ok := buildCanonicalFromMap(m); ok {
+				m["canonical_id"] = strconv.FormatInt(id, 10)
+			} else {
+				// fallback: build a string composite without requiring int parse
+				toStr := func(v interface{}) string {
+					if v == nil {
+						return ""
+					}
+					switch t := v.(type) {
+					case int32:
+						return strconv.FormatInt(int64(t), 10)
+					case int64:
+						return strconv.FormatInt(t, 10)
+					case float64:
+						return strconv.FormatInt(int64(t), 10)
+					case string:
+						return t
+					default:
+						return ""
+					}
+				}
+				basho := toStr(m["basho_id"])
+				if basho == "" {
+					basho = toStr(m["basho"])
+				}
+				if basho == "" {
+					basho = toStr(m["tournament_id"])
+				}
+				day := toStr(m["day"])
+				if day == "" {
+					day = toStr(m["Day"])
+				}
+				if day == "" {
+					day = toStr(m["match_day"])
+				}
+				matchNo := toStr(m["match_number"])
+				if matchNo == "" {
+					matchNo = toStr(m["matchNo"])
+				}
+				if matchNo == "" {
+					matchNo = toStr(m["matchNumber"])
+				}
+				east := toStr(m["east_rikishi_id"])
+				if east == "" {
+					east = toStr(m["eastId"])
+				}
+				if east == "" {
+					east = toStr(m["east_id"])
+				}
+				if east == "" {
+					east = toStr(m["rikishi2_id"])
+				}
+				west := toStr(m["west_rikishi_id"])
+				if west == "" {
+					west = toStr(m["westId"])
+				}
+				if west == "" {
+					west = toStr(m["west_id"])
+				}
+				if west == "" {
+					west = toStr(m["rikishi1_id"])
+				}
+				if basho != "" && day != "" && matchNo != "" && east != "" && west != "" {
+					m["canonical_id"] = basho + day + matchNo + east + west
 				}
 			}
 		}
@@ -533,6 +736,79 @@ func (a *App) Upcoming(c *gin.Context) {
 				}
 			}
 			doc["upcoming_matches"] = raw
+		}
+
+		// Ensure canonical_id exists for each upcoming match (robust fallback)
+		if raw2, ok := doc["upcoming_matches"].(bson.A); ok && len(raw2) > 0 {
+			for i := range raw2 {
+				if m, ok := raw2[i].(bson.M); ok {
+					if _, present := m["canonical_id"]; !present {
+						toStr := func(v interface{}) string {
+							if v == nil {
+								return ""
+							}
+							switch t := v.(type) {
+							case int32:
+								return strconv.FormatInt(int64(t), 10)
+							case int64:
+								return strconv.FormatInt(t, 10)
+							case float64:
+								return strconv.FormatInt(int64(t), 10)
+							case string:
+								return t
+							default:
+								return ""
+							}
+						}
+						basho := toStr(m["basho_id"])
+						if basho == "" {
+							basho = toStr(m["basho"])
+						}
+						if basho == "" {
+							basho = toStr(m["tournament_id"])
+						}
+						day := toStr(m["day"])
+						if day == "" {
+							day = toStr(m["Day"])
+						}
+						if day == "" {
+							day = toStr(m["match_day"])
+						}
+						matchNo := toStr(m["match_number"])
+						if matchNo == "" {
+							matchNo = toStr(m["matchNo"])
+						}
+						if matchNo == "" {
+							matchNo = toStr(m["matchNumber"])
+						}
+						east := toStr(m["east_rikishi_id"])
+						if east == "" {
+							east = toStr(m["eastId"])
+						}
+						if east == "" {
+							east = toStr(m["east_id"])
+						}
+						if east == "" {
+							east = toStr(m["rikishi2_id"])
+						}
+						west := toStr(m["west_rikishi_id"])
+						if west == "" {
+							west = toStr(m["westId"])
+						}
+						if west == "" {
+							west = toStr(m["west_id"])
+						}
+						if west == "" {
+							west = toStr(m["rikishi1_id"])
+						}
+						if basho != "" && day != "" && matchNo != "" && east != "" && west != "" {
+							m["canonical_id"] = basho + day + matchNo + east + west
+						}
+					}
+					raw2[i] = m
+				}
+			}
+			doc["upcoming_matches"] = raw2
 		}
 	}
 

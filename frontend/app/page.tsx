@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState, Suspense } from 'react'
 //import { TableCard, Table } from './components/application/table/table';
 import { RikishiTable } from '../components/application/rikishi_table';
 import KimariteRadarChart from "../components/application/charts/KimariteRadarChart";
@@ -16,9 +16,15 @@ import RecentMatchesList from '../components/recent_matches_list';
 import NavbarSelection from '../components/horizontal_list';
 import ForumSection from '../components/ForumSection';
 import HighlightedRikishiCard from '../components/HighlightedRikishiCard';
-import HighlightedMatchCard from '../components/HighlightedMatchCard';
+import nextDynamic from 'next/dynamic';
+// Dynamically load large client-only components to avoid importing client-side
+// libraries during server prerender. Using ssr: false ensures these modules
+// are only evaluated in the browser which avoids initialization/circular
+// issues during build prerender.
+const HighlightedMatchCard = nextDynamic(() => import('../components/HighlightedMatchCard'), { ssr: false });
 import SumoTicketsCard from '../components/SumoTicketsCard';
-import UpcomingMatchesList from '../components/upcoming_matches_list';
+const UpcomingMatchesList = nextDynamic(() => import('../components/upcoming_matches_list'), { ssr: false });
+const DynamicRecentMatches = nextDynamic(() => import('../components/recent_matches_list'), { ssr: false });
 // Image intentionally not used in this file directly
 
 function InnerApp() {
@@ -193,11 +199,15 @@ function InnerApp() {
     if (Array.isArray(rawFromHomepage) && rawFromHomepage.length > 0) {
       const rawMatches: Record<string, unknown>[] = rawFromHomepage;
       const normalized = rawMatches.map((m: Record<string, unknown>, idx: number) => {
+        // keep the original id as a string so downstream components can
+        // compute canonical ids from other fields. Avoid coercing to a
+        // numeric short id which can lead to subscribing to match_updates:<n>.
         const id = getString(m, 'match_number') ?? getString(m, 'id') ?? String(idx + 1);
         const rikishiWest = getString(m, 'westshikona', 'west_shikona', 'west_name', 'west', 'west_name_local');
         const rikishiEast = getString(m, 'eastshikona', 'east_shikona', 'east_name', 'east', 'east_name_local');
         return {
-          id: Number(id),
+          // preserve id as string to allow canonical reconstruction later
+          id: String(id),
           rikishi1: rikishiWest || rikishiEast || 'TBD',
           rikishi2: rikishiEast || rikishiWest || 'TBD',
           rikishi1Rank: getString(m, 'west_rank') ?? getString(m, 'west_rank_label'),
@@ -213,6 +223,8 @@ function InnerApp() {
             // preserve nested rikishi objects (if enrichment has already run server-side)
             west_rikishi: (m as any)['west_rikishi'] ?? (m as any)['westRikishi'] ?? undefined,
             east_rikishi: (m as any)['east_rikishi'] ?? (m as any)['eastRikishi'] ?? undefined,
+            // server may already attach a canonical composite id; preserve it
+            canonical_id: getString(m, 'canonical_id', 'canonicalId') ?? undefined,
         };
       });
 
@@ -244,13 +256,14 @@ function InnerApp() {
           return;
         }
       const doc = await res.json();
-    const rawMatches: Record<string, unknown>[] = Array.isArray(doc?.upcoming_matches) ? doc.upcoming_matches : [];
+        const rawMatches: Record<string, unknown>[] = Array.isArray(doc?.upcoming_matches) ? doc.upcoming_matches : [];
         const normalized = rawMatches.map((m: Record<string, unknown>, idx: number) => {
+          // preserve original id as string instead of coercing to numeric
           const id = getString(m, 'match_number') ?? getString(m, 'id') ?? String(idx + 1);
           const rikishiWest = getString(m, 'westshikona', 'west_shikona', 'west_name', 'west', 'west_name_local');
           const rikishiEast = getString(m, 'eastshikona', 'east_shikona', 'east_name', 'east', 'east_name_local');
           return {
-            id: Number(id),
+            id: String(id),
             rikishi1: rikishiWest || rikishiEast || 'TBD',
             rikishi2: rikishiEast || rikishiWest || 'TBD',
             rikishi1Rank: getString(m, 'west_rank') ?? getString(m, 'west_rank_label'),
@@ -266,6 +279,8 @@ function InnerApp() {
             // preserve nested rikishi objects if provided by the basho document
             west_rikishi: (m as any)['west_rikishi'] ?? (m as any)['westRikishi'] ?? undefined,
             east_rikishi: (m as any)['east_rikishi'] ?? (m as any)['eastRikishi'] ?? undefined,
+            // server may already attach a canonical composite id; preserve it
+            canonical_id: getString(m, 'canonical_id', 'canonicalId') ?? undefined,
           };
         });
 
@@ -643,8 +658,21 @@ function InnerApp() {
                 onOpenLogin={() => setLoginOpen(true)}
               />
             </div>
-            <RecentMatchesList matches={homepage?.recent_matches ? Object.values(homepage.recent_matches) : undefined} />
+            {/* Load recent matches client-side too to avoid server-time import of client-only libs */}
+            <div>
+              {/* recent matches is a fairly large client component; load without SSR */}
+              {/**
+               * We use a dynamic import above for this component as well (ssr:false)
+               * so it will only be evaluated client-side and won't pull its
+               * dependencies into server prerender.
+               */}
+              <React.Suspense fallback={<div>Loading recent matches...</div>}>
+                <DynamicRecentMatches matches={homepage?.recent_matches ? Object.values(homepage.recent_matches) : undefined} />
+              </React.Suspense>
+            </div>
           </div>
+          {/* Global login dialog controlled by this page so any child can open it via onOpenLogin */}
+          <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
         </div>
       </div>
     </>
@@ -658,3 +686,9 @@ export default function App() {
     </AuthProvider>
   );
 }
+
+// Force dynamic rendering for this page during the build to avoid prerender-time
+// circular-initialization issues. This is a small, safe change that unblocks the
+// production build while we investigate the root cause (module import cycle)
+// that produced "Cannot access 'J' before initialization" during prerender.
+export const dynamic = 'force-dynamic';

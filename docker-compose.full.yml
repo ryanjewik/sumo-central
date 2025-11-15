@@ -85,6 +85,7 @@ services:
       - DB_NAME=${DB_NAME}
       # JWT secret for signing tokens in dev. In production set a secure secret via env.
       - JWT_SECRET=ryanhideo
+      - REDIS_URL=redis://redis:6379/0
     networks:
       - sumo_net
       - airflow
@@ -297,6 +298,15 @@ services:
     restart: "no"
 
   # -------------------- Airflow services --------------------
+  # -------------------- Redis (for realtime vote counts) --------------------
+  redis:
+    image: redis:7
+    container_name: sumo_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - sumo_net
   airflow-webserver:
     <<: *airflow-common
     depends_on:

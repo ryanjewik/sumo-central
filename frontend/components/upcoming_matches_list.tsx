@@ -24,6 +24,7 @@ interface UpcomingMatchesListProps {
 
 
 import { useState } from 'react';
+import { fetchWithAuth } from '../lib/auth';
 
 // Auto-fit a single-line text by shrinking font size until it fits within its container.
 const AutoFitText: React.FC<{ text: string; maxPx?: number; minPx?: number; sx?: any }> = ({ text, maxPx = 14, minPx = 10, sx }) => {
@@ -59,26 +60,44 @@ import { useAuth } from '../context/AuthContext';
 
 const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date, onOpenLogin }) => {
   const { user } = useAuth();
-  // Track votes for each match: { [matchId]: { west: number; east: number } }
-  const [votes, setVotes] = useState<Record<number, { west: number; east: number }>>({});
+  // liveCounts: per-match mapping of rikishiId -> count
+  const [liveCounts, setLiveCounts] = useState<Record<string, Record<string, number>>>({});
   // Track user's vote for each match: { [matchId]: 'west' | 'east' | undefined }
-  const [userVotes, setUserVotes] = useState<Record<number, 'west' | 'east' | undefined>>({});
+  const [userVotes, setUserVotes] = useState<Record<string, 'west' | 'east' | undefined>>({});
 
-  const handleVote = (matchId: number, side: 'west' | 'east') => {
-    setVotes(prev => {
-      const matchVotes = prev[matchId] || { west: 0, east: 0 };
-      const prevUserVote = userVotes[matchId];
-      // If user already voted for this side, do nothing
-      if (prevUserVote === side) return prev;
-      // Remove previous vote if exists, add new vote
-  const newVotes = { ...matchVotes };
-      if (prevUserVote) {
-        newVotes[prevUserVote] = Math.max(0, newVotes[prevUserVote] - 1);
+  const handleVote = async (matchId: string, side: 'west' | 'east', rikishiId?: string) => {
+    // Debug: log what id the upcoming list is attempting to vote for so we
+    // can trace mismatches between UI id and backend canonical ids.
+    try { console.debug('upcoming.vote', { matchId, side, rikishiId }); } catch (e) {}
+    if (!user) return;
+    if (!rikishiId) return;
+    try {
+      const res = await fetchWithAuth(`/api/matches/${encodeURIComponent(String(matchId))}/vote`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ winner: Number(rikishiId) })
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.result && data.result.counts) {
+        const mapped: Record<string, number> = {};
+        Object.entries(data.result.counts).forEach(([k, v]) => { mapped[String(k)] = Number(v || 0); });
+        setLiveCounts(prev => ({ ...prev, [String(matchId)]: mapped }));
+        setUserVotes(prev => ({ ...prev, [String(matchId)]: side }));
+        try {
+          // persist a lightweight client-side hint so the chosen button remains checked
+          // across refreshes even if auth refresh is slow. This is only a UI hint;
+          // authoritative state is still server-side.
+          const key = 'sumo_voted_matches_v1';
+          const raw = localStorage.getItem(key);
+          const obj = raw ? JSON.parse(raw) : {};
+          obj[String(matchId)] = side;
+          localStorage.setItem(key, JSON.stringify(obj));
+        } catch (e) {
+          // ignore storage errors
+        }
       }
-      newVotes[side] = newVotes[side] + 1;
-      return { ...prev, [matchId]: newVotes };
-    });
-    setUserVotes(prev => ({ ...prev, [matchId]: side }));
+    } catch (e) {
+      // ignore
+    }
   };
 
   // rikishi id -> image cache (s3_url preferred)
@@ -115,20 +134,109 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
     return undefined;
   };
 
+  // Build canonical match id like HighlightedMatchCard: basho_id + day + match_number + east + west
+  const buildCanonicalMatchId = (mm: any): string => {
+    // Build a strict composite canonical id only from explicit components.
+    // Do NOT treat a short numeric `id` field as canonical since many payloads
+    // populate `id` with a simple match number (1,2,3) which is NOT the
+    // canonical composite key we need for Redis/Postgres.
+    if (!mm) return '';
+    const basho = mm.basho_id ?? mm.basho ?? mm.tournament_id ?? mm.bashoId;
+    const day = mm.day ?? mm.Day ?? mm.match_day;
+    const matchNo = mm.match_number ?? mm.matchNumber ?? mm.matchNo ?? mm.num;
+    const east = getIdString(mm as Record<string, unknown>, 'east_rikishi_id', 'eastId', 'east_id', 'rikishi2_id', 'rikishi1_id') ?? (mm && mm.east_rikishi && String((mm.east_rikishi.id || mm.east_rikishi.rikishi_id) ?? ''));
+    const west = getIdString(mm as Record<string, unknown>, 'west_rikishi_id', 'westId', 'west_id', 'rikishi1_id', 'rikishi2_id') ?? (mm && mm.west_rikishi && String((mm.west_rikishi.id || mm.west_rikishi.rikishi_id) ?? ''));
+    if (!basho || !day || !matchNo || !east || !west) return '';
+    return String(basho) + String(day) + String(matchNo) + String(east) + String(west);
+  };
+
   // Populate initial random votes for matches (non-destructive)
   const serializedMatches = React.useMemo(() => JSON.stringify(matches), [matches]);
 
+  // Seed live counts and subscribe via websocket for live updates
   React.useEffect(() => {
-    const initial: Record<number, { west: number; east: number }> = {};
-    matches.forEach(m => {
-      const id = getNumber(m as Record<string, unknown>, 'id', 'matchId');
-      if (!id) return;
-      const west = Math.floor(Math.random() * 20) + 1;
-      const east = Math.floor(Math.random() * 20) + 1;
-      initial[id] = { west, east };
+    // hydrate any saved client-side votes (UI hint) so the checkmark remains across refresh
+    try {
+      const key = 'sumo_voted_matches_v1';
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, 'west' | 'east'>;
+        if (parsed && typeof parsed === 'object') {
+          setUserVotes(prev => ({ ...parsed, ...prev }));
+        }
+      }
+    } catch (e) { }
+
+    const sockets: WebSocket[] = [];
+    matches.forEach((m) => {
+      // prefer an explicit canonical id from the server if provided; otherwise construct canonical id from components
+    const canonical = getIdString(m as Record<string, unknown>, 'canonical_id', 'canonicalId') ?? buildCanonicalMatchId(m as any);
+    // Only use the constructed canonical id. If canonical components are missing
+    // we will skip seeding votes / websocket subscription rather than default
+    // to a short/local id to avoid writing to the wrong Redis keys.
+    if (!canonical) return;
+    const matchId = String(canonical);
+
+      (async () => {
+        try {
+    const res = await fetch(`/api/matches/${encodeURIComponent(matchId)}/votes`, { credentials: 'include' });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data && data.counts) {
+            const mapped: Record<string, number> = {};
+            Object.entries(data.counts).forEach(([k, v]) => { mapped[String(k)] = Number(v || 0); });
+            setLiveCounts(prev => ({ ...prev, [matchId]: mapped }));
+            // if the API returned this authenticated viewer's vote, set the user's button state
+            if (data && typeof data.user_vote !== 'undefined' && data.user_vote !== null && user) {
+              const uv = String(data.user_vote);
+              const westIdLocal = getIdString(m as Record<string, unknown>, 'west_rikishi_id', 'westId', 'rikishi1_id');
+              const eastIdLocal = getIdString(m as Record<string, unknown>, 'east_rikishi_id', 'eastId', 'rikishi2_id');
+              if (westIdLocal && uv === westIdLocal) setUserVotes(prev => ({ ...prev, [matchId]: 'west' }));
+              else if (eastIdLocal && uv === eastIdLocal) setUserVotes(prev => ({ ...prev, [matchId]: 'east' }));
+            }
+          }
+        } catch (e) { }
+      })();
+
+      try {
+        const envBackend = process.env.NEXT_PUBLIC_BACKEND_URL && process.env.NEXT_PUBLIC_BACKEND_URL !== '' ? process.env.NEXT_PUBLIC_BACKEND_URL : '';
+        let backendBase = envBackend || `${window.location.protocol}//${window.location.host}`;
+        if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && envBackend && envBackend.includes('gin-backend')) {
+          backendBase = `${window.location.protocol}//localhost:8080`;
+        }
+        const wsProto = backendBase.startsWith('https') ? 'wss' : 'ws';
+        const hostNoProto = backendBase.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const ws = new WebSocket(`${wsProto}://${hostNoProto}/matches/${encodeURIComponent(matchId)}/ws`);
+  ws.onopen = () => { try { console.debug(`WS open for upcoming match ${matchId} -> ${wsProto}://${hostNoProto}`); } catch {} };
+  ws.onmessage = (ev) => {
+          try {
+            const payload = JSON.parse(ev.data as string);
+            if (payload && payload.counts) {
+              const mapped: Record<string, number> = {};
+              Object.entries(payload.counts).forEach(([k, v]) => { mapped[String(k)] = Number(v || 0); });
+              setLiveCounts(prev => ({ ...prev, [matchId]: mapped }));
+            }
+            if (payload && payload.user && typeof payload.new !== 'undefined' && user) {
+              if (String(payload.user) === String(user.id)) {
+                // find whether new equals west or east and set userVotes accordingly
+                const westId = getIdString(m as Record<string, unknown>, 'west_rikishi_id', 'westId', 'rikishi1_id');
+                const eastId = getIdString(m as Record<string, unknown>, 'east_rikishi_id', 'eastId', 'rikishi2_id');
+                const chosen = String(payload.new);
+                if (String(westId) === chosen) setUserVotes(prev => ({ ...prev, [matchId]: 'west' }));
+                else if (String(eastId) === chosen) setUserVotes(prev => ({ ...prev, [matchId]: 'east' }));
+              }
+            }
+          } catch (e) {}
+        };
+        sockets.push(ws);
+      } catch (e) {}
     });
-    if (Object.keys(initial).length > 0) setVotes(prev => ({ ...initial, ...prev }));
-  }, [serializedMatches, matches]);
+
+    return () => { sockets.forEach(s => { try { s.close(); } catch {} }); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serializedMatches, user]);
+
+  
 
   // No client-side rikishi fetches: prefer server-provided nested `west_rikishi` / `east_rikishi` or top-level fields.
   // Small inline Image component that falls back to a local placeholder when the remote image fails
@@ -192,11 +300,17 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
           ) : (
             matches.map((match, idx) => {
               // normalize/derive commonly-used fields from the loose incoming shape
-              const id = getNumber(match, 'id', 'matchId');
-              if (!id) return null;
-              const matchVotes = votes[id] || { west: 0, east: 0 };
-              const totalVotes = matchVotes.west + matchVotes.east;
-              const percent = totalVotes === 0 ? 50 : Math.round((matchVotes.west / totalVotes) * 100);
+                // Accept either numeric or pre-built string ids (canonical) coming from backend
+                // Compute an effective match id consistent with the seeding/ws logic above
+                const canonical = getIdString(match as Record<string, unknown>, 'canonical_id', 'canonicalId') ?? buildCanonicalMatchId(match as any);
+                const explicitId = getIdString(match as Record<string, unknown>, 'id', 'matchId') ?? getString(match as Record<string, unknown>, 'id', 'matchId');
+                // Only allow a strict canonical numeric id for voting and websocket seeding.
+                // This prevents accidentally writing votes to legacy/short ids like "1".
+                const matchIdStrLocal = String(canonical || explicitId || '');
+                const apiMatchId = (canonical && /^\d+$/.test(String(canonical))) ? String(Number(canonical)) : '';
+                // Debug: log canonical vs explicit so we can diagnose why short ids appear
+                try { console.debug('upcoming.matchIds', { idx, canonical, explicitId, matchIdStrLocal, apiMatchId }); } catch {}
+              const countsForMatch = liveCounts[matchIdStrLocal];
 
               const aiRaw = (match as Record<string, unknown>)['ai_prediction'] ?? (match as Record<string, unknown>)['AI_prediction'] ?? (match as Record<string, unknown>)['aiPrediction'];
               let aiPred: number | undefined;
@@ -219,7 +333,7 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
               const rikishi2Rank = rawR2 ?? (nestedEast ? (String(nestedEast['current_rank'] ?? nestedEast['rank'] ?? 'NA')) : 'NA');
 
               return (
-                <ListItem key={String(id)} sx={{ p: 0, m: 0, listStyle: 'none', position: 'relative' }}>
+                <ListItem key={matchIdStrLocal} sx={{ p: 0, m: 0, listStyle: 'none', position: 'relative' }}>
                   <ListItemButton
                     className='app-text'
                     sx={{
@@ -290,14 +404,21 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                           <>
                             {/* votes count above the vote row */}
                             <Typography sx={{ fontSize: '1rem', color: '#563861', opacity: 0.95, mb: 0.3, fontWeight: 600, fontFamily: 'inherit' }}>
-                              {matchVotes.west + matchVotes.east} vote{(matchVotes.west + matchVotes.east) === 1 ? '' : 's'}
+                              {(() => {
+                                const westIdLocal = getIdString(match, 'west_rikishi_id', 'westId', 'rikishi1_id');
+                                const eastIdLocal = getIdString(match, 'east_rikishi_id', 'eastId', 'rikishi2_id');
+                                const westCount = (countsForMatch && westIdLocal) ? (countsForMatch[String(westIdLocal)] ?? 0) : (getNumber(match, 'west_votes', 'westVotes') ?? 0);
+                                const eastCount = (countsForMatch && eastIdLocal) ? (countsForMatch[String(eastIdLocal)] ?? 0) : (getNumber(match, 'east_votes', 'eastVotes') ?? 0);
+                                const total = westCount + eastCount;
+                                return `${total} vote${total === 1 ? '' : 's'}`;
+                              })()}
                             </Typography>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', justifyContent: 'center' }}>
                               <button
                                 style={{
-                                  background: userVotes[id] === 'west' ? '#e0709f' : '#e0709f',
+                                  background: userVotes[matchIdStrLocal] === 'west' ? '#e0709f' : '#e0709f',
                                   color: '#fff',
-                                  border: userVotes[id] === 'west'
+                                  border: userVotes[matchIdStrLocal] === 'west'
                                     ? '2px solid #c45e8b'
                                     : '2px solid #c45e8b',
                                   borderRadius: 8,
@@ -309,22 +430,29 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                                   transition: 'background 0.18s, border 0.18s',
                                   display: 'inline-block',
                                   position: 'relative',
-                                  boxShadow: userVotes[id] === 'west' ? '0 2px 6px #e0709faa' : '0 1px 2px #e0709f66',
+                                  boxShadow: userVotes[matchIdStrLocal] === 'west' ? '0 2px 6px #e0709faa' : '0 1px 2px #e0709f66',
                                 }}
-                                onClick={e => { e.stopPropagation(); handleVote(id, 'west'); }}
+                                onClick={e => { e.stopPropagation(); if (!apiMatchId) { try { console.warn('vote skipped: missing canonical match id for', match); } catch{}; return; } handleVote(apiMatchId, 'west', String(westId)); }}
                               >
-                                {userVotes[id] === 'west' ? '✔' : 'Vote'}
+                                {userVotes[matchIdStrLocal] === 'west' ? '✔' : 'Vote'}
                               </button>
 
                               <Box sx={{ width: 180, maxWidth: '60%' }}>
-                                <ProgressBar value={percent} className="h-3 bg-red-500" progressClassName="bg-blue-500" />
+                                <ProgressBar value={(() => {
+                                  const westIdLocal = getIdString(match, 'west_rikishi_id', 'westId', 'rikishi1_id');
+                                  const eastIdLocal = getIdString(match, 'east_rikishi_id', 'eastId', 'rikishi2_id');
+                                  const westCount = (countsForMatch && westIdLocal) ? (countsForMatch[String(westIdLocal)] ?? 0) : (getNumber(match, 'west_votes', 'westVotes') ?? 0);
+                                  const eastCount = (countsForMatch && eastIdLocal) ? (countsForMatch[String(eastIdLocal)] ?? 0) : (getNumber(match, 'east_votes', 'eastVotes') ?? 0);
+                                  const total = Math.max(1, westCount + eastCount);
+                                  return Math.round((westCount / total) * 100);
+                                })()} className="h-3 bg-red-500" progressClassName="bg-blue-500" />
                               </Box>
 
                               <button
                                 style={{
-                                  background: userVotes[id] === 'east' ? '#3ccf9a' : '#3ccf9a',
+                                  background: userVotes[matchIdStrLocal] === 'east' ? '#3ccf9a' : '#3ccf9a',
                                   color: '#fff',
-                                  border: userVotes[id] === 'east'
+                                  border: userVotes[matchIdStrLocal] === 'east'
                                     ? '2px solid #2aa97a'
                                     : '2px solid #2aa97a',
                                   borderRadius: 8,
@@ -336,11 +464,11 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                                   transition: 'background 0.18s, border 0.18s',
                                   display: 'inline-block',
                                   position: 'relative',
-                                  boxShadow: userVotes[id] === 'east' ? '0 2px 6px #3ccf9aaa' : '0 1px 2px #3ccf9a66',
+                                  boxShadow: userVotes[matchIdStrLocal] === 'east' ? '0 2px 6px #3ccf9aaa' : '0 1px 2px #3ccf9a66',
                                 }}
-                                onClick={e => { e.stopPropagation(); handleVote(id, 'east'); }}
+                                onClick={e => { e.stopPropagation(); if (!apiMatchId) { try { console.warn('vote skipped: missing canonical match id for', match); } catch{}; return; } handleVote(apiMatchId, 'east', String(eastId)); }}
                               >
-                                {userVotes[id] === 'east' ? '✔' : 'Vote'}
+                                {userVotes[matchIdStrLocal] === 'east' ? '✔' : 'Vote'}
                               </button>
                             </Box>
 

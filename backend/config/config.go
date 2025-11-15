@@ -20,6 +20,7 @@ type Config struct {
 	WebhookSecret string
 	WebhookDest   string
 	JWTSecret     string
+	RedisURL      string
 }
 
 func Load() Config {
@@ -37,6 +38,7 @@ func Load() Config {
 		WebhookSecret: os.Getenv("SUMO_WEBHOOK_SECRET"),
 		WebhookDest:   os.Getenv("SUMO_WEBHOOK_DEST"),
 		JWTSecret:     os.Getenv("JWT_SECRET"),
+		RedisURL:      os.Getenv("REDIS_URL"),
 	}
 }
 

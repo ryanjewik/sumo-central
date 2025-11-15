@@ -172,10 +172,24 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
       ? `${m['east_shikona'] ?? m['eastName'] ?? (m['east'] && (m['east'] as RawMatch)['name'])}-${m['west_shikona'] ?? m['westName'] ?? (m['west'] && (m['west'] as RawMatch)['name'])}-${m['bout'] ?? m['match_number'] ?? ''}`
       : undefined;
 
+    // Build canonical match id when backend id is not provided. Rule:
+    // basho_id + day + match_number + east_rikishi_id + west_rikishi_id (concatenated)
+    const buildCanonicalId = () => {
+      const basho = m['basho_id'] ?? (m['basho'] && (m['basho'] as any)['basho_id']) ?? m['bashoId'] ?? (m['basho'] as any)?.id ?? null;
+      const day = m['day'] ?? m['basho_day'] ?? m['day_number'] ?? null;
+      const matchNum = m['match_number'] ?? m['bout'] ?? m['bout_number'] ?? m['no'] ?? null;
+      const eId = eastId ?? null;
+      const wId = westId ?? null;
+      if (basho == null || day == null || matchNum == null || eId == null || wId == null) return null;
+      return String(basho) + String(day) + String(matchNum) + String(eId) + String(wId);
+    };
+
     const resolvedId = (() => {
-      const v = m['id'] ?? m['_id'] ?? m['match_id'] ?? constructedId;
-      if (typeof v === 'number' || typeof v === 'string') return v;
-      if (v != null) return String(v);
+      const explicit = m['id'] ?? m['_id'] ?? m['match_id'];
+      if (typeof explicit === 'number' || typeof explicit === 'string') return explicit;
+      const canonical = buildCanonicalId();
+      if (canonical) return canonical;
+      if (constructedId) return constructedId;
       return undefined;
     })();
 
@@ -201,6 +215,65 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
   };
 
   const normalized = itemsArray.map(normalize);
+
+  // live counts per match: { [matchId]: { [rikishiId]: count } }
+  const [liveCounts, setLiveCounts] = React.useState<Record<string, Record<string, number>>>({});
+
+  // seed counts and subscribe to per-match websocket channels for live updates
+  React.useEffect(() => {
+    const sockets: WebSocket[] = [];
+    normalized.forEach((nm) => {
+      const mid = nm.id;
+      if (!mid) return;
+      const matchId = String(mid);
+
+      // seed
+      (async () => {
+        try {
+          const res = await fetch(`/api/matches/${encodeURIComponent(matchId)}/votes`, { credentials: 'include' });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data && data.counts) {
+            const mapped: Record<string, number> = {};
+            Object.entries(data.counts).forEach(([k, v]) => { mapped[String(k)] = Number(v || 0); });
+            setLiveCounts(prev => ({ ...prev, [matchId]: mapped }));
+          }
+        } catch (e) {
+          // ignore
+        }
+      })();
+
+      // open websocket
+      try {
+        const envBackend = process.env.NEXT_PUBLIC_BACKEND_URL && process.env.NEXT_PUBLIC_BACKEND_URL !== '' ? process.env.NEXT_PUBLIC_BACKEND_URL : '';
+        let backendBase = envBackend || `${window.location.protocol}//${window.location.host}`;
+        if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && envBackend && envBackend.includes('gin-backend')) {
+          backendBase = `${window.location.protocol}//localhost:8080`;
+        }
+        const wsProto = backendBase.startsWith('https') ? 'wss' : 'ws';
+        const hostNoProto = backendBase.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const ws = new WebSocket(`${wsProto}://${hostNoProto}/matches/${encodeURIComponent(matchId)}/ws`);
+  ws.onopen = () => { try { console.debug(`WS open for recent match ${matchId} -> ${wsProto}://${hostNoProto}`); } catch {} };
+  ws.onmessage = (ev) => {
+          try {
+            const payload = JSON.parse(ev.data as string);
+            if (payload && payload.counts) {
+              const mapped: Record<string, number> = {};
+              Object.entries(payload.counts).forEach(([k, v]) => { mapped[String(k)] = Number(v || 0); });
+              setLiveCounts(prev => ({ ...prev, [matchId]: mapped }));
+            }
+            // if payload.user equals current viewer, optionally set their user vote (not tracked here)
+          } catch (e) {}
+        };
+        sockets.push(ws);
+      } catch (e) {
+        // ignore ws failure
+      }
+    });
+
+    return () => { sockets.forEach(s => { try { s.close(); } catch {} }); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(normalized)]);
 
   // If no explicit `date` prop is provided, try to resolve a single date for these recent matches
   // by fetching the basho document using basho_id found on the match objects. The basho document
@@ -354,11 +427,13 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                 const eastRank = match.eastRank ?? match.eastRank;
                 const westRank = match.westRank ?? match.westRank;
                 const kim = match.kim;
-                const eastVotes = match.eastVotes ?? 0;
-                const westVotes = match.westVotes ?? 0;
+                const matchId = String(match.id ?? '');
+                const counts = liveCounts[matchId];
+                const eastVotes = counts && match.eastId ? (counts[String(match.eastId)] ?? match.eastVotes ?? 0) : (match.eastVotes ?? 0);
+                const westVotes = counts && match.westId ? (counts[String(match.westId)] ?? match.westVotes ?? 0) : (match.westVotes ?? 0);
                 const total = Math.max(1, eastVotes + westVotes);
-                const eastPercent = Math.round(((match.eastVotes ?? 0) / total) * 100);
-                const westPercent = Math.round(((match.westVotes ?? 0) / total) * 100);
+                const eastPercent = Math.round((eastVotes / total) * 100);
+                const westPercent = 100 - eastPercent;
                 const progressValue = Math.max(eastPercent, westPercent);
                 const winnerSide = match.winnerSide;
                 const rawAvatarEast: unknown = match.eastImage ?? (match.raw && (match.raw['east_rikishi'] as RawMatch)?.s3_url) ?? (match.raw && (match.raw['east_rikishi'] as RawMatch)?.image_url) ?? null;

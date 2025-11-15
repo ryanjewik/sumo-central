@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
@@ -67,8 +68,37 @@ func main() {
 	// ----- Gin -----
 	app := handlers.NewApp(cfg, mongoDB, pgpool, sumoSvc)
 
+	// ----- Redis -----
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			log.Println("⚠️ invalid REDIS_URL, falling back to localhost:6379", err)
+			redisClient = redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+		} else {
+			redisClient = redis.NewClient(opt)
+		}
+	} else {
+		redisClient = redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	}
+	// quick ping
+	if err := redisClient.Ping(context.Background()).Err(); err != nil {
+		log.Println("⚠️ could not connect to redis:", err)
+	} else {
+		log.Println("✅ connected to redis")
+		// attach to app for handlers to use
+		app.Redis = redisClient
+	}
+
 	// Start background maintenance tasks (cleanup old refresh tokens every 24h, keep 30 day window)
 	services.StartCleanupTicker(pgpool, 24*time.Hour, 30)
+
+	// Start votes reconciler (persist Redis SOT -> Postgres periodically)
+	// Interval configurable: default 30s
+	reconcileInterval := 30 * time.Second
+	reconcileCtx, reconcileCancel := context.WithCancel(context.Background())
+	defer reconcileCancel()
+	handlers.StartReconciler(app, reconcileInterval, reconcileCtx)
 
 	r := gin.Default()
 	router.Register(r, app)

@@ -803,6 +803,8 @@ def main():
                                 match_doc = {
                                     "match_date": match_date_iso,
                                     "match_number": int(d.get("matchNo")) if d.get("matchNo") not in (None, "") else None,
+                                    "basho_id": d.get("bashoId") or d.get("basho_id"),
+                                    "day": int(d.get("day")) if d.get("day") not in (None, "") else None,
                                     "eastshikona": d.get("eastShikona"),
                                     "westshikona": d.get("westShikona"),
                                     "division": division,
@@ -830,6 +832,8 @@ def main():
                                     match_obj = {
                                         "match_date": m.get("match_date"),
                                         "match_number": m.get("match_number"),
+                                        "day": int(m.get("day")) if m.get("day") not in (None, "") else None,
+                                        "basho_id": m.get("basho_id") if m.get("basho_id") not in (None, "") else (m.get("bashoId") if m.get("bashoId") not in (None, "") else None),
                                         "eastshikona": m.get("eastshikona"),
                                         "westshikona": m.get("westshikona"),
                                         "division": m.get("division"),
@@ -898,7 +902,9 @@ def main():
                 selected = []
                 try:
                     # Prefer columns that exist in the DataFrame
-                    wanted = ['match_date', 'matchNo', 'eastShikona', 'westShikona', 'division', 'winnerId', 'kimarite', 'eastId', 'westId', 'AI_prediction']
+                    # include day and bashoId so downstream documents contain the integer day
+                    # and the basho identifier used to build canonical match ids
+                    wanted = ['match_date', 'matchNo', 'day', 'bashoId', 'eastShikona', 'westShikona', 'division', 'winnerId', 'kimarite', 'eastId', 'westId', 'AI_prediction']
                     cols = [c for c in wanted if c in df.columns]
                     rows = df.select(*cols).collect()
                     for r in rows:
@@ -907,9 +913,11 @@ def main():
                             mobj = {
                                 'match_date': d.get('match_date'),
                                 'match_number': int(d.get('matchNo')) if d.get('matchNo') not in (None, '') else None,
+                                'basho_id': d.get('bashoId') or d.get('basho_id'),
                                 'eastshikona': d.get('eastShikona') or d.get('eastshikona'),
                                 'westshikona': d.get('westShikona') or d.get('westshikona'),
                                 'division': d.get('division'),
+                                'day': d.get('day'),
                                 'winner': int(d.get('winnerId')) if d.get('winnerId') not in (None, '') else None,
                                 'kimarite': d.get('kimarite'),
                                 'east_rikishi_id': int(d.get('eastId')) if d.get('eastId') not in (None, '') else None,
@@ -1188,23 +1196,11 @@ def main():
                         highlighted_match = None
 
                     # Persist both upcoming_matches and highlighted_match to homepage doc
-                    try:
-                        # Persist upcoming_matches and the selected highlighted match
-                        # under the server-canonical key `upcoming_highlighted_match` so
-                        # consumers know it's derived from the upcoming set written here.
-                        if highlighted_match is not None:
-                            hp_coll.update_one({'_homepage_doc': True}, {'$set': {'upcoming_matches': selected, 'upcoming_highlighted_match': highlighted_match}})
-                        else:
-                            # Ensure we don't leave a stale upcoming_highlighted_match when
-                            # there is no highlighted match for this payload.
-                            hp_coll.update_one({'_homepage_doc': True}, {'$set': {'upcoming_matches': selected}, '$unset': {'upcoming_highlighted_match': ""}})
-                    except Exception:
-                        # fallback to original simple update (best-effort)
-                        try:
-                            hp_coll.update_one({'_homepage_doc': True}, {'$set': {'upcoming_matches': selected}})
-                        except Exception:
-                            pass
-                    print(f"Replaced upcoming_matches on homepage document with {len(selected)} match(es) (driver)")
+                    # We do NOT write upcoming_matches/upcoming_highlighted_match to the
+                    # `_homepage_doc` document. Instead, write only to the dedicated
+                    # document where {'upcoming': True} so frontends consume a single
+                    # authoritative upcoming document. Log and continue.
+                    print(f"Prepared {len(selected)} upcoming match(es); will write to dedicated upcoming document (upcoming=True)")
 
                     # Additionally persist upcoming data into a dedicated document flagged
                     # with {"upcoming": True}. This keeps the homepage doc cleaner and
