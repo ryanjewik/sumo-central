@@ -31,6 +31,10 @@ func Register(r *gin.Engine, app *handlers.App) {
 	r.GET("/rikishi/:id", app.GetRikishi)
 	r.GET("/basho/:id", app.GetBasho)
 
+	// Search endpoints (MongoDB Atlas Search)
+	r.GET("/search/rikishi", app.SearchRikishi)
+	r.GET("/api/search/rikishi", app.SearchRikishi)
+
 	// User profile endpoint
 	r.GET("/users/:id", app.GetUser)
 	r.GET("/api/users/:id", app.GetUser)
