@@ -55,6 +55,7 @@ def process_match_results(webhook: dict):
         return
 
     rikishi_list = []
+    processed_match_ids = []
 
     conn = None
     cur = None
@@ -113,6 +114,8 @@ def process_match_results(webhook: dict):
                 match_id_int = int(match_id)
             except Exception:
                 match_id_int = match_id
+            # remember processed matches for optional Redis cleanup later
+            processed_match_ids.append(match_id_int)
 
             insert_match(
                 cur,
@@ -130,6 +133,46 @@ def process_match_results(webhook: dict):
                 match.get('winnerId'),
                 match.get('kimarite'),
             )
+
+            # Evaluate user predictions for this match and update match_predictions.is_correct
+            try:
+                # Fetch predictions for this match
+                cur.execute("SELECT user_id, predicted_winner, is_correct FROM match_predictions WHERE match_id = %s", (match_id_int,))
+                preds = cur.fetchall()
+                for row in preds:
+                    try:
+                        user_id = row[0]
+                        predicted_winner = row[1]
+                        is_correct_existing = row[2]
+                        # If already resolved (is_correct not null), skip to avoid double-counting
+                        if is_correct_existing is not None:
+                            continue
+                        was_correct = (predicted_winner == match.get('winnerId'))
+                        # Update the prediction row
+                        cur.execute("UPDATE match_predictions SET is_correct = %s WHERE user_id = %s AND match_id = %s", (was_correct, user_id, match_id_int))
+
+                        # Update user's aggregate counters
+                        # Increment num_predictions and either correct_predictions or false_predictions
+                        cur.execute(
+                            """
+                            UPDATE users SET
+                              num_predictions = COALESCE(num_predictions,0) + 1,
+                              correct_predictions = COALESCE(correct_predictions,0) + %s,
+                              false_predictions = COALESCE(false_predictions,0) + %s
+                            WHERE id = %s
+                            """,
+                            (1 if was_correct else 0, 0 if was_correct else 1, user_id)
+                        )
+
+                        # Recompute predictions_ratio for this user
+                        cur.execute(
+                            "UPDATE users SET predictions_ratio = CASE WHEN COALESCE(num_predictions,0) > 0 THEN (COALESCE(correct_predictions,0)::float / num_predictions) ELSE 0 END WHERE id = %s",
+                            (user_id,)
+                        )
+                    except Exception as e:
+                        print(f"Failed to process prediction row {row}: {e}")
+            except Exception as e:
+                print(f"Failed to fetch/update match_predictions for match {match_id_int}: {e}")
 
             winner = match.get('winnerId')
             if winner and winner == east_id:
@@ -172,6 +215,56 @@ def process_match_results(webhook: dict):
                 )
 
         conn.commit()
+
+        # Clear ephemeral Redis keys for finalized matches so live vote state
+        # doesn't persist after a match is decided. Run unconditionally; if the
+        # redis client isn't available or connection fails we log and continue.
+        if processed_match_ids:
+            try:
+                try:
+                    import redis as _redis
+                except Exception:
+                    _redis = None
+                if _redis is None:
+                    print('Redis cleanup requested but redis python client is not available; skipping')
+                else:
+                    # Build a sensible Redis URL. Prefer REDIS_URL, then REDIS_HOST; if only
+                    # REDIS_HOST is provided and doesn't contain a scheme, construct a
+                    # redis:// URL using REDIS_PORT/REDIS_DB if available. Finally, fall
+                    # back to the compose service name 'redis' rather than localhost so
+                    # the Airflow container can reach the Redis container when using
+                    # docker compose networking.
+                    redis_url = os.getenv('REDIS_URL')
+                    redis_host = os.getenv('REDIS_HOST')
+                    if not redis_url:
+                        if redis_host:
+                            # If REDIS_HOST contains a scheme, use it as-is, otherwise
+                            # build a redis:// URL
+                            if '://' in redis_host:
+                                redis_url = redis_host
+                            else:
+                                redis_port = os.getenv('REDIS_PORT', '6379')
+                                redis_db = os.getenv('REDIS_DB', '0')
+                                redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
+                        else:
+                            # Default to the compose service name 'redis'
+                            redis_url = 'redis://redis:6379/0'
+
+                    try:
+                        print(f"Redis cleanup: attempting to connect to redis at {redis_url}")
+                        rcli = _redis.from_url(redis_url, decode_responses=True)
+                        for mid in processed_match_ids:
+                            votes_key = f"match_votes:{mid}"
+                            users_key = f"match_users:{mid}"
+                            try:
+                                deleted = rcli.delete(votes_key, users_key)
+                                print(f"Redis cleanup: deleted {deleted} keys for match {mid} -> {votes_key}, {users_key}")
+                            except Exception as e:
+                                print(f"Redis cleanup: failed to delete keys for match {mid}: {e}")
+                    except Exception as e:
+                        print(f"Redis cleanup: failed to connect to redis at {redis_url}: {e}")
+            except Exception as e:
+                print(f"Redis cleanup step failed unexpectedly: {e}")
         # initialize S3 hook and fetch per-rikishi matches and save to S3
         s3_conn_id = os.getenv("S3_CONN_ID", "aws_default")
         try:

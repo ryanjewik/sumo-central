@@ -307,6 +307,7 @@ services:
     restart: unless-stopped
     networks:
       - sumo_net
+      - airflow
   airflow-webserver:
     <<: *airflow-common
     depends_on:

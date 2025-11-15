@@ -338,42 +338,74 @@ return encoded
 // GetMatchVotes returns the current vote counts for a match (from Redis when available).
 func (a *App) GetMatchVotes(c *gin.Context) {
 	matchIDStr := c.Param("id")
-	matchID, err := strconv.ParseInt(matchIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid match id"})
-		return
-	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
 	defer cancel()
-
-	key := fmt.Sprintf("match_votes:%d", matchID)
-	res, err := a.Redis.HGetAll(ctx, key).Result()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read votes"})
-		return
-	}
+	// Attempt to read live counts from Redis when available. If Redis is
+	// unavailable or the key is empty (deleted by a cleanup job), fall back to
+	// computing aggregates from Postgres so the UI can still render vote bars.
 	out := map[string]int64{}
-	for k, v := range res {
-		n, _ := strconv.ParseInt(v, 10, 64)
-		out[k] = n
+	usedRedis := false
+
+	if a.Redis != nil {
+		// Use the raw path param as the key suffix so string or numeric ids work
+		key := fmt.Sprintf("match_votes:%s", matchIDStr)
+		res, err := a.Redis.HGetAll(ctx, key).Result()
+		if err == nil {
+			if len(res) > 0 {
+				for k, v := range res {
+					n, _ := strconv.ParseInt(v, 10, 64)
+					out[k] = n
+				}
+				usedRedis = true
+			}
+		} else {
+			// If Redis call failed, log the error on the Gin context and fall
+			// through to Postgres fallback below.
+			c.Error(err)
+		}
 	}
+
+	// If Redis wasn't used (disabled, error, or empty key), fallback to Postgres
+	// aggregates so recent_matches_list can still show vote bars.
+	if !usedRedis {
+		if a.PG == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "no data source available for votes"})
+			return
+		}
+		// Use a text comparison on match_id so both numeric and string match ids
+		// stored in Postgres are handled (casts integer ids to text when needed).
+		rows, err := a.PG.Query(ctx, `SELECT predicted_winner, COUNT(*) FROM match_predictions WHERE CAST(match_id AS text) = $1 GROUP BY predicted_winner`, matchIDStr)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read votes"})
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var winner sql.NullInt64
+			var cnt int64
+			if err := rows.Scan(&winner, &cnt); err == nil && winner.Valid {
+				out[strconv.FormatInt(winner.Int64, 10)] = cnt
+			}
+		}
+	}
+
 	// If the requester is authenticated, also return their current prediction (if any)
 	userVote := interface{}(nil)
 	if ui, ok := c.Get("user_id"); ok {
 		if userID, ok := ui.(string); ok && userID != "" {
-			usersKey := fmt.Sprintf("match_users:%d", matchID)
-			// Try Redis first
+			// Try Redis first for user vote (fast). If Redis isn't available or
+			// didn't have a value, fall back to Postgres.
 			if a.Redis != nil {
+				usersKey := fmt.Sprintf("match_users:%s", matchIDStr)
 				if uv, err := a.Redis.HGet(ctx, usersKey, userID).Result(); err == nil {
 					if uv != "" {
 						userVote = uv
 					}
 				}
 			}
-			// Fallback to Postgres if Redis didn't have it
 			if userVote == nil && a.PG != nil {
 				var pred sql.NullInt64
-				err := a.PG.QueryRow(ctx, `SELECT predicted_winner FROM match_predictions WHERE user_id=$1 AND match_id=$2`, userID, matchID).Scan(&pred)
+				err := a.PG.QueryRow(ctx, `SELECT predicted_winner FROM match_predictions WHERE user_id=$1 AND CAST(match_id AS text) = $2`, userID, matchIDStr).Scan(&pred)
 				if err == nil && pred.Valid {
 					userVote = strconv.FormatInt(pred.Int64, 10)
 				}

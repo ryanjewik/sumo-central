@@ -185,7 +185,9 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
     };
 
     const resolvedId = (() => {
-      const explicit = m['id'] ?? m['_id'] ?? m['match_id'];
+      // Prefer server-provided canonical id when available, then explicit id fields,
+      // then constructed canonical id, then the looser constructed fallback.
+      const explicit = m['canonical_id'] ?? m['canonicalId'] ?? m['id'] ?? m['_id'] ?? m['match_id'];
       if (typeof explicit === 'number' || typeof explicit === 'string') return explicit;
       const canonical = buildCanonicalId();
       if (canonical) return canonical;
@@ -243,35 +245,21 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
         }
       })();
 
-      // open websocket
+      // Instead of subscribing to a backend websocket (which may be driven by
+      // Redis pubsub), poll the backend votes API periodically so counts are
+      // always sourced from Postgres via the API (the backend will fall back
+      // to Postgres when Redis keys are cleared). This keeps the progress bar
+      // accurate even after Redis cleanup.
       try {
-        const envBackend = process.env.NEXT_PUBLIC_BACKEND_URL && process.env.NEXT_PUBLIC_BACKEND_URL !== '' ? process.env.NEXT_PUBLIC_BACKEND_URL : '';
-        let backendBase = envBackend || `${window.location.protocol}//${window.location.host}`;
-        if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && envBackend && envBackend.includes('gin-backend')) {
-          backendBase = `${window.location.protocol}//localhost:8080`;
-        }
-        const wsProto = backendBase.startsWith('https') ? 'wss' : 'ws';
-        const hostNoProto = backendBase.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const ws = new WebSocket(`${wsProto}://${hostNoProto}/matches/${encodeURIComponent(matchId)}/ws`);
-  ws.onopen = () => { try { console.debug(`WS open for recent match ${matchId} -> ${wsProto}://${hostNoProto}`); } catch {} };
-  ws.onmessage = (ev) => {
-          try {
-            const payload = JSON.parse(ev.data as string);
-            if (payload && payload.counts) {
-              const mapped: Record<string, number> = {};
-              Object.entries(payload.counts).forEach(([k, v]) => { mapped[String(k)] = Number(v || 0); });
-              setLiveCounts(prev => ({ ...prev, [matchId]: mapped }));
-            }
-            // if payload.user equals current viewer, optionally set their user vote (not tracked here)
-          } catch (e) {}
-        };
-        sockets.push(ws);
+        // we don't open per-match sockets; polling handled by outer effect
       } catch (e) {
-        // ignore ws failure
+        // ignore
       }
     });
 
-    return () => { sockets.forEach(s => { try { s.close(); } catch {} }); };
+    // No polling for recent/final matches — a single seed fetch per match is sufficient
+    // and avoids unnecessary background requests once matches are final.
+    return () => { /* no-op cleanup */ };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(normalized)]);
 

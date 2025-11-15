@@ -42,3 +42,16 @@ curl -v -X POST "https://www.sumo-api.com/api/webhook/test?type=matchResults"   
     "matchResults": true
 }
 }'
+
+docker compose exec redis redis-cli KEYS "match_users:*"
+
+docker compose exec sumo-db psql -U postgres -d sumo -c "SELECT * FROM match_predictions;"
+
+docker compose exec sumo-db psql -U postgres -d sumo -c "SELECT * FROM matches WHERE basho_id = 202511 and day = 7;"
+
+
+bashoid + day + match_number + east_id + west_id
+
+2025117201419
+
+2025117140164
