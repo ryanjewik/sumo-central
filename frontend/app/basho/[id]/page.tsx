@@ -106,16 +106,25 @@ export default function BashoDetailPage() {
       if (!groups[div]) groups[div] = [];
       groups[div].push(m);
     });
-    // sort each group's matches by match number or date
+    // sort each group's matches by date (newest first). If dates tie, fallback to match number
     Object.keys(groups).forEach((k) => {
       groups[k].sort((a: any, b: any) => {
+        const parseDate = (v: any) => {
+          try {
+            const s = v ?? '';
+            const t = Date.parse(String(s));
+            return Number.isNaN(t) ? 0 : t;
+          } catch (e) {
+            return 0;
+          }
+        };
+
+        const da = parseDate(a._basho_date ?? a.match_date ?? a.start_date ?? a.start ?? '');
+        const db = parseDate(b._basho_date ?? b.match_date ?? b.start_date ?? b.start ?? '');
+        if (db !== da) return db - da; // newer (larger timestamp) first
+
         const na = a.match_number ?? a.match_num ?? a.match ?? 0;
         const nb = b.match_number ?? b.match_num ?? b.match ?? 0;
-        if (na === nb) {
-          const da = a._basho_date ?? '';
-          const db = b._basho_date ?? '';
-          return da < db ? -1 : da > db ? 1 : 0;
-        }
         return na - nb;
       });
     });
