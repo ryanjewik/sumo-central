@@ -29,6 +29,7 @@ function buildTree(comments: Comment[]) {
 export default function CommentsThreadClient({ discussionId, initialComments }: { discussionId: string, initialComments: Comment[] }) {
   const [comments, setComments] = useState<Comment[]>(initialComments || [])
   const [loading, setLoading] = useState(false)
+  const [showComposerForParent, setShowComposerForParent] = useState<string | null>(null) // null = hidden, '' = top-level
 
   const tree = useMemo(() => buildTree(comments), [comments])
 
@@ -59,13 +60,20 @@ export default function CommentsThreadClient({ discussionId, initialComments }: 
   return (
     <div style={{ marginTop: 18 }}>
       <h3 style={{ marginBottom: 8 }}>Discussion</h3>
-      <CommentComposer discussionId={discussionId} onPosted={handlePosted} placeholder="Write a comment" />
+      {/* show a Reply button for top-level post; composer appears only when Reply clicked */}
+      {showComposerForParent === null ? (
+        <div style={{ marginBottom: 8 }}>
+          <button onClick={() => setShowComposerForParent('')} style={{ background: 'transparent', border: '1px solid rgba(0,0,0,0.06)', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', color: '#563861' }}>Reply</button>
+        </div>
+      ) : (
+        <CommentComposer discussionId={discussionId} parentId={showComposerForParent === '' ? undefined : showComposerForParent} onPosted={(c) => { setShowComposerForParent(null); handlePosted(c) }} placeholder="Write a comment" />
+      )}
 
       <div style={{ marginTop: 12 }}>
         {loading ? <div>Loading comments...</div> : (
           tree.length === 0 ? <div style={{ color: '#666' }}>No comments yet</div> : (
             tree.map((c: any) => (
-              <CommentItem key={c.id} comment={c} children={c.children || []} discussionId={discussionId} onReplyPosted={handlePosted} />
+              <CommentItem key={c.id} comment={c} children={c.children || []} discussionId={discussionId} onReplyPosted={(c2) => { setShowComposerForParent(null); handlePosted(c2) }} />
             ))
           )
         )}

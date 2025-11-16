@@ -41,7 +41,7 @@ export default function CommentComposer({ discussionId, parentId, onPosted, plac
 
   return (
     <form onSubmit={handleSubmit} style={{ marginTop: 8 }}>
-      <textarea value={text} onChange={e => setText(e.target.value)} placeholder={placeholder || 'Write a reply...'} rows={3} style={{ width: '100%', padding: 8, borderRadius: 6 }} />
+      <textarea value={text} onChange={e => setText(e.target.value)} placeholder={placeholder || 'Write a reply...'} rows={3} style={{ width: '100%', padding: 8, borderRadius: 6, background: '#fff' }} />
       <div style={{ marginTop: 6, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button type="submit" disabled={disabled} style={{ padding: '8px 12px', borderRadius: 6, background: '#563861', color: '#fff', border: 'none' }}>{loading ? 'Posting...' : 'Post'}</button>
       </div>

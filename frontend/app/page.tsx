@@ -15,6 +15,12 @@ import SearchBar from '../components/searchbar';
 import RecentMatchesList from '../components/recent_matches_list';
 import NavbarSelection from '../components/horizontal_list';
 import ForumSection from '../components/ForumSection';
+// ForumListServer is a server component and MUST NOT be imported into a
+// client component (this page is a client component: "use client").
+// Import the client-side list component instead to avoid server->client
+// reference errors and infinite fetch loops when the page runs in the
+// browser.
+import ForumListClient from '../components/ForumListClient';
 import HighlightedRikishiCard from '../components/HighlightedRikishiCard';
 import nextDynamic from 'next/dynamic';
 // Dynamically load large client-only components to avoid importing client-side
@@ -629,7 +635,8 @@ function InnerApp() {
               </div>
             </div>
 
-            <ForumSection posts={sampleForumPosts} />
+            {/* Show top 5 newest discussions via client component (homepage is client) */}
+            <ForumListClient initial={[]} initialLoadFailed={false} />
           </div>
           <div
             className="right-bar"

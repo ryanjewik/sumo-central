@@ -8,8 +8,14 @@ let accessToken: string | null = null;
 // requests as relative URLs so they hit Next.
 function resolveUrl(input: RequestInfo): RequestInfo {
   if (typeof input !== 'string') return input;
-  // If it's an internal API path, return it unchanged (relative)
-  if (input.startsWith('/api/') || input.startsWith('/auth/')) return input;
+  // If it's an internal API path, prefer a same-origin absolute URL so it can't be
+  // rewritten by a <base> tag or other HTML that points to a different host
+  if (input.startsWith('/api/') || input.startsWith('/auth/')) {
+    // Return the path unchanged (root-relative). This ensures the browser
+    // requests the same origin the page was served from (avoids cross-origin
+    // absolute URLs and base-tag rewrites).
+    return input;
+  }
   return input;
 }
 
@@ -82,7 +88,16 @@ export async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Pro
       headers.set('Authorization', `Bearer ${accessToken}`);
     }
     init!.headers = headers;
-    return fetch(resolveUrl(input), init);
+    const resolved = resolveUrl(input);
+    try {
+      // debug: log outgoing request target so we can diagnose cross-origin calls
+      if (typeof window !== 'undefined') {
+        console.debug('fetchWithAuth: making request', { input, resolved, headers: Object.fromEntries(headers.entries()) });
+      }
+    } catch (e) {
+      // ignore logging errors
+    }
+    return fetch(resolved, init);
   };
 
   let res = await makeRequest();
