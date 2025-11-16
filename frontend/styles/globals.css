@@ -390,12 +390,26 @@ body {
 .forum-post {
   border-bottom: 1px solid #ddd;
   padding: 1rem 0;
-  height: 150px;
+  /* allow the card to size based on content but reserve a reasonable minimum */
+  min-height: 120px;
   position: relative;
   z-index: 0;
-  overflow: visible;
+  /* hide overflow so the body ellipsis/clamp works reliably */
+  overflow: hidden;
   border-width: 3px;
   border-color: #563861;
+}
+
+/* Clamp multiline forum post bodies with an ellipsis when they overflow */
+.forum-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 6; /* show up to 6 lines */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  /* add standard property for browsers that support it */
+  line-clamp: 6;
 }
 
 .highlighted-match-stats {

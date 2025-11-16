@@ -137,22 +137,43 @@ func (a *App) GetUser(c *gin.Context) {
 	} else {
 		resp["favorite_rikishi"] = nil
 	}
-	// numeric counts
-	resp["num_posts"] = 0
+	// numeric counts: derive live from match_predictions table so UI reflects
+	// the latest values even if background aggregation jobs haven't run.
+	var numPosts int64 = 0
 	if u.NumPosts.Valid {
-		resp["num_posts"] = u.NumPosts.Int64
+		numPosts = u.NumPosts.Int64
 	}
-	resp["num_predictions"] = 0
-	if u.NumPredictions.Valid {
-		resp["num_predictions"] = u.NumPredictions.Int64
+	var numPredictions int64 = 0
+	var correctPredictions int64 = 0
+	var falsePredictions int64 = 0
+	// Query live aggregates from match_predictions. is_correct may be NULL
+	// for unresolved matches; count accordingly.
+	aggRow := a.PG.QueryRow(ctx, `SELECT COUNT(*) AS num, COALESCE(SUM(CASE WHEN is_correct = true THEN 1 ELSE 0 END),0) AS correct, COALESCE(SUM(CASE WHEN is_correct = false THEN 1 ELSE 0 END),0) AS incorrect FROM match_predictions WHERE user_id = $1`, id)
+	if err := aggRow.Scan(&numPredictions, &correctPredictions, &falsePredictions); err == nil {
+		// values filled
+	} else {
+		// fallback to stored values when query fails
+		if u.NumPredictions.Valid {
+			numPredictions = u.NumPredictions.Int64
+		}
+		if u.CorrectPredictions.Valid {
+			correctPredictions = u.CorrectPredictions.Int64
+		}
+		if u.FalsePredictions.Valid {
+			falsePredictions = u.FalsePredictions.Int64
+		}
 	}
-	resp["correct_predictions"] = 0
-	if u.CorrectPredictions.Valid {
-		resp["correct_predictions"] = u.CorrectPredictions.Int64
-	}
-	resp["false_predictions"] = 0
-	if u.FalsePredictions.Valid {
-		resp["false_predictions"] = u.FalsePredictions.Int64
+	resp["num_posts"] = numPosts
+	resp["num_predictions"] = numPredictions
+	resp["correct_predictions"] = correctPredictions
+	resp["false_predictions"] = falsePredictions
+	// predictions_ratio: compute live if possible, otherwise fall back
+	if numPredictions > 0 {
+		resp["predictions_ratio"] = float64(correctPredictions) / float64(numPredictions)
+	} else if u.PredictionsRatio.Valid {
+		resp["predictions_ratio"] = u.PredictionsRatio.Float64
+	} else {
+		resp["predictions_ratio"] = nil
 	}
 	if u.Country.Valid {
 		resp["country"] = u.Country.String
@@ -415,21 +436,38 @@ func (a *App) UpdateMe(c *gin.Context) {
 	} else {
 		resp["favorite_rikishi"] = nil
 	}
-	resp["num_posts"] = 0
+	// Derive live aggregates from match_predictions to reflect current state
+	var numPosts int64 = 0
 	if out.NumPosts.Valid {
-		resp["num_posts"] = out.NumPosts.Int64
+		numPosts = out.NumPosts.Int64
 	}
-	resp["num_predictions"] = 0
-	if out.NumPredictions.Valid {
-		resp["num_predictions"] = out.NumPredictions.Int64
+	var numPredictions int64 = 0
+	var correctPredictions int64 = 0
+	var falsePredictions int64 = 0
+	aggRow := a.PG.QueryRow(ctx, `SELECT COUNT(*) AS num, COALESCE(SUM(CASE WHEN is_correct = true THEN 1 ELSE 0 END),0) AS correct, COALESCE(SUM(CASE WHEN is_correct = false THEN 1 ELSE 0 END),0) AS incorrect FROM match_predictions WHERE user_id = $1`, out.ID)
+	if err := aggRow.Scan(&numPredictions, &correctPredictions, &falsePredictions); err == nil {
+		// ok
+	} else {
+		if out.NumPredictions.Valid {
+			numPredictions = out.NumPredictions.Int64
+		}
+		if out.CorrectPredictions.Valid {
+			correctPredictions = out.CorrectPredictions.Int64
+		}
+		if out.FalsePredictions.Valid {
+			falsePredictions = out.FalsePredictions.Int64
+		}
 	}
-	resp["correct_predictions"] = 0
-	if out.CorrectPredictions.Valid {
-		resp["correct_predictions"] = out.CorrectPredictions.Int64
-	}
-	resp["false_predictions"] = 0
-	if out.FalsePredictions.Valid {
-		resp["false_predictions"] = out.FalsePredictions.Int64
+	resp["num_posts"] = numPosts
+	resp["num_predictions"] = numPredictions
+	resp["correct_predictions"] = correctPredictions
+	resp["false_predictions"] = falsePredictions
+	if numPredictions > 0 {
+		resp["predictions_ratio"] = float64(correctPredictions) / float64(numPredictions)
+	} else if out.PredictionsRatio.Valid {
+		resp["predictions_ratio"] = out.PredictionsRatio.Float64
+	} else {
+		resp["predictions_ratio"] = nil
 	}
 	if out.Country.Valid {
 		resp["country"] = out.Country.String

@@ -9,7 +9,8 @@ type BashoItem = { id: string; location?: string; start_date?: string; end_date?
 const PAGE_SIZE = 20;
 
 function buildAttempts() {
-  return ['/basho', '/api/basho', '/api/homepage'];
+  // Prefer proxy first to avoid CORS and ensure same-origin cookie forwarding
+  return ['/api/basho', '/basho', '/api/homepage'];
 }
 
 async function tryFetchUrl(url: string, page: number, limit: number) {

@@ -281,9 +281,64 @@ function renderMatchesTable(matches: any, rikishiId?: any) {
   }
 
   // Extract date for sorting: prefer start_date, else first 10 chars of _mapKey
+  const extractDateFromMapKey = (key: string | undefined) => {
+    if (!key || typeof key !== 'string') return undefined;
+    const first = key.split(':')[0].trim();
+    if (!first) return undefined;
+
+    // RFC / ISO date like 2023-11-16 or 2023-11-16T12:34:56
+    if (/^\d{4}-\d{2}-\d{2}/.test(first)) return first.slice(0, 10);
+
+    // Pure numeric epoch-like values. Many sources store seconds (10 digits)
+    // while JS Date expects milliseconds. Normalize both cases.
+    if (/^\d+$/.test(first)) {
+      try {
+        const n = Number(first);
+        if (Number.isNaN(n) || n <= 0) return undefined;
+        // If length == 10 treat as seconds -> ms
+        if (first.length === 10) {
+          return new Date(n * 1000).toISOString().slice(0, 10);
+        }
+        // If length >= 13 treat as milliseconds
+        if (first.length >= 13) {
+          return new Date(n).toISOString().slice(0, 10);
+        }
+        // Fallback: try both (assume seconds)
+        return new Date(n * 1000).toISOString().slice(0, 10);
+      } catch {
+        return undefined;
+      }
+    }
+
+    // Try to parse free-form first token as a date
+    try {
+      const parsed = Date.parse(first);
+      if (!Number.isNaN(parsed)) return new Date(parsed).toISOString().slice(0, 10);
+    } catch {}
+    return undefined;
+  };
+
   const normalized = rows.map((r: any) => {
-    const date = r.start_date ?? (typeof r._mapKey === 'string' ? r._mapKey.slice(0, 10) : undefined);
-    return Object.assign({}, r, { _date: date });
+    // Prefer match_date when present (per-match exact date). Fallback to start_date
+    // (basho start) or the map key if necessary.
+    let dateVal = undefined as string | undefined;
+    const md = r.match_date ?? r.matchDate ?? r.match_date_time ?? r.matchDateTime ?? undefined;
+    if (md) {
+      try {
+        const parsed = new Date(String(md));
+        if (!Number.isNaN(parsed.getTime())) dateVal = parsed.toISOString().slice(0, 10);
+      } catch {}
+    }
+    if (!dateVal && r.start_date) {
+      // start_date may already be YYYY-MM-DD or include time
+      try {
+        const parsed = new Date(String(r.start_date));
+        if (!Number.isNaN(parsed.getTime())) dateVal = parsed.toISOString().slice(0, 10);
+        else if (typeof r.start_date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(r.start_date)) dateVal = String(r.start_date).slice(0,10);
+      } catch {}
+    }
+    if (!dateVal) dateVal = extractDateFromMapKey(typeof r._mapKey === 'string' ? r._mapKey : undefined);
+    return Object.assign({}, r, { _date: dateVal });
   });
 
   // sort by date descending (newest first) when possible
@@ -331,9 +386,15 @@ function renderMatchesTable(matches: any, rikishiId?: any) {
               if (String(westId) === String(rikishiIdNum) || String(m.west_rikishi_id) === String(rikishiIdNum)) ourSide = ourSide ? ourSide : 'west';
             }
 
-            const opponentName = ourSide === 'east' ? (m.westshikona ?? m.west_shikona ?? m.westshikona) : (m.eastshikona ?? m.east_shikona ?? m.eastshikona);
-            const opponentId = ourSide === 'east' ? (m.west_rikishi_id ?? m.west_rikishi_id) : (m.east_rikishi_id ?? m.east_rikishi_id);
-            const ourShikona = ourSide === 'east' ? (m.eastshikona ?? m.east_shikona ?? m.eastshikona) : (m.westshikona ?? m.west_shikona ?? m.westshikona);
+            const opponentName = ourSide === 'east'
+              ? (m.westShikona ?? m.westshikona ?? m.west_shikona ?? (m.west && m.west.shikona) ?? '')
+              : (m.eastShikona ?? m.eastshikona ?? m.east_shikona ?? (m.east && m.east.shikona) ?? '');
+            const opponentId = ourSide === 'east'
+              ? (m.west_rikishi_id ?? m.westRikishiId ?? m.west_rikishi_id ?? (m.west && (m.west.rikishi_id ?? m.west.id)) ?? '')
+              : (m.east_rikishi_id ?? m.eastRikishiId ?? m.east_rikishi_id ?? (m.east && (m.east.rikishi_id ?? m.east.id)) ?? '');
+            const ourShikona = ourSide === 'east'
+              ? (m.eastShikona ?? m.eastshikona ?? m.east_shikona ?? (m.east && m.east.shikona) ?? '')
+              : (m.westShikona ?? m.westshikona ?? m.west_shikona ?? (m.west && m.west.shikona) ?? '');
             // Normalize winner: winner may be stored as 1/2, 'east'/'west', or the rikishi id
             const rawWinner = m.winner;
             let winnerIdNormalized: string | null = null;
@@ -355,8 +416,12 @@ function renderMatchesTable(matches: any, rikishiId?: any) {
             const isWin = winnerIdNormalized && rikishiIdNum !== undefined && String(rikishiIdNum) === String(winnerIdNormalized);
             const result = isWin ? 'Win' : (winnerIdNormalized ? (ourSide ? 'Loss' : winnerIdNormalized) : '');
 
-            const ourRank = ourSide === 'east' ? (m.east_rank ?? m.east_rank) : (m.west_rank ?? m.west_rank);
-            const oppRank = ourSide === 'east' ? (m.west_rank ?? m.west_rank) : (m.east_rank ?? m.east_rank);
+            const ourRank = ourSide === 'east'
+              ? (m.east_rank ?? m.eastRank ?? (m.east && (m.east.rank ?? m.east.current_rank)) ?? '')
+              : (m.west_rank ?? m.westRank ?? (m.west && (m.west.rank ?? m.west.current_rank)) ?? '');
+            const oppRank = ourSide === 'east'
+              ? (m.west_rank ?? m.westRank ?? (m.west && (m.west.rank ?? m.west.current_rank)) ?? '')
+              : (m.east_rank ?? m.eastRank ?? (m.east && (m.east.rank ?? m.east.current_rank)) ?? '');
 
             const even = idx % 2 === 0;
             // alternate neutral rows for readability, but keep win/loss highlights
@@ -367,7 +432,10 @@ function renderMatchesTable(matches: any, rikishiId?: any) {
             return (
               <tr key={idx} style={rowStyle}>
                 <td className={SHARED_TD_CLASS} style={{ borderLeft: `6px solid ${indicatorColor}`, paddingLeft: '0.8rem' }}>{m._date ?? m.start_date ?? ''}</td>
-                <td className={SHARED_TD_CLASS}>{m.basho_id ? <a href={`/basho/${m.basho_id}`} className="underline text-inherit">{m.location ?? m.basho_id}</a> : (m.location ?? '')}</td>
+                <td className={SHARED_TD_CLASS}>{(m.basho_id ?? m.bashoId ?? m.basho)
+                  ? <a href={`/basho/${m.basho_id ?? m.bashoId ?? m.basho}`} className="underline text-inherit">{m.location ?? m.basho_id ?? m.bashoId ?? m.basho}</a>
+                  : (m.location ?? '')}
+                </td>
                 <td className={`${SHARED_TD_CLASS} font-bold`}>{ourShikona ?? ''}</td>
                 <td className={SHARED_TD_CLASS}>{ourRank ?? ''}</td>
                 <td className={SHARED_TD_CLASS} style={{ color: result === 'Win' ? '#116530' : (result === 'Loss' ? '#b91c1c' : undefined), fontWeight: 700 }}>{result ?? ''}</td>

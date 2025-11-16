@@ -57,8 +57,32 @@ const HighlightedMatchCard: React.FC<HighlightedMatchCardProps> = ({ match, onOp
   // prefer nested rikishi's current_rank when available
   const displayWestRank = nestedWest ? String(nestedWest['current_rank'] ?? nestedWest['rank'] ?? westRank) : westRank;
   const displayEastRank = nestedEast ? String(nestedEast['current_rank'] ?? nestedEast['rank'] ?? eastRank) : eastRank;
-  const westImg = String(m.west_image ?? (m as Record<string, unknown>)['west_image_url'] ?? (m as Record<string, unknown>)['west_photo'] ?? (nestedWest ? String(nestedWest['s3_url'] ?? nestedWest['image_url'] ?? nestedWest['pfp_url']) : null) ?? '/sumo_logo.png');
-  const eastImg = String(m.east_image ?? (m as Record<string, unknown>)['east_image_url'] ?? (m as Record<string, unknown>)['east_photo'] ?? (nestedEast ? String(nestedEast['s3_url'] ?? nestedEast['image_url'] ?? nestedEast['pfp_url']) : null) ?? '/sumo_logo.png');
+  // helper to pick the first usable image string or fall back to the bundled placeholder
+  const chooseImage = (...cands: any[]) => {
+    for (const c of cands) {
+      if (c === null || typeof c === 'undefined') continue;
+      const s = String(c).trim();
+      if (!s) continue;
+      const lower = s.toLowerCase();
+      if (lower === 'undefined' || lower === 'null') continue;
+      return s;
+    }
+    return '/sumo_logo.png';
+  };
+
+  const westImg = chooseImage(
+    m.west_image,
+    (m as Record<string, unknown>)['west_image_url'],
+    (m as Record<string, unknown>)['west_photo'],
+    nestedWest && (nestedWest['s3_url'] ?? nestedWest['image_url'] ?? nestedWest['pfp_url']),
+  );
+
+  const eastImg = chooseImage(
+    m.east_image,
+    (m as Record<string, unknown>)['east_image_url'],
+    (m as Record<string, unknown>)['east_photo'],
+    nestedEast && (nestedEast['s3_url'] ?? nestedEast['image_url'] ?? nestedEast['pfp_url']),
+  );
 
   // AI prediction raw value (0/1 or name). Use top-level keys if present.
   const aiRaw = (m as Record<string, unknown>)['ai_prediction'] ?? (m as Record<string, unknown>)['AI_prediction'] ?? (m as Record<string, unknown>)['aiPrediction'];

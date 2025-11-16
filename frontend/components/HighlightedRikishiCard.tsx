@@ -66,8 +66,21 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
   const wins = Number(r.wins ?? (r as Record<string, unknown>)['win_count'] ?? (r as Record<string, unknown>)['wins_count'] ?? 0);
   const losses = Number(r.losses ?? (r as Record<string, unknown>)['losses_count'] ?? 0);
 
+  // helper to pick the first usable image string or fall back to the bundled placeholder
+  const chooseImage = (...cands: any[]) => {
+    for (const c of cands) {
+      if (c === null || typeof c === 'undefined') continue;
+      const s = String(c).trim();
+      if (!s) continue;
+      const lower = s.toLowerCase();
+      if (lower === 'undefined' || lower === 'null') continue;
+      return s;
+    }
+    return '/sumo_logo.png';
+  };
+
   // profile image: prefer S3-hosted webp if present, then common keys, then placeholder
-  const imageSrc = String(r.s3_url ?? r.pfp_url ?? r.image_url ?? r.profile_image ?? r.photo ?? r.image ?? r.imageUrl ?? '/sumo_logo.png');
+  const imageSrc = chooseImage(r.s3_url, r.pfp_url, r.image_url, r.profile_image, r.photo, r.image, r.imageUrl);
 
   const totalMatches = Number(wins) + Number(losses);
   const winRate = totalMatches > 0 ? Math.round((Number(wins) / totalMatches) * 100) : null;

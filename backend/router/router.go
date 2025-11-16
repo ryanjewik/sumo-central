@@ -27,6 +27,16 @@ func Register(r *gin.Engine, app *handlers.App) {
 	r.GET("/rikishi", app.ListRikishi)
 	r.GET("/basho", app.ListBasho)
 
+	// Forums listing and creation (legacy) and Discussions routes
+	r.GET("/forums", app.ListForums)
+	r.POST("/forums", app.JWTMiddleware(), app.CreateForum)
+
+	// Preferred route: /discussions (maps to same handlers)
+	// Specific discussion GET by id
+	r.GET("/discussions/:id", app.GetDiscussion)
+	r.GET("/discussions", app.ListForums)
+	r.POST("/discussions", app.JWTMiddleware(), app.CreateForum)
+
 	// Rikishi and Basho individual pages (fetch by `id` field in Mongo)
 	r.GET("/rikishi/:id", app.GetRikishi)
 	r.GET("/basho/:id", app.GetBasho)
@@ -58,6 +68,11 @@ func Register(r *gin.Engine, app *handlers.App) {
 
 	// Protected actions (require JWT)
 	r.POST("/matches/:id/vote", app.JWTMiddleware(), app.Vote)
+
+	// Discussion comments and voting
+	r.POST("/discussions/:id/comments", app.JWTMiddleware(), app.AddComment)
+	r.POST("/discussions/:id/vote", app.JWTMiddleware(), app.VoteDiscussion)
+	r.POST("/discussions/:id/comments/:commentId/vote", app.JWTMiddleware(), app.VoteComment)
 	// Read vote counts
 	r.GET("/matches/:id/votes", app.GetMatchVotes)
 	// WebSocket subscription for low-latency match updates

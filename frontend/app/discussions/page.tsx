@@ -1,16 +1,24 @@
 import React from 'react'
+import dynamic from 'next/dynamic'
+import ForumListServer from '../../components/ForumListServer'
+import DiscussionSubmission from '../../components/DiscussionSubmission'
 
 export const metadata = {
   title: 'Discussions - Sumopedia',
 };
 
+// DiscussionSubmission is a client component so import normally.
+// ForumListServer is a server component - keep it as default import.
+
 export default function DiscussionsPage() {
   return (
     <>
       <div id="background"></div>
-      <main style={{ maxWidth: 1100, margin: '15rem auto 0', padding: '0 1rem', position: 'relative', zIndex: 1 }}>
-        <h1 style={{ color: '#563861' }}>Discussions</h1>
-        <p className="app-text">Community discussions and forum-style posts — coming soon. This page will later integrate real forum data.</p>
+      <main className="page-offset" style={{ position: 'relative', zIndex: 1 }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 1rem' }}>
+          <DiscussionSubmission />
+          <ForumListServer />
+        </div>
       </main>
     </>
   );

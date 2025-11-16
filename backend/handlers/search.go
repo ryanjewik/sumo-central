@@ -40,16 +40,16 @@ func (a *App) SearchRikishi(c *gin.Context) {
 	// mapping expects the rikishi document under field `rikishi` with
 	// subfield `shikona` so we search that path.
 	pipeline := bson.A{
-		bson.D{{"$search", bson.D{
-			{"index", "default"},
+		bson.D{{Key: "$search", Value: bson.D{
+			{Key: "index", Value: "default"},
 			// Use fuzzy text search so minor typos and small edits still match.
-			{"text", bson.D{{"query", q}, {"path", "rikishi.shikona"}, {"fuzzy", bson.D{{"maxEdits", 1}, {"maxExpansions", 50}}}}},
+			{Key: "text", Value: bson.D{{Key: "query", Value: q}, {Key: "path", Value: "rikishi.shikona"}, {Key: "fuzzy", Value: bson.D{{Key: "maxEdits", Value: 1}, {Key: "maxExpansions", Value: 50}}}}},
 		}}},
 		// Add score meta so clients can rank if desired
-		bson.D{{"$addFields", bson.D{{"score", bson.D{{"$meta", "searchScore"}}}}}},
-		bson.D{{"$limit", limit}},
+		bson.D{{Key: "$addFields", Value: bson.D{{Key: "score", Value: bson.D{{Key: "$meta", Value: "searchScore"}}}}}},
+		bson.D{{Key: "$limit", Value: limit}},
 		// Project to return only the rikishi summary + score
-		bson.D{{"$project", bson.D{{"_id", 0}, {"rikishi", 1}, {"score", 1}}}},
+		bson.D{{Key: "$project", Value: bson.D{{Key: "_id", Value: 0}, {Key: "rikishi", Value: 1}, {Key: "score", Value: 1}}}},
 	}
 
 	cur, err := coll.Aggregate(ctx, pipeline)

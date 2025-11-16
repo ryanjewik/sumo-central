@@ -30,13 +30,15 @@ const nextConfig = {
     ],
   },
   // Proxy Next `/api/*` requests to the backend when BACKEND_URL is set.
+  // NOTE: rewrites to the backend were removed so that explicit
+  // `app/api` route handlers (for example `/api/discussions/[id]`)
+  // are executed in the Next runtime and can perform logging/proxying.
+  // If you still need a blanket `/api/*` rewrite to the backend,
+  // prefer setting BACKEND_URL at build time and be aware rewrites
+  // are baked into the build (which prevents per-container runtime
+  // overrides). For now we return an empty array so app/api routes run.
   async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${BACKEND_URL}/:path*`,
-      },
-    ];
+    return []
   },
 };
 

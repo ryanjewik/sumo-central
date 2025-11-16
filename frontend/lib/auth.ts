@@ -2,6 +2,17 @@
 
 let accessToken: string | null = null;
 
+// For browser client requests we want to call our Next.js API proxy under /api/*
+// so the browser talks to the Next server (no CORS needed) and the Next server
+// forwards requests to the Go backend. Therefore, leave /api/* and /auth/*
+// requests as relative URLs so they hit Next.
+function resolveUrl(input: RequestInfo): RequestInfo {
+  if (typeof input !== 'string') return input;
+  // If it's an internal API path, return it unchanged (relative)
+  if (input.startsWith('/api/') || input.startsWith('/auth/')) return input;
+  return input;
+}
+
 export function setAccessToken(token: string | null) {
   accessToken = token;
 }
@@ -18,7 +29,7 @@ export function clearAccessToken() {
 export async function logout(): Promise<void> {
   try {
     // call backend logout which revokes refresh token and clears cookie
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    await fetch(resolveUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' });
   } catch {
     // ignore errors; ensure local state cleared
   }
@@ -30,7 +41,7 @@ export async function logout(): Promise<void> {
 // by calling the `/api/auth/auth` endpoint (which returns JWT claims).
 export async function tryRefresh(): Promise<{ id?: string; username?: string } | null> {
   try {
-    const r = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
+    const r = await fetch(resolveUrl('/api/auth/refresh'), { method: 'POST', credentials: 'include' });
     if (!r.ok) return null;
     const data = await r.json();
     if (data && data.access_token) {
@@ -71,7 +82,7 @@ export async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Pro
       headers.set('Authorization', `Bearer ${accessToken}`);
     }
     init!.headers = headers;
-    return fetch(input, init);
+    return fetch(resolveUrl(input), init);
   };
 
   let res = await makeRequest();
@@ -79,7 +90,7 @@ export async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Pro
 
   // try refresh
   try {
-    const r = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
+  const r = await fetch(resolveUrl('/api/auth/refresh'), { method: 'POST', credentials: 'include' });
     if (r.ok) {
       const data = await r.json();
       if (data && data.access_token) {

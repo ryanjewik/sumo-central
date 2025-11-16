@@ -9,8 +9,9 @@ type RikishiItem = { id: string; shikona?: string };
 const PAGE_SIZE = 30; // change to 500 if you want large page fetches client-side
 
 function buildAttempts() {
-  // Try common backend endpoints (relative paths). Server may accept page/limit params.
-  return ['/rikishi', '/api/rikishi', '/api/homepage'];
+  // Try common backend endpoints (relative paths). Prefer Next proxy /api/* first so
+  // browser requests are same-origin and go through the Next server proxy to backend.
+  return ['/api/rikishi', '/rikishi', '/api/homepage'];
 }
 
 async function tryFetchUrl(url: string, page: number, limit: number) {

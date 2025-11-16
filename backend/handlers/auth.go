@@ -325,10 +325,13 @@ func (a *App) JWTMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Extract subject claim
+		// Extract subject claim and optional username
 		if claims, ok := t.Claims.(jwt.MapClaims); ok {
 			if sub, ok := claims["sub"].(string); ok && sub != "" {
 				c.Set("user_id", sub)
+				if name, ok2 := claims["name"].(string); ok2 && name != "" {
+					c.Set("username", name)
+				}
 				c.Next()
 				return
 			}

@@ -1,11 +1,12 @@
 "use client";
 
 import React from "react";
+import Link from 'next/link';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 
 export interface ForumPost {
-  id: number;
+  id: number | string;
   upvotes: number;
   downvotes: number;
   author: string;
@@ -22,9 +23,9 @@ const ForumSection: React.FC<ForumSectionProps> = ({ posts }) => (
   <div className="forum-area">
     <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#563861' }}>Trending Discussions</h2>
     {posts.map(post => (
-      <a
-  key={post.id}
-  href={"/discussions/" + post.id}
+      <Link
+        key={String(post.id)}
+        href={`/discussions/${encodeURIComponent(String(post.id))}`}
         className="forum-post"
         style={{
           display: 'block',
@@ -37,7 +38,6 @@ const ForumSection: React.FC<ForumSectionProps> = ({ posts }) => (
           color: 'inherit',
           transition: 'box-shadow 0.15s, transform 0.15s',
         }}
-        
         onMouseOver={e => {
           (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(86,56,97,0.15)';
           (e.currentTarget as HTMLElement).style.transform = 'scale(1.02)';
@@ -61,11 +61,11 @@ const ForumSection: React.FC<ForumSectionProps> = ({ posts }) => (
             </span>
           </div>
         </div>
-        <div style={{ marginBottom: '0.5rem', color: '#563861', fontSize: '1rem', textAlign: 'left' }}>{post.body}</div>
+  <div className="forum-body" style={{ marginBottom: '0.5rem', color: '#563861', fontSize: '1rem', textAlign: 'left' }}>{post.body}</div>
         <div style={{ fontSize: '0.9rem', color: '#555', textAlign: 'right' }}>
           {post.date_created}
         </div>
-      </a>
+      </Link>
     ))}
   </div>
 );
