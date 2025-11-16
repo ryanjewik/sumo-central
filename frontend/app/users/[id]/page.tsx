@@ -1,3 +1,4 @@
+import ForumListClient from '@/components/ForumListClient';
 type Props = { params: { id: string } };
 
 export default async function UserPage({ params }: Props) {
@@ -15,6 +16,34 @@ export default async function UserPage({ params }: Props) {
 	// container-host fallback logic and ensures server-side requests go through
 	// the same `/api` rewrite configured in `next.config.js`.
 	let user: any = null;
+
+	// Fetch up to 20 authored posts for this user to show on their profile.
+	let authoredPosts: any[] = [];
+	let authoredFailed = false;
+	try {
+		const apiPath = `/api/discussions?author_id=${encodeURIComponent(id)}&skip=0&limit=20`;
+		let res: Response | null = null;
+		try {
+			res = await fetch(apiPath, { cache: 'no-store' });
+		} catch (e) {
+			res = null;
+		}
+		if (res && res.ok) {
+			authoredPosts = await res.json();
+		} else {
+			const backendBase = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://gin-backend:8080';
+			try {
+				const res2 = await fetch(`${backendBase}/discussions?author_id=${encodeURIComponent(id)}&skip=0&limit=20`, { cache: 'no-store' });
+				if (res2 && res2.ok) {
+					authoredPosts = await res2.json();
+				}
+			} catch (e) {
+				// ignore
+			}
+		}
+	} catch (err) {
+		authoredFailed = true;
+	}
 	try {
 		// Try Next proxy first (works in most dev/prod setups). If that doesn't
 		// succeed (non-ok or network error), fall back to an explicit backend
@@ -91,7 +120,23 @@ export default async function UserPage({ params }: Props) {
 					</div>
 
 					<div style={{ flex: 1 }}>
-						{/* Main area reserved for user activity (posts/predictions) in future. */}
+						{/* Show posts authored by this user (server-side fetched and passed as initial state to client list) */}
+						{
+							(() => {
+								const mapped = Array.isArray(authoredPosts)
+									? authoredPosts.map((p: any) => ({
+										id: p.id || (p._id && p._id.toString && p._id.toString()) || p.author_id || '',
+										upvotes: p.upvotes ?? 0,
+										downvotes: p.downvotes ?? 0,
+										author: p.author_username ?? 'anonymous',
+										date_created: p.created_at ?? new Date().toISOString(),
+										title: p.title,
+										body: p.body,
+									}))
+									: [];
+								return <ForumListClient initial={mapped} initialLoadFailed={authoredFailed} />;
+							})()
+						}
 					</div>
 				</section>
 			</main>

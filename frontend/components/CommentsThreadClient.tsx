@@ -63,7 +63,7 @@ export default function CommentsThreadClient({ discussionId, initialComments }: 
       {/* show a Reply button for top-level post; composer appears only when Reply clicked */}
       {showComposerForParent === null ? (
         <div style={{ marginBottom: 8 }}>
-          <button onClick={() => setShowComposerForParent('')} style={{ background: 'transparent', border: '1px solid rgba(0,0,0,0.06)', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', color: '#563861' }}>Reply</button>
+          <button onClick={() => setShowComposerForParent('')} style={{ background: '#e0a3c2', border: '1px solid rgba(255, 255, 255, 1)', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', color: '#563861' }}>Reply</button>
         </div>
       ) : (
         <CommentComposer discussionId={discussionId} parentId={showComposerForParent === '' ? undefined : showComposerForParent} onPosted={(c) => { setShowComposerForParent(null); handlePosted(c) }} placeholder="Write a comment" />

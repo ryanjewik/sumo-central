@@ -5,9 +5,9 @@ import { fetchWithAuth } from '@/lib/auth'
 import ForumSection, { ForumPost } from './ForumSection';
 
 type BackendPost = any;
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 5;
 
-export default function ForumListClient({ initial, initialLoadFailed }: { initial: ForumPost[], initialLoadFailed?: boolean }) {
+export default function ForumListClient({ initial, initialLoadFailed, maxItems }: { initial: ForumPost[], initialLoadFailed?: boolean, maxItems?: number }) {
   const [posts, setPosts] = useState<ForumPost[]>(initial ?? []);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(!initialLoadFailed);
@@ -82,14 +82,32 @@ export default function ForumListClient({ initial, initialLoadFailed }: { initia
       const items: BackendPost[] = Array.isArray(data) ? data : data.items ?? [];
       const mapped = items.map(mapBackend);
       console.debug('ForumListClient: loadMore result', { skip, returned: items.length, mapped: mapped.length });
-      setPosts(prev => [...prev, ...mapped]);
-      skipRef.current += mapped.length;
-      // if the backend returned fewer items than page size we reached the end
-      if (mapped.length < PAGE_SIZE) setHasMore(false);
-      // if backend returned no items at all for this skip, stop further loads to avoid loops
-      if (mapped.length === 0) {
-        console.warn('ForumListClient: backend returned 0 items for skip', skip, '-- stopping further loads to avoid loop');
-        setHasMore(false);
+
+      // If a maxItems limit is provided (homepage), enforce it and stop further loads
+      if (typeof maxItems === 'number') {
+        const remaining = Math.max(0, maxItems - posts.length);
+        if (remaining <= 0) {
+          setHasMore(false);
+        } else {
+          const toAppend = mapped.slice(0, remaining);
+          setPosts(prev => [...prev, ...toAppend]);
+          skipRef.current += toAppend.length;
+          // we've reached the configured max, stop further loads
+          if (posts.length + toAppend.length >= maxItems) setHasMore(false);
+          // if backend returned fewer than requested slice, and it was less than page size,
+          // we should stop further loads as well
+          if (toAppend.length < Math.min(PAGE_SIZE, remaining)) setHasMore(false);
+        }
+      } else {
+        setPosts(prev => [...prev, ...mapped]);
+        skipRef.current += mapped.length;
+        // if the backend returned fewer items than page size we reached the end
+        if (mapped.length < PAGE_SIZE) setHasMore(false);
+        // if backend returned no items at all for this skip, stop further loads to avoid loops
+        if (mapped.length === 0) {
+          console.warn('ForumListClient: backend returned 0 items for skip', skip, '-- stopping further loads to avoid loop');
+          setHasMore(false);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -151,7 +169,6 @@ export default function ForumListClient({ initial, initialLoadFailed }: { initia
         <ForumSection posts={posts} />
       )}
       <div ref={sentinelRef} style={{ height: 1 }} />
-      <div style={{ textAlign: 'center', padding: 12 }}>{loading ? 'Loading...' : hasMore ? '' : 'No more posts'}</div>
     </>
   );
 }

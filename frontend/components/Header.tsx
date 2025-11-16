@@ -58,8 +58,7 @@ export default function Header() {
         </div>
 
         <div className="navbar-right">
-          <button className="navbar-btn" style={authPillStyle}>L</button>
-
+          {/* Removed legacy single-letter auth pill (previously displayed "L") */}
           {user ? (
             <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

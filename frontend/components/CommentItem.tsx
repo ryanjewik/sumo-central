@@ -75,7 +75,7 @@ export default function CommentItem({ comment, children = [], discussionId, onRe
   }
 
   return (
-    <div style={{ borderLeft: '2px solid #eee', paddingLeft: 12, marginTop: 12 }}>
+    <div style={{ borderLeft: '2px solid #e0a3c2', paddingLeft: 12, marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
         <div>
           <AuthorBadge userId={comment.author_id || comment.authorId} username={comment.author_username} />
@@ -87,7 +87,7 @@ export default function CommentItem({ comment, children = [], discussionId, onRe
           <button onClick={() => setShowReply(s => !s)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#563861' }}>Reply</button>
         </div>
       </div>
-      <div style={{ marginTop: 8, whiteSpace: 'pre-wrap', color: '#333' }}>{comment.body}</div>
+      <div style={{ marginTop: 8, whiteSpace: 'pre-wrap', color: '#563861' }}>{comment.body}</div>
 
       {showReply && (
         <CommentComposer discussionId={discussionId} parentId={comment.id} onPosted={(c) => {

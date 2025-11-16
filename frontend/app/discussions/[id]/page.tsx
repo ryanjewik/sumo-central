@@ -139,34 +139,43 @@ export default async function DiscussionThreadPage({ params }: { params: any }) 
 
     return (
       <main className="page-offset">
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 1rem' }}>
-          {/* discussion card styled similar to ForumSection; use distinct green background for the whole thread */}
-          <div style={{ background: '#A3E0B8', padding: 16, borderRadius: 8, marginBottom: 16, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-            <h1 style={{ color: '#563861', marginTop: 0 }}>{data.title}</h1>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <div style={{ color: '#563861' }}>
-              By <span style={{ fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: 'rgba(255,255,255,0.15)' }}>{data.author_username ?? 'anonymous'}</span> — {data.created_at}
-              {/* Render author badge client component (dynamic import) */}
-              <div style={{ marginTop: 6 }}>
-                {/* @ts-ignore - data may not include author_id in all responses */}
-                <AuthorBadge userId={(data as any).author_id || (data as any).authorId} username={data.author_username} />
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '0 1rem' }}>
+          {/* Outer purple card wrapping the whole discussion (post + comments) */}
+          <div className="discussion-outer-card" style={{ background: '#563861', padding: 24, borderRadius: 12, maxWidth: 1100, width: '100%', boxShadow: '0 8px 30px rgba(17,24,39,0.06)' }}>
+            {/* discussion card styled similar to ForumSection; keep the inner green thread panels for contrast */}
+            <div style={{ background: '#A3E0B8', padding: 16, borderRadius: 8, marginBottom: 16, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+              <h1 style={{ color: '#563861', marginTop: 0 }}>{data.title}</h1>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div style={{ color: '#563861' }}>
+                  By <span style={{ fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: 'rgba(255,255,255,0.15)' }}>{data.author_username ?? 'anonymous'}</span> — {data.created_at}
+                  {/* Render author badge client component (dynamic import) */}
+                  <div style={{ marginTop: 6 }}>
+                    {/* @ts-ignore - data may not include author_id in all responses */}
+                    <AuthorBadge userId={(data as any).author_id || (data as any).authorId} username={data.author_username} />
+                  </div>
+                </div>
+                <div>
+                  {/* Post vote client component */}
+                  {/* @ts-ignore - initial counts optional */}
+                  <PostVote discussionId={String(data.id)} initialUp={(data as any).upvotes ?? (data as any).upvote_count ?? 0} initialDown={(data as any).downvotes ?? (data as any).downvote_count ?? 0} />
+                </div>
               </div>
+              <article style={{ background: 'transparent', padding: 16, borderRadius: 8, border: 'none' }}>
+                <div style={{ whiteSpace: 'pre-wrap', color: '#563861' }}>{data.body}</div>
+              </article>
             </div>
-            <div>
-              {/* Post vote client component */}
-              {/* @ts-ignore - initial counts optional */}
-              <PostVote discussionId={String(data.id)} initialUp={(data as any).upvotes ?? (data as any).upvote_count ?? 0} initialDown={(data as any).downvotes ?? (data as any).downvote_count ?? 0} />
-            </div>
-            </div>
-            <article style={{ background: 'transparent', padding: 16, borderRadius: 8, border: 'none' }}>
-              <div style={{ whiteSpace: 'pre-wrap', color: '#563861' }}>{data.body}</div>
-            </article>
-          </div>
 
-          {/* keep comments visually inside the same green thread background */}
-          <div style={{ background: '#A3E0B8', padding: 12, borderRadius: 8 }}>
-            <CommentsThread discussionId={String(data.id)} initialComments={data.comments || []} />
+            {/* keep comments visually inside the same green thread background */}
+            <div style={{ background: '#A3E0B8', padding: 12, borderRadius: 8 }}>
+              <CommentsThread discussionId={String(data.id)} initialComments={data.comments || []} />
+            </div>
           </div>
+          <style>{`
+            .discussion-outer-card { box-sizing: border-box; }
+            @media (max-width: 640px) {
+              .discussion-outer-card { padding: 12px !important; }
+            }
+          `}</style>
         </div>
       </main>
     )

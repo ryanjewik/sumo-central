@@ -636,7 +636,8 @@ function InnerApp() {
             </div>
 
             {/* Show top 5 newest discussions via client component (homepage is client) */}
-            <ForumListClient initial={[]} initialLoadFailed={false} />
+            {/* Pass maxItems=5 so the homepage only displays exactly 5 posts */}
+            <ForumListClient initial={[]} initialLoadFailed={false} maxItems={5} />
           </div>
           <div
             className="right-bar"

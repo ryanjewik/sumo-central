@@ -37,7 +37,7 @@ export default function AuthorBadge({ userId, username }: Props) {
 
   return (
     <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-      <strong style={{ fontWeight: 700 }}>{profile.username ?? username ?? profile.id}</strong>
+      <strong style={{ fontWeight: 700, color: "#563861", background: "rgba(255,255,255,0.15)", padding: '2px 6px', borderRadius: 6 }}>{profile.username ?? username ?? profile.id}</strong>
       {favLabel ? <span style={{ fontSize: '0.85rem', color: '#555' }}>• {favLabel}</span> : null}
       {country ? <span style={{ fontSize: '0.85rem', color: '#777' }}>({country})</span> : null}
     </span>

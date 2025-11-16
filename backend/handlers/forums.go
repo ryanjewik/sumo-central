@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -70,6 +71,16 @@ func (a *App) CreateForum(c *gin.Context) {
 	doc["created_at"] = now.Format(time.RFC3339)
 	delete(doc, "_id")
 
+	// If the discussion had an authenticated author_id, increment that user's
+	// num_posts counter in Postgres. This is best-effort: if the Postgres
+	// update fails we log a warning but still return success for the created
+	// discussion so the forum UX is not blocked by a transient DB issue.
+	if authorID != "" {
+		if _, err := a.PG.Exec(ctx, "UPDATE users SET num_posts = COALESCE(num_posts,0) + 1 WHERE id = $1", authorID); err != nil {
+			log.Printf("warning: failed to increment num_posts for user %s: %v", authorID, err)
+		}
+	}
+
 	c.JSON(http.StatusOK, doc)
 }
 
@@ -98,7 +109,15 @@ func (a *App) ListForums(c *gin.Context) {
 	opts.SetSkip(qskip)
 	opts.SetLimit(int64(qlimit))
 
-	cur, err := coll.Find(ctx, bson.M{}, opts)
+	// Support optional filtering by author_id so the frontend can show a
+	// user's authored posts on their profile page. If author_id is provided
+	// we'll filter the Mongo query accordingly.
+	filter := bson.M{}
+	if author := c.Query("author_id"); author != "" {
+		filter["author_id"] = author
+	}
+
+	cur, err := coll.Find(ctx, filter, opts)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 		return
