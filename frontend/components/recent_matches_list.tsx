@@ -387,6 +387,7 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
         sx={{
           width: '100%',
           background: '#A3E0B8',
+          overflow: 'hidden',
           borderRadius: '1rem',
           boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
           p: '1rem',

@@ -303,53 +303,6 @@ function InnerApp() {
     return () => { mounted = false; };
   }, [homepage, upcomingDoc]);
   // Sample forum post data
-  const sampleForumPosts = [
-    {
-      id: 1,
-      upvotes: 120,
-      downvotes: 5,
-      author: 'sumofan123',
-      date_created: '2025-09-10',
-      title: 'Who will win the next basho?',
-      body: 'Let’s discuss predictions for the upcoming tournament! Who are your picks and why?'
-    },
-    {
-      id: 2,
-      upvotes: 98,
-      downvotes: 2,
-      author: 'rikishi_enthusiast',
-      date_created: '2025-09-12',
-      title: 'Best kimarite of the year',
-      body: 'Share your favorite kimarite (winning technique) from this year’s matches.'
-    },
-    {
-      id: 3,
-      upvotes: 85,
-      downvotes: 1,
-      author: 'sumoStats',
-      date_created: '2025-09-08',
-      title: 'Statistical analysis: upsets',
-      body: 'Let’s look at the biggest upsets in the last two weeks and what made them possible.'
-    },
-    {
-      id: 4,
-      upvotes: 80,
-      downvotes: 0,
-      author: 'banzukeMaster',
-      date_created: '2025-09-05',
-      title: 'Banzuke changes explained',
-      body: 'A breakdown of the latest banzuke and what it means for the wrestlers.'
-    },
-    {
-      id: 5,
-      upvotes: 75,
-      downvotes: 3,
-      author: 'newbieSumo',
-      date_created: '2025-09-13',
-      title: 'Sumo for beginners',
-      body: 'Ask questions and share tips for those new to sumo fandom!'
-    },
-  ];
 
   return (
     <>

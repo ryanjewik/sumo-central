@@ -229,10 +229,10 @@ export default function HorizontalList() {
   useRovingIndex();
   return (
   <div
-    className="w-full"
+    className="w-full horizontal-list-wrapper"
     style={{
-      marginLeft: 'clamp(0.5rem, 12vw, 15rem)',
-      marginRight: 'clamp(0.5rem, 12vw, 15rem)',
+      marginLeft: 'clamp(0.5rem, 6vw, 3rem)',
+      marginRight: 'clamp(0.5rem, 6vw, 3rem)',
     }}
   >
     <Box component="nav" aria-label="My site" sx={{ width: '100%' }}>
@@ -292,6 +292,7 @@ export default function HorizontalList() {
               </ListItemButton>
           </Link>
         </ListItem>
+        <ListDivider orientation="vertical" />
         
         <ListItem role="none" className="flex-1 flex justify-center">
           <Link href="/resources" className="modern-navbar-link" style={{ textDecoration: 'none' }}>

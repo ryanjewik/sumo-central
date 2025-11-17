@@ -127,7 +127,7 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
         {rikishiId ? (
           <Link href={`/rikishi/${rikishiId}`}>
             <a title={`View ${name} profile`} style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
-              <div style={{ width: 170, height: 250, position: 'relative', borderRadius: 18, overflow: 'hidden', border: '3px solid rgba(224,163,194,0.9)' }}>
+              <div className="rikishi-card-image" style={{ width: 'clamp(110px, 28%, 170px)', height: 'clamp(150px, 40vw, 250px)', position: 'relative', borderRadius: 18, overflow: 'hidden', border: '3px solid rgba(224,163,194,0.9)' }}>
                 <Image
                   src={imageSrc}
                   alt={`${name} profile`}
@@ -141,7 +141,7 @@ const HighlightedRikishiCard: React.FC<HighlightedRikishiCardProps> = ({ rikishi
             </a>
           </Link>
         ) : (
-          <div style={{ width: 170, height: 250, position: 'relative', borderRadius: 18, overflow: 'hidden', border: '3px solid rgba(224,163,194,0.9)' }}>
+          <div className="rikishi-card-image" style={{ width: 'clamp(110px, 28%, 170px)', height: 'clamp(150px, 40vw, 250px)', position: 'relative', borderRadius: 18, overflow: 'hidden', border: '3px solid rgba(224,163,194,0.9)' }}>
             <Image
               src={imageSrc}
               alt={`${name} profile`}

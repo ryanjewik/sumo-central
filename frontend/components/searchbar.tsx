@@ -14,13 +14,10 @@ const Search = styled('div')(({ theme }) => ({
   '&:hover': {
     backgroundColor: alpha(theme.palette.common.white, 0.25),
   },
-  marginRight: theme.spacing(2),
+  marginRight: 0,          // no sideways push
   marginLeft: 0,
-  width: '100%',
-  [theme.breakpoints.up('sm')]: {
-    marginLeft: theme.spacing(3),
-    width: 'auto',
-  },
+  width: '100%',           // obey the wrapper width
+  maxWidth: '100%',
 }));
 
 const SearchIconWrapper = styled('div')(({ theme }) => ({
@@ -41,11 +38,10 @@ const StyledInputBase = styled(InputBase)(({ theme }) => ({
     paddingLeft: `calc(1em + ${theme.spacing(4)})`,
     transition: theme.transitions.create('width'),
     width: '100%',
-    [theme.breakpoints.up('md')]: {
-      width: '100ch',
-    },
+    maxWidth: '100%',      // never grow past the container
   },
 }));
+
 
 type Hit = {
   rikishi?: {
@@ -140,16 +136,24 @@ export default function SearchBar() {
   }, [open]);
 
   return (
-  <div ref={wrapperRef} style={{ position: 'relative', width: '100%', maxWidth: '60rem' }}>
-      <Search
-        className="h-14 rounded-2xl shadow-md flex items-center"
-        style={{
-          backgroundColor: 'rgba(255,255,255,0.7)',
-          width: 'clamp(16rem, 60vw, 60rem)',
-          minWidth: '16rem',
-          maxWidth: '60rem',
-        }}
-      >
+  <div
+    ref={wrapperRef}
+    style={{ position: 'relative', width: '100%', maxWidth: 'clamp(24rem, 70vw, 120rem)' }}
+  >
+    <Search
+      className="h-14 rounded-2xl shadow-md flex items-center"
+      style={{
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        width: '100%',
+        maxWidth: '100%',
+        cursor: 'text',                 // <- NEW: show text cursor
+      }}
+      onClick={() => {
+        if (inputRef.current) {
+          inputRef.current.focus();     // <- NEW: focus input from anywhere on bar
+        }
+      }}
+    >
         <SearchIconWrapper>
           <SearchIcon />
         </SearchIconWrapper>

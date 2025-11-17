@@ -6,6 +6,15 @@
 @plugin "@tailwindcss/typography";
 @import "./modern-navbar-link.css";
 
+/* Responsive image and box-sizing baseline to prevent overflow */
+*, *::before, *::after { box-sizing: border-box; }
+img, picture, video {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
 @custom-variant dark (&:where(.dark-mode, .dark-mode *));
 @custom-variant label (& [data-label]);
 @custom-variant focus-input-within (&:has(input:focus));
@@ -230,25 +239,42 @@ body {
   z-index: 10000;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   font-family: 'Courier New', Courier, monospace;
-  /* Expose a CSS variable for the navbar height so pages can offset themselves
-     dynamically instead of hard-coding large margins in inline styles. Update
-     this value if navbar layout changes. */
-  --navbar-height: 12rem;
-  padding: 2rem 0 0 0;
+
+  /* smaller overall navbar height */
+  --navbar-height: 6rem;
+  /* less top padding so the bar isn’t so tall */
+  padding: 0 0 0 0;
+}
+
+/* NEW: inner container that actually has the pink bar + side margins */
+.navbar-inner {
+  background: #E0A3C2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+
+  /* this creates the beige margin on both sides,
+     matching your content gutters */
+  margin-inline: clamp(0.5rem, 10vw, 25rem);
+
+  /* keep your original vertical spacing */
+  padding: 2.6rem 0 0 0;
 }
 
 /* Use symmetric, shrinking gutters via padding instead of margins */
 .navbar-row {
   display: flex;
   margin-inline: 0;
-  padding-inline: clamp(0.5rem, 15vw, 25rem);
+  /* small inner padding; outer margin handled by .navbar-inner now */
+  padding-inline: 0.75rem;
 }
 
 .navbar-row-top {
   justify-content: space-between;
   align-items: center;
-  padding-top: 0.75rem;
+  padding-top: 0.5rem;
+
+  /* reduce bottom padding so the header is shorter */
   padding-bottom: 1.75rem;
+
   gap: 1rem;
   position: relative;
 }
@@ -261,8 +287,10 @@ body {
   background: #fff;
   color: #563861;
   box-shadow: 0 1px 4px #A3E0B8;
-  width: clamp(300px, 60vw, 800px);
-  margin: 0 2.5rem;
+  /* make the input fill its wrapper but cap its size so it shrinks with viewport */
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
   transition: box-shadow 0.2s;
   height: 2rem;
 }
@@ -279,7 +307,8 @@ body {
   display: flex;
   align-items: center;
   gap: 1rem;
-  width: 20rem;
+  width: auto;
+  flex-shrink: 0;
 }
 
 /* Remove one-sided outer margins so gutters stay symmetric */
@@ -308,18 +337,17 @@ body {
 
 /* ---------- 3-column layout (flex) ---------- */
 .content-box {
-  margin-top: 12rem;
+  /* was 12rem; match the smaller navbar */
+  margin-top: 10rem;
 
-  /* Symmetric gutters that shrink together before content */
   margin-inline: 0;
   padding-block: 2rem;
   padding-inline: clamp(0.5rem, 15vw, 25rem);
-
   font-size: 1.5rem;
   text-align: center;
   display: flex;
   align-items: flex-start;
-  gap: 1rem;                 /* use gap instead of column margins */
+  gap: 1rem;
   position: relative;
   min-height: calc(100vh - 8rem);
   box-sizing: border-box;
@@ -330,11 +358,14 @@ body {
    navbar height variable as the navbar so changes remain centralized. */
 .page-offset {
   max-width: 900px;
-  margin: calc(var(--navbar-height, 12rem) + 4rem) auto 0;
-  padding: 0 1.5rem;
+
+  /* use the navbar height variable but with a smaller extra buffer */
+  margin: calc(var(--navbar-height, 10rem) + 6rem) auto 0;
+
+  padding: 0 3.5rem;
   position: relative;
   z-index: 1;
-  min-height: calc(100vh - 120px);
+  min-height: calc(100vh - 100px);
 }
 
 /* Columns */
@@ -528,3 +559,363 @@ body {
     max-width: 300px;
   }
 }
+
+/* Additional mobile-specific tweaks to prevent pill overlap and image overflow */
+@media (max-width: 640px) {
+  .navbar { --navbar-height: 9rem; padding: 1rem 0 0 0; }
+  .navbar-logo { width: 36px; height: 36px; }
+  .navbar-title { font-size: 1.15rem; }
+  .navbar-right { gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
+  .username-pill { display: none; } /* hide username to save space on small screens */
+  .signin-btn { min-width: 64px !important; padding: 0.25rem 0.6rem !important; font-size: 0.9rem !important; }
+  .auth-desktop { display: none !important; }
+
+  /* Hide horizontal navbar on small screens and use hamburger menu instead */
+  .navbar-row-bottom { display: none !important; }
+
+  /* Make highlighted rikishi image container responsive when small */
+  .highlighted-image-wrapper, .rikishi-card-image {
+    width: clamp(90px, 28vw, 140px) !important;
+    height: auto !important;
+    aspect-ratio: 17 / 25;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+  }
+}
+
+/* Make the top nav links collapse into a hamburger on small screens */
+@media (max-width: 640px) {
+  /* keep the horizontal navbar visible on mobile; the hamburger will
+    still be available as an alternate entry but we won't remove the
+    navbar-row-bottom entirely so the header remains consistent */
+  /* .navbar-row-bottom { display: none !important; } */
+
+  /* Make the search take more horizontal space on small screens */
+  .navbar-search-wrapper { width: calc(100% - 110px) !important; min-width: 120px; }
+  .navbar-search-inner { width: 100% !important; }
+}
+
+/* Default search wrapper (desktop) */
+.navbar-search-wrapper {
+  display: flex;
+  flex: 1 1 auto;     /* grow + shrink */
+  align-items: center;
+  min-width: 0;       /* allow it to shrink with viewport */
+  width: auto;
+  max-width: none;
+}
+.navbar-search-inner { width: 100%; transition: width 0.45s; }
+
+/* Center the search bar on desktop, reserve paddings for logo and auth area */
+@media (min-width: 641px) {
+  .navbar-row {
+    /* slightly smaller gutters so we don't blow up width */
+    padding-inline: clamp(0.75rem, 6vw, 8rem);
+  }
+  /* Use a 3-column CSS grid on desktop: left / center / right. The left and
+     right columns share the same clamp sizing so the center column (search)
+     is visually centered regardless of the content inside the side columns.
+     The `.navbar-row` has `padding-inline` which continues to provide the
+     outer gutters so logo/auth controls won't sit flush in the corners. */
+  .navbar-row-top {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1rem;
+    position: relative;
+  }
+
+  .navbar-left,
+  .navbar-right {
+    /* let them size to content, don't enforce big fixed widths */
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  .navbar-search-wrapper {
+    grid-column: 2 / 3;
+    justify-self: stretch;
+    /* IMPORTANT: remove the sideways shove */
+    transform: none;
+    max-width: 100%;
+  }
+
+  .hamburger-btn { display: none !important; }
+}
+
+
+/* Hamburger and mobile menu styles */
+.hamburger-btn { display: none; background: transparent; border: none; }
+.hamburger-btn span { display: block; }
+
+.hamburger-btn {
+  width: 36px;
+  height: 28px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 4px;
+  gap: 6px;
+  background: transparent;
+  border: none;
+}
+.hamburger-line {
+  width: 18px;
+  height: 2px;
+  background: #563861;
+  border-radius: 2px;
+  display: block;
+}
+
+/* Mobile menu is hidden by default on desktop; only shown inside the mobile
+   media query when open. This prevents the mobile menu markup from leaking
+   into desktop layouts. */
+.mobile-menu { display: none; }
+
+@media (max-width: 640px) {
+  .navbar-row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-inline: 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .navbar-right {
+    flex-shrink: 0;
+    width: auto;
+  }
+
+  .navbar-search-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    max-width: none;
+
+    /* reserve room for the hamburger + padding */
+    margin-right: 0.25rem;
+  }
+
+  .navbar-search {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .hamburger-btn {
+    display: inline-flex;
+    z-index: 50020;
+    position: relative;
+  }
+}
+
+/* === NAVBAR LAYOUT OVERRIDE === */
+
+/* Base layout for the top row */
+nav.navbar .navbar-row-top {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Side sections (logo + auth) */
+nav.navbar .navbar-left,
+nav.navbar .navbar-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Search wrapper: flexible middle column */
+nav.navbar .navbar-search-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto !important;   /* override inline width: '35vw' */
+}
+
+/* Inner search container always fills the wrapper */
+nav.navbar .navbar-search-inner {
+  width: 100%;
+}
+
+/* ---------- Desktop (>= 641px) ---------- */
+@media (min-width: 641px) {
+  nav.navbar .navbar-row-top {
+    justify-content: space-between;
+  }
+
+  /* Limit search width and center it inside the flexible middle column */
+  nav.navbar .navbar-search-inner {
+    max-width: clamp(40rem, 70vw, 90rem); /* responsive + very wide desktop */
+    margin-inline: auto;
+}
+
+  /* Hide hamburger on desktop */
+  nav.navbar .hamburger-btn {
+    display: none !important;
+  }
+
+  /* Show desktop auth buttons */
+  nav.navbar .auth-desktop {
+    display: flex !important;
+  }
+}
+
+/* ---------- Mobile (<= 640px) ---------- */
+@media (max-width: 640px) {
+  /* Stack into two rows so nothing overlaps:
+     row 1: logo + hamburger
+     row 2: full-width search bar */
+  nav.navbar .navbar-row-top {
+    flex-direction: column;
+    align-items: stretch;
+    padding-inline: 0.75rem;
+  }
+
+  nav.navbar .navbar-left,
+  nav.navbar .navbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  nav.navbar .navbar-search-wrapper {
+    order: 2;
+    width: 100% !important;
+    margin-top: 0.5rem;
+  }
+
+  nav.navbar .navbar-search-inner {
+    width: 100%;
+  }
+
+  /* Keep hamburger + mobile menu; auth pills are hidden via .auth-desktop */
+  nav.navbar .hamburger-btn {
+    display: inline-flex;
+  }
+}
+
+/* === FINAL NAVBAR LAYOUT OVERRIDES === */
+
+/* Generic layout for the top row */
+nav.navbar .navbar-row-top {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Left and right sections never stretch, just size to content */
+nav.navbar .navbar-left,
+nav.navbar .navbar-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Search wrapper is the flexible middle column */
+nav.navbar .navbar-search-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto !important; /* kill any stray inline widths */
+}
+
+/* Search container always fills its wrapper */
+nav.navbar .navbar-search-inner {
+  width: 100%;
+}
+
+/* ---------- Desktop (>= 641px) ---------- */
+@media (min-width: 641px) {
+  /* 3-column layout so search can’t cover the right-side buttons */
+  nav.navbar .navbar-row-top {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  nav.navbar .navbar-left {
+    grid-column: 1 / 2;
+  }
+
+  nav.navbar .navbar-search-wrapper {
+    grid-column: 2 / 3;
+    justify-self: stretch;      /* fill the whole middle column */
+    width: 100% !important;     /* force it to take that width */
+  }
+
+  nav.navbar .navbar-search-inner {
+    max-width: clamp(40rem, 70vw, 90rem);
+    margin-inline: auto;
+  }
+
+  nav.navbar .navbar-right {
+    grid-column: 3 / 4;
+    justify-content: flex-end;
+  }
+
+  /* Hide hamburger in desktop mode */
+  nav.navbar .hamburger-btn {
+    display: none !important;
+  }
+}
+
+/* ---------- Mobile (<= 640px) ---------- */
+@media (max-width: 640px) {
+  /* Stack into:
+     row 1: logo + hamburger
+     row 2: full-width search bar */
+  nav.navbar .navbar-row-top {
+    flex-direction: column;
+    align-items: stretch;
+    padding-inline: 0.75rem;
+  }
+
+  nav.navbar .navbar-left,
+  nav.navbar .navbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  /* Make sure right side can anchor the dropdown menu */
+  nav.navbar .navbar-right {
+    position: relative;
+  }
+
+  nav.navbar .navbar-search-wrapper {
+    order: 2;
+    width: 100% !important;
+    margin-top: 0.5rem;
+  }
+
+  nav.navbar .navbar-search-inner {
+    width: 100%;
+  }
+
+  /* Show hamburger on mobile */
+  nav.navbar .hamburger-btn {
+    display: inline-flex;
+  }
+
+  /* Position mobile menu directly under the right area (hamburger) */
+  nav.navbar .mobile-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);  /* just below the right section */
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e6d6df;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    min-width: 180px;
+    z-index: 50010;
+    display: none;
+  }
+
+  nav.navbar .mobile-menu.open {
+    display: block;
+  }
+}
+
+
+/* End of responsive navbar rules */
