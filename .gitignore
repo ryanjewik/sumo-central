@@ -5,3 +5,5 @@ node_modules
 secerts.txt
 **/.ipynb_checkpoints/
 logs/
+*.pem
+sumo_origin_certificate_and_private_key.txt

@@ -55,3 +55,16 @@ bashoid + day + match_number + east_id + west_id
 2025117201419
 
 2025117140164
+
+prod checklist:
+Last data ingestion:
+  api_retrieval
+  bucket_downloader
+  populate_postgre
+  headshots
+  populate_mongo
+  homepage
+remove data ingestion and machine learning folders
+EC2 config, security groups, inelastic ip
+cloudflare reverse proxy, https, domain name (sumopedia.net)
+download to ec2 then run docker command
