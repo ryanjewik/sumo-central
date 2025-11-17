@@ -795,6 +795,103 @@ nav.navbar .navbar-search-inner {
   }
 }
 
+/* ---------- Detail / profile two-column helpers ---------- */
+.detail-columns,
+.profile-columns {
+  display: flex;
+  gap: 32px;
+  width: 100%;
+  align-items: flex-start;
+}
+
+.detail-columns .left-column {
+  flex: 0 0 260px;
+  width: 260px;
+}
+
+.profile-columns .left-rail {
+  flex: 0 0 360px;
+  width: 360px;
+}
+
+.detail-columns .right-column,
+.profile-columns .profile-main {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .detail-columns,
+  .profile-columns {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .detail-columns .left-column,
+  .profile-columns .left-rail,
+  .detail-columns .right-column,
+  .profile-columns .profile-main {
+    width: 100%;
+    flex: none;
+  }
+  .detail-columns img,
+  .profile-columns img {
+    max-height: 360px;
+    height: auto;
+    width: 100%;
+    object-fit: cover;
+  }
+}
+
+/* Mobile-specific extra top padding for pages that opt in with .extra-vertical-pad.
+   Use !important so this wins over small inline `padding` values applied in JSX. */
+@media (max-width: 640px) {
+  .extra-vertical-pad {
+    padding-top: 100px !important;
+    padding-bottom: 2.5rem !important;
+  }
+}
+
+/* Visuals inside detail pages: ensure charts/cards can expand horizontally on small screens */
+.detail-columns .visuals {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+.detail-columns .visual-left {
+  flex: 0 0 40%;
+  max-width: 40%;
+}
+.detail-columns .visual-right {
+  flex: 1 1 60%;
+  max-width: 60%;
+}
+.detail-columns .visual-left > *,
+.detail-columns .visual-right > * {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .detail-columns .visuals {
+    flex-direction: column;
+  }
+  .detail-columns .visual-left,
+  .detail-columns .visual-right {
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .detail-columns .visual-left > *,
+  .detail-columns .visual-right > * {
+    width: 100% !important;
+  }
+}
+
+/* Extra vertical padding utility (used by basho index pages) */
+.extra-vertical-pad {
+  padding-block: clamp(2rem, 6vw, 6rem);
+}
+
 /* === FINAL NAVBAR LAYOUT OVERRIDES === */
 
 /* Generic layout for the top row */

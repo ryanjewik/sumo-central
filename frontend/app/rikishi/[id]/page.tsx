@@ -609,9 +609,9 @@ export default function RikishiDetailPage() {
         {!loading && error && <div style={{ color: 'crimson' }}>{error}</div>}
 
         {!loading && !error && doc && (
-          <div style={{ display: 'flex', gap: 32, width: '100%', alignItems: 'flex-start' }}>
+          <div className="detail-columns">
             {/* Left column: avatar & summary */}
-            <div style={{ width: 260, flex: '0 0 260px' }}>
+            <div className="left-column">
               <div className="rounded-xl" style={{ border: '4px solid #563861', padding: 4 }}>
                 <div className="rounded-lg overflow-hidden bg-[#e0a3c2]">
                   {summary?.image ? (
@@ -721,13 +721,13 @@ export default function RikishiDetailPage() {
             </div>
 
             {/* Right column: details */}
-            <div style={{ flex: '1 1 0', minWidth: 0 }}>
+            <div className="right-column">
               {doc.bio && <div style={{ marginBottom: '0.5rem' }} className="app-text">{doc.bio}</div>}
 
               {/* Visuals: stats, sparkline, kimarite chart (above dropdowns) */}
               <div style={{ marginBottom: '1rem' }}>
-                <div className="flex flex-col md:flex-row gap-4" style={{ alignItems: 'stretch' }}>
-                  <div className="flex flex-col gap-3 w-full" style={{ flexBasis: '40%', maxWidth: '40%', minHeight: KIMARITE_HEIGHT }}>
+                <div className="visuals flex flex-col md:flex-row gap-4" style={{ alignItems: 'stretch' }}>
+                  <div className="visual-left flex flex-col gap-3 w-full" style={{ minHeight: KIMARITE_HEIGHT }}>
                       <div className="grid grid-cols-2 gap-3">
                         {/* Yusho card with kimarite-like gradient */}
                         <div style={{ border: '4px solid #563861', borderRadius: 8, padding: 4 }}>
@@ -750,7 +750,7 @@ export default function RikishiDetailPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="w-full" style={{ flexBasis: '60%', maxWidth: '60%' }}>
+                    <div className="visual-right w-full">
                       {/* KimariteRadarChart renders its own card-style wrapper; use it directly without an extra container */}
                       <KimariteRadarChart kimariteCounts={kimariteCounts} height={KIMARITE_HEIGHT} />
                     </div>

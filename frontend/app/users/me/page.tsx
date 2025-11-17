@@ -177,8 +177,8 @@ export default function MePage() {
         {loading ? (
             <div>Loading...</div>
         ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div className="profile-columns" style={{ gap: 24 }}>
+            <div className="profile-main" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 {/* Username change card */}
                 <form onSubmit={submitUsernameChange} style={{ background: 'rgba(255,255,255,0.02)', padding: 18, borderRadius: 8 }}>
                 <h3 style={{ marginTop: 0 }}>Change username</h3>
@@ -222,7 +222,7 @@ export default function MePage() {
                 </form>
             </div>
 
-            <aside style={{ background: 'rgba(255,255,255,0.02)', padding: 18, borderRadius: 8 }}>
+            <aside className="left-rail" style={{ background: 'rgba(255,255,255,0.02)', padding: 18, borderRadius: 8 }}>
                 <div style={{ marginBottom: 12 }}>
                 <strong>Email</strong>
                 <div style={{ color: '#666' }}>{profile?.email ?? '—'}</div>

@@ -140,8 +140,9 @@ export default function RikishiIndexPage() {
   return (
     <>
       <div id="background"></div>
-      <div style={{ marginTop: '13rem', padding: '1rem', position: 'relative', zIndex: 1 }} className="content-box">
-        <div style={{ width: '100%' }}>
+      <main className="page-offset">
+        <div className="content-box" style={{ padding: '1rem', position: 'relative', zIndex: 1 }}>
+          <div style={{ width: '100%' }}>
         <h1 className="app-text" style={{ marginBottom: '1rem' }}>Rikishi — Index</h1>
 
         {items.length === 0 && !loading && (
@@ -164,9 +165,10 @@ export default function RikishiIndexPage() {
         <div className={styles.loading}>
           {loading && <div className="app-text">Loading…</div>}
           {!hasMore && items.length > 0 && <div className={styles.end}>End of list</div>}
+          </div>
         </div>
-      </div>
-    </div>
+        </div>
+      </main>
     </>
   );
 }

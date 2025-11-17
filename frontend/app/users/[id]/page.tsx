@@ -78,8 +78,8 @@ export default async function UserPage({ params }: Props) {
 		<>
 			<div id="background"></div>
 			<main className="page-offset">
-				<section style={{ display: 'flex', gap: 24, alignItems: 'flex-start', justifyContent: 'center' }}>
-					<div style={{ flex: '0 0 360px', background: '#ffffff', padding: 20, borderRadius: 12, border: '1px solid rgba(86,56,97,0.06)', boxShadow: '0 8px 30px rgba(17,24,39,0.06)', color: '#111' }}>
+				<section className="profile-columns" style={{ justifyContent: 'center' }}>
+					<div className="left-rail" style={{ background: '#ffffff', padding: 20, borderRadius: 12, border: '1px solid rgba(86,56,97,0.06)', boxShadow: '0 8px 30px rgba(17,24,39,0.06)', color: '#111' }}>
 						<h2 style={{ margin: '0 0 8px 0', color: '#1f1f1f' }}>{user ? user.username : `User ${id}`}</h2>
 						{user?.country ? <div style={{ color: '#666', marginBottom: 8 }}>Country: {user.country}</div> : null}
 						<div style={{ color: '#666', marginBottom: 8 }}>Joined: {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}</div>
@@ -119,7 +119,7 @@ export default async function UserPage({ params }: Props) {
 						)}
 					</div>
 
-					<div style={{ flex: 1 }}>
+					<div className="profile-main">
 						{/* Show posts authored by this user (server-side fetched and passed as initial state to client list) */}
 						{
 							(() => {

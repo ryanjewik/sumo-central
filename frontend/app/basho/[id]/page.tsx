@@ -191,7 +191,7 @@ export default function BashoDetailPage() {
         .basho-table thead th { background: rgba(224,163,194,0.14); color: rgba(86,56,97,0.92); }
         .basho-table tbody tr:hover { background: rgba(86,56,97,0.02); }
       `}</style>
-  <div className="content-box mt-60 px-6 relative z-0 w-full flex flex-col items-center">
+  <div className="content-box extra-vertical-pad mt-60 px-6 relative z-0 w-full flex flex-col items-center">
 
   {loading && <div className="app-text text-center">Loading...</div>}
   {!loading && error && <div className="text-center text-crimson">{error}</div>}
