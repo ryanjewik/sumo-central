@@ -307,7 +307,10 @@ const UpcomingMatchesList: React.FC<UpcomingMatchesListProps> = ({ matches, date
                 // Only allow a strict canonical numeric id for voting and websocket seeding.
                 // This prevents accidentally writing votes to legacy/short ids like "1".
                 const matchIdStrLocal = String(canonical || explicitId || '');
-                const apiMatchId = (canonical && /^\d+$/.test(String(canonical))) ? String(Number(canonical)) : '';
+                // Use the canonical digit string directly for API calls. Avoid converting
+                // to Number because very large canonical ids can lose precision or be
+                // formatted in exponential notation which the backend will reject.
+                const apiMatchId = (canonical && /^\d+$/.test(String(canonical))) ? String(canonical) : '';
                 // Debug: log canonical vs explicit so we can diagnose why short ids appear
                 try { console.debug('upcoming.matchIds', { idx, canonical, explicitId, matchIdStrLocal, apiMatchId }); } catch {}
               const countsForMatch = liveCounts[matchIdStrLocal];

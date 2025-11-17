@@ -184,7 +184,11 @@ const HighlightedMatchCard: React.FC<HighlightedMatchCardProps> = ({ match, onOp
   // For voting and websocket seeding: require a strict canonical id. Do NOT
   // fall back to short/explicit ids like "1" to avoid writing to legacy keys.
   const effectiveMatchId = canonicalMatchId || matchIdStr;
-  const apiMatchId = (canonicalMatchId && /^\d+$/.test(String(canonicalMatchId))) ? String(Number(canonicalMatchId)) : '';
+  // Use the canonical numeric id string directly for API calls. Avoid converting
+  // to Number because very large canonical ids exceed JS safe integers and
+  // Number(...) can produce scientific notation (e.g. `2.0e+17`) which the
+  // backend `strconv.ParseInt` will reject. Keep the pure digit string.
+  const apiMatchId = (canonicalMatchId && /^\d+$/.test(String(canonicalMatchId))) ? String(canonicalMatchId) : '';
   // note: seed/websocket should use canonicalMatchId when available; otherwise skip seeding.
   try { console.debug('highlighted.matchIds', { canonicalMatchId, matchIdStr, apiMatchId }); } catch {}
   // start empty and let the seed fetch populate real counts to avoid accidental empty-string keys
