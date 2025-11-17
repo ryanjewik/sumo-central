@@ -20,7 +20,7 @@ async function fetchInitial() : Promise<{ posts: ForumPost[]; failed: boolean }>
       // primary attempt failed; fall back to contacting the backend directly
       // (useful in setups where the Next API proxy isn't available).
       try {
-        const backendBase = process.env.BACKEND_INTERNAL_URL || process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+  const backendBase = process.env.BACKEND_INTERNAL_URL || process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://gin-backend:8080';
         // reuse abort controller for fallback, reset timeout
         clearTimeout(timeout);
         const ctrl2 = new AbortController();

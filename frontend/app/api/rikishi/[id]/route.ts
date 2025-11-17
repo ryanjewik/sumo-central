@@ -5,7 +5,7 @@ export async function GET(req: Request, context: any) {
   const rawParams = context?.params ?? {};
   const params = typeof rawParams?.then === 'function' ? await rawParams : rawParams;
   const { id } = params ?? {};
-  const backend = process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+  const backend = process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://gin-backend:8080';
   const base = String(backend).replace(/\/$/, '');
   const url = `${base}/rikishi/${encodeURIComponent(id)}`;
 

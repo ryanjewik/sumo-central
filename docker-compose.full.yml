@@ -96,7 +96,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_BACKEND_URL: "http://gin-backend:8080"
+        # In production we intentionally do NOT bake internal service addresses
+        # into the client bundle. Leave NEXT_PUBLIC_BACKEND_URL empty so the
+        # client uses the current origin (window.location) which avoids CORS.
+        NEXT_PUBLIC_BACKEND_URL: ""
     image: sumo-frontend:local
     ports:
       # Map host 3000 to the container's Next.js dev server (port 3000).
@@ -111,8 +114,9 @@ services:
       - NODE_ENV=production
       # Backend reachable by Docker service name on the compose network
       - BACKEND_URL=http://gin-backend:8080
-      # Optional: expose to client-side builds if app uses NEXT_PUBLIC_BACKEND_URL
-      - NEXT_PUBLIC_BACKEND_URL=http://gin-backend:8080
+      # Do NOT expose the internal backend host to client bundles. Keep NEXT_PUBLIC_BACKEND_URL empty
+      # so the browser uses same-origin requests (avoids CORS).
+      - NEXT_PUBLIC_BACKEND_URL=
     networks:
       - sumo_net
       - airflow
@@ -359,6 +363,28 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       bash -lc 'until airflow db check-migrations; do echo "Waiting for DB migrations..."; sleep 3; done; exec airflow dag-processor'
+
+  # -------------------- TLS Reverse Proxy (nginx) --------------------
+  proxy:
+    build:
+      context: ./deploy/nginx
+      dockerfile: Dockerfile
+    image: sumo-proxy:local
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    depends_on:
+      - react-frontend
+      - gin-backend
+      - airflow-webserver
+    volumes:
+      # Mount your Cloudflare origin cert/key here on the EC2 host at /etc/ssl/sumopedia/
+      - /etc/ssl/sumopedia/origin-cert.pem:/etc/ssl/sumopedia/origin-cert.pem:ro
+      - /etc/ssl/sumopedia/origin-key.pem:/etc/ssl/sumopedia/origin-key.pem:ro
+    networks:
+      - sumo_net
+      - airflow
 
 volumes:
   sumo-db-data: {}

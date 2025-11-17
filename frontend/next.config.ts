@@ -4,7 +4,10 @@ import type { NextConfig } from "next";
 // the frontend service sets BACKEND_URL=http://gin-backend:8080 so the dev
 // server will proxy to the backend container. Defaults to localhost:8080 for
 // local (non-container) development.
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080";
+// Default backend for rewrites: in production the frontend container can reach
+// the backend service at the Docker compose service name `gin-backend:8080`.
+// In development we keep localhost for local dev convenience.
+const BACKEND_URL = process.env.BACKEND_URL || (process.env.NODE_ENV === 'production' ? 'http://gin-backend:8080' : 'http://localhost:8080');
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,

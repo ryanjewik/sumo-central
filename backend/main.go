@@ -101,6 +101,14 @@ func main() {
 	handlers.StartReconciler(app, reconcileInterval, reconcileCtx)
 
 	r := gin.Default()
+	// Trust the reverse proxy (nginx) which will be terminating TLS and
+	// forwarding requests via the Docker network. This allows Gin to use
+	// X-Forwarded-Proto and X-Forwarded-For headers correctly when behind
+	// a trusted proxy. In production you may want to restrict this to the
+	// proxy's IP range instead of 0.0.0.0/0.
+	if err := r.SetTrustedProxies([]string{"0.0.0.0/0"}); err != nil {
+		log.Println("⚠️ could not set trusted proxies:", err)
+	}
 	router.Register(r, app)
 
 	port := cfg.GinPort
