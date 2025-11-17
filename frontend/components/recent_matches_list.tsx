@@ -420,10 +420,11 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                 const counts = liveCounts[matchId];
                 const eastVotes = counts && match.eastId ? (counts[String(match.eastId)] ?? match.eastVotes ?? 0) : (match.eastVotes ?? 0);
                 const westVotes = counts && match.westId ? (counts[String(match.westId)] ?? match.westVotes ?? 0) : (match.westVotes ?? 0);
+                // total should be at least 1 to avoid division by zero; when no votes, show 50/50 neutral (use total=1 to avoid empty bar)
                 const total = Math.max(1, eastVotes + westVotes);
-                const eastPercent = Math.round((eastVotes / total) * 100);
-                const westPercent = 100 - eastPercent;
-                const progressValue = Math.max(eastPercent, westPercent);
+                // Progress bar represents proportion of votes for the WEST rikishi.
+                // Examples: east=1/west=1 => 50, west=2/east=0 => 100 (full), east=2/west=0 => 0 (empty)
+                const progressValue = Math.round((westVotes / total) * 100);
                 const winnerSide = match.winnerSide;
                 const rawAvatarEast: unknown = match.eastImage ?? (match.raw && (match.raw['east_rikishi'] as RawMatch)?.s3_url) ?? (match.raw && (match.raw['east_rikishi'] as RawMatch)?.image_url) ?? null;
                 const rawAvatarWest: unknown = match.westImage ?? (match.raw && (match.raw['west_rikishi'] as RawMatch)?.s3_url) ?? (match.raw && (match.raw['west_rikishi'] as RawMatch)?.image_url) ?? null;
