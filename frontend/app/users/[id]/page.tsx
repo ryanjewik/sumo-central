@@ -74,6 +74,35 @@ export default async function UserPage({ params }: Props) {
 		// ignore; user stays null
 	}
 
+	// Ensure authoredPosts only contains posts authored by this user.
+	// Match by explicit author_id/authorId when available, or by username when
+	// the `user` payload is present. If the server returned unrelated posts for
+	// any reason, this protects the public profile from showing others' posts.
+	// Strictly enforce that posts shown on a public profile belong to the
+	// requested route id. The DB/response we saw includes `author_id` values like
+	// 'f2273140-3f12-4588-ae05-a9e1030911ab' which must match the route UUID.
+	if (Array.isArray(authoredPosts)) {
+		const routeIdStr = String(id)
+		authoredPosts = authoredPosts.filter((p: any) => {
+			// Check common top-level id fields first; this should catch the
+			// typical backend shape where `author_id` is present.
+			const postAuthorId = String(p.author_id ?? p.authorId ?? p.user_id ?? p.userId ?? p.author?._id ?? p.author?.id ?? '')
+			if (postAuthorId && postAuthorId === routeIdStr) return true
+
+			// Fallback: some payloads might put the author id under nested fields
+			// or use the username as the route; we don't want to be permissive
+			// here — prefer the strict UUID match. If the route looks like a
+			// non-UUID username, allow a username match as a secondary fallback.
+			const routeLooksLikeUUID = /^[0-9a-fA-F-]{8,}$/.test(routeIdStr)
+			if (!routeLooksLikeUUID) {
+				const postAuthorName = String(p.author_username ?? p.authorUsername ?? p.username ?? p.author?.username ?? '')
+				if (postAuthorName && postAuthorName.toLowerCase() === routeIdStr.toLowerCase()) return true
+			}
+
+			return false
+		})
+	}
+
 	return (
 		<>
 			<div id="background"></div>
@@ -134,7 +163,7 @@ export default async function UserPage({ params }: Props) {
 										body: p.body,
 									}))
 									: [];
-								return <ForumListClient initial={mapped} initialLoadFailed={authoredFailed} />;
+								return <ForumListClient initial={mapped} initialLoadFailed={authoredFailed} baseApi={`/api/discussions?author_id=${encodeURIComponent(id)}`} />;
 							})()
 						}
 					</div>

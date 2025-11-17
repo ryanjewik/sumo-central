@@ -7,7 +7,7 @@ import ForumSection, { ForumPost } from './ForumSection';
 type BackendPost = any;
 const PAGE_SIZE = 5;
 
-export default function ForumListClient({ initial, initialLoadFailed, maxItems }: { initial: ForumPost[], initialLoadFailed?: boolean, maxItems?: number }) {
+export default function ForumListClient({ initial, initialLoadFailed, maxItems, baseApi }: { initial: ForumPost[], initialLoadFailed?: boolean, maxItems?: number, baseApi?: string }) {
   const [posts, setPosts] = useState<ForumPost[]>(initial ?? []);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(!initialLoadFailed);
@@ -76,7 +76,9 @@ export default function ForumListClient({ initial, initialLoadFailed, maxItems }
     setLoading(true);
     try {
       const skip = skipRef.current;
-  const res = await fetchWithAuth(`/api/discussions?skip=${skip}&limit=${PAGE_SIZE}`);
+  const apiBase = baseApi ?? '/api/discussions'
+  const sep = apiBase.includes('?') ? '&' : '?'
+  const res = await fetchWithAuth(`${apiBase}${sep}skip=${skip}&limit=${PAGE_SIZE}`);
       if (!res.ok) throw new Error('failed to load');
       const data = await res.json();
       const items: BackendPost[] = Array.isArray(data) ? data : data.items ?? [];
@@ -141,9 +143,11 @@ export default function ForumListClient({ initial, initialLoadFailed, maxItems }
           <div>Unable to load discussions right now.</div>
           <div style={{ marginTop: 8 }}>
             <button onClick={async () => {
-              try {
+                try {
                 setLoading(true);
-                const r = await fetchWithAuth(`/api/discussions?skip=0&limit=${PAGE_SIZE}`);
+                const apiBase = baseApi ?? '/api/discussions'
+                const sep = apiBase.includes('?') ? '&' : '?'
+                const r = await fetchWithAuth(`${apiBase}${sep}skip=0&limit=${PAGE_SIZE}`);
                 if (!r.ok) throw new Error('failed');
                 const data = await r.json();
                 const items: BackendPost[] = Array.isArray(data) ? data : data.items ?? [];

@@ -1,6 +1,7 @@
 import React from 'react'
 import { headers } from 'next/headers'
 import dynamicImport from 'next/dynamic'
+import Link from 'next/link'
 
 // client components (imported dynamically to avoid SSR issues)
 const PostVote = dynamicImport(() => import('../../../components/PostVote'))
@@ -145,15 +146,30 @@ export default async function DiscussionThreadPage({ params }: { params: any }) 
             {/* discussion card styled similar to ForumSection; keep the inner green thread panels for contrast */}
             <div style={{ background: '#A3E0B8', padding: 16, borderRadius: 8, marginBottom: 16, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
               <h1 style={{ color: '#563861', marginTop: 0 }}>{data.title}</h1>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <div style={{ color: '#563861' }}>
-                  By <span style={{ fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: 'rgba(255,255,255,0.15)' }}>{data.author_username ?? 'anonymous'}</span> — {data.created_at}
-                  {/* Render author badge client component (dynamic import) */}
-                  <div style={{ marginTop: 6 }}>
-                    {/* @ts-ignore - data may not include author_id in all responses */}
-                    <AuthorBadge userId={(data as any).author_id || (data as any).authorId} username={data.author_username} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <div style={{ color: '#563861' }}>
+                    {(() => {
+                      const authorIdOrName = (data as any).author_id || (data as any).authorId || data.author_username
+                      const authorDisplay = data.author_username ?? 'anonymous'
+                      return (
+                        <>
+                          By{' '}
+                          {authorIdOrName ? (
+                            <Link href={`/users/${encodeURIComponent(String(authorIdOrName))}`}>
+                              <span style={{ fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: 'rgba(255,255,255,0.15)', color: 'inherit', textDecoration: 'none' }}>{authorDisplay}</span>
+                            </Link>
+                          ) : (
+                            <span style={{ fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: 'rgba(255,255,255,0.15)' }}>{authorDisplay}</span>
+                          )}{' '}— {data.created_at}
+                          {/* Render author badge client component (dynamic import) */}
+                          <div style={{ marginTop: 6 }}>
+                            {/* @ts-ignore - data may not include author_id in all responses */}
+                            <AuthorBadge userId={(data as any).author_id || (data as any).authorId} username={data.author_username} />
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
-                </div>
                 <div>
                   {/* Post vote client component */}
                   {/* @ts-ignore - initial counts optional */}
