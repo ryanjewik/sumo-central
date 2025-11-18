@@ -18,7 +18,11 @@ COPY . .
 # Build static binary
 ENV CGO_ENABLED=0
 ENV GOOS=linux
-ENV GOARCH=amd64
+# Allow target architecture to be provided by build args (BuildKit sets TARGETARCH)
+# Default to amd64 for local dev; when building on an aarch64 host Docker/BuildKit
+# will set TARGETARCH=arm64 automatically. You can also pass --build-arg TARGETARCH=arm64
+ARG TARGETARCH=arm64
+ENV GOARCH=${TARGETARCH}
 
 # Build output to /app/sumo-backend
 RUN go build -ldflags="-s -w" -o /app/sumo-backend ./main.go
