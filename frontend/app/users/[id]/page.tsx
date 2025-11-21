@@ -106,7 +106,7 @@ export default async function UserPage({ params }: Props) {
 	return (
 		<>
 			<div id="background"></div>
-			<main className="page-offset">
+			<main className="page-offset extra-vertical-pad">
 				<section className="profile-columns" style={{ justifyContent: 'center' }}>
 					<div className="left-rail" style={{ background: '#ffffff', padding: 20, borderRadius: 12, border: '1px solid rgba(86,56,97,0.06)', boxShadow: '0 8px 30px rgba(17,24,39,0.06)', color: '#111' }}>
 						<h2 style={{ margin: '0 0 8px 0', color: '#1f1f1f' }}>{user ? user.username : `User ${id}`}</h2>

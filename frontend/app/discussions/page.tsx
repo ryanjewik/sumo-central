@@ -14,7 +14,7 @@ export default function DiscussionsPage() {
   return (
     <>
       <div id="background"></div>
-      <main className="page-offset" style={{ position: 'relative', zIndex: 1 }}>
+      <main className="page-offset extra-vertical-pad" style={{ position: 'relative', zIndex: 1 }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 1rem' }}>
           <DiscussionSubmission />
           <ForumListServer />

@@ -41,7 +41,8 @@ x-airflow-common: &airflow-common
     MONGO_CONN_ID: "mongo_default"
     AIRFLOW_CONN_AWS_DEFAULT: "aws://@/?region_name=${AWS_REGION}&aws_access_key_id=${AWS_ACCESS_KEY_ID}&aws_secret_key=${AWS_SECRET_ACCESS_KEY}"
     AIRFLOW_CONN_SUMO_DB: "postgresql+psycopg2://${DB_USERNAME}:${DB_PASSWORD}@sumo-db:5432/${DB_NAME}"
-    JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+    # Use the actual Java path present in the Airflow images (arm64 build on this host)
+    JAVA_HOME: /usr/lib/jvm/java-17-openjdk-arm64
     SPARK_HOME: /opt/spark
     AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
     AIRFLOW__CORE__PARALLELISM: "8"
@@ -51,6 +52,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__TASK_RUNNER: "StandardTaskRunner"
     AIRFLOW__CORE__STORE_SERIALIZED_DAGS: "True"
     AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
   volumes:
     - ./airflow/jobs:/opt/airflow/jobs
     - ./airflow/dags:/opt/airflow/dags
@@ -163,6 +165,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
 
   # -------------------- Sumo Postgres (dev) --------------------
   sumo-db:
@@ -389,6 +393,7 @@ services:
 volumes:
   sumo-db-data: {}
   spark-jars: {}
+  airflow-postgres-data: {}
 
 networks:
   sumo_net:

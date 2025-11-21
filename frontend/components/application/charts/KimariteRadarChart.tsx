@@ -1,7 +1,10 @@
-"use client";
+import React from "react";
+import { Legend, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart as RechartsRadarChart, ResponsiveContainer, Tooltip } from "recharts";
+// Chart helper components (not used by this chart) removed to avoid unused-import warnings
+import { cx } from "../../../utils/cx";
 
 // Custom legend renderer for 3 items per line
-const CustomLegend = () => {
+const CustomLegend: React.FC = () => {
     const rikishiNames = [
         "Hoshoryu",
         "Terunofuji",
@@ -67,10 +70,6 @@ const CustomLegend = () => {
         </div>
     );
 };
-import React from "react";
-import { Legend, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart as RechartsRadarChart, ResponsiveContainer, Tooltip } from "recharts";
-// Chart helper components (not used by this chart) removed to avoid unused-import warnings
-import { cx } from "../../../utils/cx";
 
 // Custom tick component for PolarRadiusAxis
 type CustomRadarChartTickProps = {
@@ -81,7 +80,7 @@ type CustomRadarChartTickProps = {
     [key: string]: unknown;
 };
 
-const CustomRadarChartTick: React.FC<CustomRadarChartTickProps> = (props) => {
+const CustomRadarChartTick: React.FC<CustomRadarChartTickProps> = (props: CustomRadarChartTickProps) => {
     const { x, y, payload } = props;
     return (
         <text
@@ -113,7 +112,7 @@ interface KimariteRadarChartProps {
     height?: number;
 }
 
-const KimariteRadarChart: React.FC<KimariteRadarChartProps> = ({ kimariteCounts, height }) => {
+const KimariteRadarChart: React.FC<KimariteRadarChartProps> = ({ kimariteCounts, height }: KimariteRadarChartProps) => {
     // if backend provides `kimarite_usage_most_recent_basho` as an object { technique: count }
     // take the top 6 techniques by count and convert to radar data with a single series named 'Usage'
     let radarData = radarDataDefault;
@@ -178,14 +177,15 @@ const KimariteRadarChart: React.FC<KimariteRadarChartProps> = ({ kimariteCounts,
                                                 verticalAlign="bottom"
                                                 align="center"
                                                 layout="horizontal"
-                                                content={CustomLegend}
+                                                content={() => <CustomLegend />}
                                             />
                                         )}
                     <PolarGrid stroke="currentColor" className="text-utility-gray-100" />
                     <PolarAngleAxis
                         dataKey="technique"
                         stroke="currentColor"
-                        tick={({ x, y, textAnchor, index, payload, ...props }) => {
+                        tick={(tickProps: any) => {
+                            const { x, y, textAnchor, index, payload, ...props } = tickProps;
                             // shorten long technique names for radial ticks
                             const label = String(payload.value || '');
                             const short = label.length > 18 ? `${label.slice(0, 16)}…` : label;
@@ -210,7 +210,7 @@ const KimariteRadarChart: React.FC<KimariteRadarChartProps> = ({ kimariteCounts,
                     />
                     <PolarRadiusAxis
                         textAnchor="middle"
-                        tick={props => <CustomRadarChartTick {...props} fill={axisTextColor} />}
+                        tick={(props: any) => <CustomRadarChartTick {...props} fill={axisTextColor} />}
                         axisLine={false}
                         angle={90}
                         domain={[0, 20]}

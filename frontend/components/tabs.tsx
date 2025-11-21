@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from 'react';
 import Tabs from '@mui/joy/Tabs';
 import TabList from '@mui/joy/TabList';

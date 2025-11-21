@@ -67,21 +67,21 @@ const HighlightedMatchCard: React.FC<HighlightedMatchCardProps> = ({ match, onOp
       if (lower === 'undefined' || lower === 'null') continue;
       return s;
     }
-    return '/sumo_logo.png';
+      return '/sumo_logo.webp';
   };
 
   const westImg = chooseImage(
     m.west_image,
     (m as Record<string, unknown>)['west_image_url'],
     (m as Record<string, unknown>)['west_photo'],
-    nestedWest && (nestedWest['s3_url'] ?? nestedWest['image_url'] ?? nestedWest['pfp_url']),
+    nestedWest && (nestedWest['s3_mini_url'] ?? nestedWest['s3_url'] ?? nestedWest['image_url'] ?? nestedWest['pfp_url']),
   );
 
   const eastImg = chooseImage(
     m.east_image,
     (m as Record<string, unknown>)['east_image_url'],
     (m as Record<string, unknown>)['east_photo'],
-    nestedEast && (nestedEast['s3_url'] ?? nestedEast['image_url'] ?? nestedEast['pfp_url']),
+    nestedEast && (nestedEast['s3_mini_url'] ?? nestedEast['s3_url'] ?? nestedEast['image_url'] ?? nestedEast['pfp_url']),
   );
 
   // AI prediction raw value (0/1 or name). Use top-level keys if present.
@@ -241,7 +241,7 @@ const HighlightedMatchCard: React.FC<HighlightedMatchCardProps> = ({ match, onOp
                 <a title={`View ${name} profile`} style={{ textDecoration: 'none', color: 'inherit' }}>
                   <div style={{ fontWeight: 900, color: '#1e293b', fontSize: 22 }}>{name}</div>
                   <div className="pfp" style={pfpStyle} aria-hidden>
-                    <Image src={img} alt={`${name} profile`} width={680} height={920} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} quality={90} />
+                    <Image src={img} alt={`${name} profile`} width={680} height={920} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} quality={90} priority sizes="(max-width: 600px) 320px, 680px" />
                     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 10, border: winnerBorder, boxShadow: winnerShadow }} />
                     {winnerSide === side && (
                       <div style={{ position: 'absolute', ...(badgePos as any), background: '#10b981', color: '#fff', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>W</div>
@@ -251,7 +251,7 @@ const HighlightedMatchCard: React.FC<HighlightedMatchCardProps> = ({ match, onOp
               </Link>
             ) : (
               <div className="pfp" style={pfpStyle} aria-hidden>
-                <Image src={img} alt={`${name} profile`} width={680} height={920} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} quality={90} />
+                <Image src={img} alt={`${name} profile`} width={680} height={920} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} quality={90} priority sizes="(max-width: 600px) 320px, 680px" />
                 <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 10, border: winnerBorder, boxShadow: winnerShadow }} />
                 {winnerSide === side && (
                   <div style={{ position: 'absolute', ...(badgePos as any), background: '#10b981', color: '#fff', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>W</div>

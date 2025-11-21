@@ -33,12 +33,21 @@ function renderKeyValue(obj: any) {
   return (
     <table className="w-full border-collapse">
       <tbody>
-        {Object.entries(obj).map(([k, v]) => (
-          <tr key={k}>
-            <td className={`${SHARED_TD_CLASS} w-56 font-semibold`}>{k}</td>
-            <td className={SHARED_TD_CLASS}>{typeof v === 'object' ? <pre style={{ margin: 0 }}>{JSON.stringify(v, null, 2)}</pre> : String(v)}</td>
-          </tr>
-        ))}
+        {Object.entries(obj)
+          .filter(([k]) => {
+            // hide noisy S3 debug keys from the UI
+            const kk = String(k).toLowerCase();
+            if (kk === 's3_mini_key' || kk === 's3_mini_url' || kk === 's3_key' || kk === 's3_url') return false;
+            // also hide any s3_* internal keys
+            if (kk.startsWith('s3_')) return false;
+            return true;
+          })
+          .map(([k, v]) => (
+            <tr key={k}>
+              <td className={`${SHARED_TD_CLASS} w-56 font-semibold`}>{k}</td>
+              <td className={SHARED_TD_CLASS}>{typeof v === 'object' ? <pre style={{ margin: 0 }}>{JSON.stringify(v, null, 2)}</pre> : String(v)}</td>
+            </tr>
+          ))}
       </tbody>
     </table>
   );
@@ -319,25 +328,37 @@ function renderMatchesTable(matches: any, rikishiId?: any) {
   };
 
   const normalized = rows.map((r: any) => {
-    // Prefer match_date when present (per-match exact date). Fallback to start_date
-    // (basho start) or the map key if necessary.
+    // Match-date resolution rules (prefer strict map-key first):
+    // 1. If the original matches object used a map key, prefer extracting the
+    //    date from that key (first token / first 10 chars). This ensures the
+    //    displayed date matches the DB document where keys encode the date.
+    // 2. Otherwise, fall back to an explicit per-match `match_date` field.
+    // 3. Finally, fall back to `start_date` when available.
     let dateVal = undefined as string | undefined;
-    const md = r.match_date ?? r.matchDate ?? r.match_date_time ?? r.matchDateTime ?? undefined;
-    if (md) {
-      try {
-        const parsed = new Date(String(md));
-        if (!Number.isNaN(parsed.getTime())) dateVal = parsed.toISOString().slice(0, 10);
-      } catch {}
+    // 1) try map key first
+    dateVal = extractDateFromMapKey(typeof r._mapKey === 'string' ? r._mapKey : undefined);
+
+    // 2) then explicit match date
+    if (!dateVal) {
+      const md = r.match_date ?? r.matchDate ?? r.match_date_time ?? r.matchDateTime ?? undefined;
+      if (md) {
+        try {
+          const parsed = new Date(String(md));
+          if (!Number.isNaN(parsed.getTime())) dateVal = parsed.toISOString().slice(0, 10);
+          else if (typeof md === 'string' && /^(\d{4}-\d{2}-\d{2})/.test(String(md))) dateVal = String(md).slice(0, 10);
+        } catch {}
+      }
     }
+
+    // 3) finally start_date
     if (!dateVal && r.start_date) {
-      // start_date may already be YYYY-MM-DD or include time
       try {
         const parsed = new Date(String(r.start_date));
         if (!Number.isNaN(parsed.getTime())) dateVal = parsed.toISOString().slice(0, 10);
-        else if (typeof r.start_date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(r.start_date)) dateVal = String(r.start_date).slice(0,10);
+        else if (typeof r.start_date === 'string' && /^(\d{4}-\d{2}-\d{2})/.test(r.start_date)) dateVal = String(r.start_date).slice(0,10);
       } catch {}
     }
-    if (!dateVal) dateVal = extractDateFromMapKey(typeof r._mapKey === 'string' ? r._mapKey : undefined);
+
     return Object.assign({}, r, { _date: dateVal });
   });
 
@@ -727,7 +748,7 @@ export default function RikishiDetailPage() {
               {/* Visuals: stats, sparkline, kimarite chart (above dropdowns) */}
               <div style={{ marginBottom: '1rem' }}>
                 <div className="visuals flex flex-col md:flex-row gap-4" style={{ alignItems: 'stretch' }}>
-                  <div className="visual-left flex flex-col gap-3 w-full" style={{ minHeight: KIMARITE_HEIGHT }}>
+                  <div className="visual-left flex flex-col gap-3 w-full md:flex-1" style={{ minHeight: KIMARITE_HEIGHT }}>
                       <div className="grid grid-cols-2 gap-3">
                         {/* Yusho card with kimarite-like gradient */}
                         <div style={{ border: '4px solid #563861', borderRadius: 8, padding: 4 }}>
@@ -750,7 +771,7 @@ export default function RikishiDetailPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="visual-right w-full">
+                    <div className="visual-right w-full md:w-96">
                       {/* KimariteRadarChart renders its own card-style wrapper; use it directly without an extra container */}
                       <KimariteRadarChart kimariteCounts={kimariteCounts} height={KIMARITE_HEIGHT} />
                     </div>

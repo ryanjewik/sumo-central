@@ -103,18 +103,31 @@ func (a *App) Vote(c *gin.Context) {
 	}
 	userID, _ := ui.(string)
 
+	// Use the raw path param string for keying Redis so GET and POST agree.
 	matchIDStr := c.Param("id")
-	matchID, err := strconv.ParseInt(matchIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid match id"})
-		return
+
+	// Try to parse numeric form when we need to query numeric DB fields. If
+	// parsing fails, we continue and attempt to resolve using Mongo where
+	// possible. Do not reject on non-numeric here because large composite ids
+	// may be passed as strings by clients and should be handled.
+	var matchID int64
+	var parseErr error
+	if matchIDStr != "" {
+		matchID, parseErr = strconv.ParseInt(matchIDStr, 10, 64)
 	}
 
 	// Resolve legacy/placeholder short ids to canonical composite ids.
-	// If the provided matchID exists in the matches table, use it. Otherwise
-	// try to find a matching entry in the homepage/upcoming documents in Mongo
-	// and build the canonical id from basho_id + day + match_number + east + west.
-	resolvedMatchID := matchID
+	// If the provided numeric parse succeeded and the id exists in the
+	// matches table, use it. Otherwise try to find a matching entry in the
+	// homepage/upcoming documents in Mongo and build the canonical id from
+	// basho_id + day + match_number + east + west. We keep both the numeric
+	// resolved id (when available) and the canonical string to use for Redis
+	// keys and pubsub so reads/writes are consistent.
+	resolvedMatchID := int64(0)
+	// prefer numeric probe when parse succeeded
+	if parseErr == nil {
+		resolvedMatchID = matchID
+	}
 	// perform resolution with its own short timeout context
 	ctxResolve, cancelResolve := context.WithTimeout(c.Request.Context(), 3*time.Second)
 	defer cancelResolve()
@@ -208,14 +221,49 @@ func (a *App) Vote(c *gin.Context) {
 			}
 		}
 	}
-	// use resolvedMatchID from now on
-	matchID = resolvedMatchID
-
-	var body struct {
-		Winner int64 `json:"winner"`
+	// use resolvedMatchID when available; we'll also keep a canonical string
+	// to consistently key Redis and publish channels.
+	if resolvedMatchID != 0 {
+		matchID = resolvedMatchID
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	canonicalMatchIDStr := matchIDStr
+	if resolvedMatchID != 0 {
+		canonicalMatchIDStr = strconv.FormatInt(resolvedMatchID, 10)
+	}
+
+	// Accept winner as number or string in JSON; be permissive to client
+	// variations (some client code may send winner as string).
+	var rawBody map[string]interface{}
+	if err := c.ShouldBindJSON(&rawBody); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	var winnerVal int64
+	if w, ok := rawBody["winner"]; ok {
+		switch t := w.(type) {
+		case float64:
+			winnerVal = int64(t)
+		case int:
+			winnerVal = int64(t)
+		case int64:
+			winnerVal = t
+		case string:
+			if t == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid winner"})
+				return
+			}
+			if parsed, err := strconv.ParseInt(t, 10, 64); err == nil {
+				winnerVal = parsed
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid winner"})
+				return
+			}
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid winner"})
+			return
+		}
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing winner"})
 		return
 	}
 
@@ -224,9 +272,13 @@ func (a *App) Vote(c *gin.Context) {
 
 	// Redis-first path
 	if a.Redis != nil {
-		votesKey := fmt.Sprintf("match_votes:%d", matchID)
-		usersKey := fmt.Sprintf("match_users:%d", matchID)
-		newField := strconv.FormatInt(body.Winner, 10)
+		// Use the canonical string form for keys so GET and POST use the same
+		// Redis keys regardless of whether the incoming id was numeric or
+		// resolved from Mongo. This avoids mismatches where writes go to
+		// numeric keys and reads look at string keys (or vice-versa).
+		votesKey := fmt.Sprintf("match_votes:%s", canonicalMatchIDStr)
+		usersKey := fmt.Sprintf("match_users:%s", canonicalMatchIDStr)
+		newField := strconv.FormatInt(winnerVal, 10)
 
 		lua := `
 local votes_key = KEYS[1]
@@ -251,7 +303,9 @@ redis.call('PUBLISH', 'match_updates:'..match, encoded)
 return encoded
 `
 
-		res, err := a.Redis.Eval(ctx, lua, []string{votesKey, usersKey}, userID, newField, fmt.Sprintf("%d", matchID)).Result()
+		// Pass canonicalMatchIDStr as the match identifier to the Lua script
+		// and publish channel so subscribers receive the same string id.
+		res, err := a.Redis.Eval(ctx, lua, []string{votesKey, usersKey}, userID, newField, canonicalMatchIDStr).Result()
 		if err == nil {
 			if s, ok := res.(string); ok {
 				var out map[string]any
@@ -264,15 +318,32 @@ return encoded
 						// Attempt to persist synchronously so failures are visible in logs.
 						ctxBg, cancelBg := context.WithTimeout(context.Background(), 5*time.Second)
 						defer cancelBg()
-						if _, err := a.PG.Exec(ctxBg, `
-							INSERT INTO match_predictions (user_id, match_id, predicted_winner, prediction_time)
-							VALUES ($1, $2, $3, NOW())
-							ON CONFLICT (user_id, match_id) DO UPDATE
-							  SET predicted_winner = EXCLUDED.predicted_winner,
-								  prediction_time = NOW()
-						`, userID, matchID, body.Winner); err != nil {
-							// Log the error so we can diagnose why persistence may be failing
-							fmt.Printf("vote: failed to persist prediction user=%s match=%d winner=%d err=%v\n", userID, matchID, body.Winner, err)
+						// Persist to Postgres using numeric id when available. If we
+						// don't have a numeric (resolved) id, attempt to parse the
+						// canonical string; if that fails the DB insert cannot
+						// complete because match_predictions.match_id is BIGINT.
+						var pgMatchID int64
+						if resolvedMatchID != 0 {
+							pgMatchID = resolvedMatchID
+						} else {
+							if parsed, err := strconv.ParseInt(canonicalMatchIDStr, 10, 64); err == nil {
+								pgMatchID = parsed
+							} else {
+								// give up persisting to PG (but Redis was updated)
+								pgMatchID = 0
+							}
+						}
+						if pgMatchID != 0 {
+							if _, err := a.PG.Exec(ctxBg, `
+								INSERT INTO match_predictions (user_id, match_id, predicted_winner, prediction_time)
+								VALUES ($1, $2, $3, NOW())
+								ON CONFLICT (user_id, match_id) DO UPDATE
+								  SET predicted_winner = EXCLUDED.predicted_winner,
+									  prediction_time = NOW()
+							`, userID, pgMatchID, winnerVal); err != nil {
+								// Log the error so we can diagnose why persistence may be failing
+								fmt.Printf("vote: failed to persist prediction user=%s match=%v winner=%d err=%v\n", userID, pgMatchID, winnerVal, err)
+							}
 						}
 					}
 					c.JSON(http.StatusOK, gin.H{"result": out})
@@ -286,13 +357,26 @@ return encoded
 	}
 
 	// Fallback: persist to Postgres directly
+	// Fallback DB persistence (when Redis not available or Eval failed)
+	var dbMatchID int64
+	if resolvedMatchID != 0 {
+		dbMatchID = resolvedMatchID
+	} else {
+		if parsed, err := strconv.ParseInt(canonicalMatchIDStr, 10, 64); err == nil {
+			dbMatchID = parsed
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid match id for DB persistence"})
+			return
+		}
+	}
+
 	_, err = a.PG.Exec(ctx, `
 		INSERT INTO match_predictions (user_id, match_id, predicted_winner, prediction_time)
 		VALUES ($1, $2, $3, NOW())
 		ON CONFLICT (user_id, match_id) DO UPDATE
 		  SET predicted_winner = EXCLUDED.predicted_winner,
 			  prediction_time = NOW()
-	`, userID, matchID, body.Winner)
+	`, userID, dbMatchID, winnerVal)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save prediction"})
 		return
@@ -301,7 +385,7 @@ return encoded
 	// After persisting to Postgres, compute aggregate counts and publish an update
 	// so connected clients still receive live updates even when Redis path failed earlier.
 	counts := map[string]int64{}
-	rows, err := a.PG.Query(ctx, `SELECT predicted_winner, COUNT(*) FROM match_predictions WHERE match_id=$1 GROUP BY predicted_winner`, matchID)
+	rows, err := a.PG.Query(ctx, `SELECT predicted_winner, COUNT(*) FROM match_predictions WHERE match_id=$1 GROUP BY predicted_winner`, dbMatchID)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -315,7 +399,7 @@ return encoded
 
 	// Try to publish to Redis if available so subscribers get the update.
 	if a.Redis != nil {
-		votesKey := fmt.Sprintf("match_votes:%d", matchID)
+		votesKey := fmt.Sprintf("match_votes:%s", canonicalMatchIDStr)
 		// update Redis hash with aggregated counts (best-effort)
 		if len(counts) > 0 {
 			m := make(map[string]interface{}, len(counts))
@@ -325,14 +409,14 @@ return encoded
 			_ = a.Redis.HSet(ctx, votesKey, m).Err()
 		}
 		// publish a payload to the channel
-		payload := map[string]any{"match": fmt.Sprintf("%d", matchID), "counts": counts, "user": userID, "new": strconv.FormatInt(body.Winner, 10)}
+		payload := map[string]any{"match": canonicalMatchIDStr, "counts": counts, "user": userID, "new": strconv.FormatInt(winnerVal, 10)}
 		if b, err := json.Marshal(payload); err == nil {
-			_ = a.Redis.Publish(ctx, "match_updates:"+fmt.Sprintf("%d", matchID), string(b)).Err()
+			_ = a.Redis.Publish(ctx, "match_updates:"+canonicalMatchIDStr, string(b)).Err()
 		}
 	}
 
 	// return counts to the client so the UI can update immediately
-	c.JSON(http.StatusOK, gin.H{"result": map[string]any{"counts": counts, "user": userID, "new": strconv.FormatInt(body.Winner, 10)}})
+	c.JSON(http.StatusOK, gin.H{"result": map[string]any{"counts": counts, "user": userID, "new": strconv.FormatInt(winnerVal, 10)}})
 }
 
 // GetMatchVotes returns the current vote counts for a match (from Redis when available).

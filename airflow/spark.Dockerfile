@@ -58,6 +58,17 @@ RUN wget -q -O /opt/spark/jars-baked/hadoop-aws-${HADOOP_AWS_VERSION}.jar \
 # make spark see them even if we don't copy to the volume
 ENV SPARK_DIST_CLASSPATH=/opt/spark/jars-baked/hadoop-aws-${HADOOP_AWS_VERSION}.jar:/opt/spark/jars-baked/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar:$SPARK_DIST_CLASSPATH
 
+# Ensure the Java location other images expect exists.
+# Some images set JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 while the
+# Spark base image exposes Java at /opt/java/openjdk. Create a symlink if
+# the alternative path is present so scripts calling the canonical path don't fail.
+RUN set -eux; \
+    if [ -d /opt/java/openjdk ] && [ ! -e /usr/lib/jvm/java-17-openjdk-amd64 ]; then \
+        mkdir -p /usr/lib/jvm; \
+        ln -s /opt/java/openjdk /usr/lib/jvm/java-17-openjdk-amd64; \
+    fi; \
+    true
+
 # go back to spark user
 USER 185
 WORKDIR /opt/spark/work-dir

@@ -160,8 +160,8 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
     }
 
     // candidate avatar fields
-  const eastImage = getString(m['east'] && typeof m['east'] === 'object' ? (m['east'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'east_image', 'east_photo', 'east_profile') ?? ((m['east_rikishi'] && typeof m['east_rikishi'] === 'object') ? getString(m['east_rikishi'] as RawMatch, 's3_url', 's3', 'image', 'pfp_url', 'image_url') : null) ?? null;
-  const westImage = getString(m['west'] && typeof m['west'] === 'object' ? (m['west'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'west_image', 'west_photo', 'west_profile') ?? ((m['west_rikishi'] && typeof m['west_rikishi'] === 'object') ? getString(m['west_rikishi'] as RawMatch, 's3_url', 's3', 'image', 'pfp_url', 'image_url') : null) ?? null;
+  const eastImage = getString(m['east'] && typeof m['east'] === 'object' ? (m['east'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'east_image', 'east_photo', 'east_profile') ?? ((m['east_rikishi'] && typeof m['east_rikishi'] === 'object') ? getString(m['east_rikishi'] as RawMatch, 's3_mini_url', 's3_url', 's3', 'image', 'pfp_url', 'image_url') : null) ?? null;
+  const westImage = getString(m['west'] && typeof m['west'] === 'object' ? (m['west'] as RawMatch) : undefined, 'image', 'avatar') ?? getString(m, 'west_image', 'west_photo', 'west_profile') ?? ((m['west_rikishi'] && typeof m['west_rikishi'] === 'object') ? getString(m['west_rikishi'] as RawMatch, 's3_mini_url', 's3_url', 's3', 'image', 'pfp_url', 'image_url') : null) ?? null;
 
   // extract rikishi ids when available so we can link shikonas/pfps
   const eastId = (m['east_rikishi_id'] ?? m['eastId'] ?? m['east_id'] ?? (m['east'] && typeof m['east'] === 'object' ? (m['east'] as RawMatch)['id'] : undefined)) as string | number | undefined;
@@ -426,8 +426,8 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                 // Examples: east=1/west=1 => 50, west=2/east=0 => 100 (full), east=2/west=0 => 0 (empty)
                 const progressValue = Math.round((westVotes / total) * 100);
                 const winnerSide = match.winnerSide;
-                const rawAvatarEast: unknown = match.eastImage ?? (match.raw && (match.raw['east_rikishi'] as RawMatch)?.s3_url) ?? (match.raw && (match.raw['east_rikishi'] as RawMatch)?.image_url) ?? null;
-                const rawAvatarWest: unknown = match.westImage ?? (match.raw && (match.raw['west_rikishi'] as RawMatch)?.s3_url) ?? (match.raw && (match.raw['west_rikishi'] as RawMatch)?.image_url) ?? null;
+                const rawAvatarEast: unknown = match.eastImage ?? (match.raw && ((match.raw['east_rikishi'] as RawMatch)?.s3_mini_url ?? (match.raw['east_rikishi'] as RawMatch)?.s3_url)) ?? (match.raw && (match.raw['east_rikishi'] as RawMatch)?.image_url) ?? null;
+                const rawAvatarWest: unknown = match.westImage ?? (match.raw && ((match.raw['west_rikishi'] as RawMatch)?.s3_mini_url ?? (match.raw['west_rikishi'] as RawMatch)?.s3_url)) ?? (match.raw && (match.raw['west_rikishi'] as RawMatch)?.image_url) ?? null;
                 const avatarEast: string | null = (typeof rawAvatarEast === 'string' || typeof rawAvatarEast === 'number') ? String(rawAvatarEast) : null;
                 const avatarWest: string | null = (typeof rawAvatarWest === 'string' || typeof rawAvatarWest === 'number') ? String(rawAvatarWest) : null;
                 const westHref = match.westId ? `/rikishi/${match.westId}` : undefined;
@@ -496,7 +496,7 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                             if (avatarWest) {
                               const content = (
                                 <div style={wrapperStyle}>
-                                  <Image src={avatarWest} alt={westName} fill style={{ objectFit: 'cover', objectPosition: 'top', borderRadius: '50%' }} />
+                                  <Image src={avatarWest} alt={westName} width={40} height={40} style={{ objectFit: 'cover', objectPosition: 'top', borderRadius: '50%' }} quality={60} />
                                   {winnerSide === 'west' && (
                                     <Box sx={{ position: 'absolute', top: -6, right: -6, background: 'gold', color: '#222', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
                                       <span style={{ lineHeight: 1 }}>🏆</span>
@@ -595,7 +595,7 @@ const RecentMatchesList: React.FC<RecentMatchesListProps> = ({ date, matches }) 
                             if (avatarEast) {
                               const content = (
                                 <div style={wrapperStyle}>
-                                  <Image src={avatarEast} alt={eastName} fill style={{ objectFit: 'cover', objectPosition: 'top', borderRadius: '50%' }} />
+                                  <Image src={avatarEast} alt={eastName} width={40} height={40} style={{ objectFit: 'cover', objectPosition: 'top', borderRadius: '50%' }} quality={60} />
                                   {winnerSide === 'east' && (
                                     <Box sx={{ position: 'absolute', top: -6, right: -6, background: 'gold', color: '#222', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
                                       <span style={{ lineHeight: 1 }}>🏆</span>

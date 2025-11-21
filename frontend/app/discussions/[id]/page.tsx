@@ -61,7 +61,7 @@ export default async function DiscussionThreadPage({ params }: { params: any }) 
 
   if (!id) {
     return (
-      <main className="page-offset">
+      <main className="page-offset extra-vertical-pad">
         <div style={{ padding: 24 }}>
           <h2 className="app-text">Discussion not found</h2>
           <p className="app-text">No discussion id provided.</p>
@@ -139,7 +139,7 @@ export default async function DiscussionThreadPage({ params }: { params: any }) 
   const CommentsThread = (await import('../../../components/CommentsThreadClient')).default
 
     return (
-      <main className="page-offset">
+      <main className="page-offset extra-vertical-pad">
         <div style={{ display: 'flex', justifyContent: 'center', padding: '0 1rem' }}>
           {/* Outer purple card wrapping the whole discussion (post + comments) */}
           <div className="discussion-outer-card" style={{ background: '#563861', padding: 24, borderRadius: 12, maxWidth: 1100, width: '100%', boxShadow: '0 8px 30px rgba(17,24,39,0.06)' }}>
@@ -197,7 +197,7 @@ export default async function DiscussionThreadPage({ params }: { params: any }) 
     )
   } catch (err: any) {
     return (
-      <main className="page-offset">
+      <main className="page-offset extra-vertical-pad">
         <div style={{ padding: 24 }}>
           <h2 className="app-text">Discussion unavailable</h2>
           <div style={{ marginTop: 12, color: '#555' }}>id: <code>{id}</code></div>

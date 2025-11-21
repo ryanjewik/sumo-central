@@ -1,7 +1,10 @@
 /** @type {import('next').NextConfig} */
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
 
-const nextConfig = {
+// Integrate optional bundle analyzer when ANALYZE=true is set in the env.
+// This keeps the analyzer out of normal builds but allows an easy diagnostic
+// run: `$env:ANALYZE = 'true'; npm run build` (PowerShell)
+let nextConfig = {
   // `appDir` is now controlled by Next.js version; do not set it here to avoid unrecognized-key warnings.
   images: {
     // Use remotePatterns instead of the deprecated `domains` array.
@@ -27,6 +30,11 @@ const nextConfig = {
         hostname: 'upload.wikimedia.org',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'sumopedia.net',
+        pathname: '/**',
+      },
     ],
   },
   // Proxy Next `/api/*` requests to the backend when BACKEND_URL is set.
@@ -41,5 +49,13 @@ const nextConfig = {
     return []
   },
 };
+
+try {
+  // lazily require to avoid a hard dependency for normal dev/build runs
+  const withBundleAnalyzer = require('@next/bundle-analyzer')({ enabled: process.env.ANALYZE === 'true' });
+  nextConfig = withBundleAnalyzer(nextConfig);
+} catch (e) {
+  // if the analyzer isn't installed, silently continue — analysis is optional
+}
 
 module.exports = nextConfig;
